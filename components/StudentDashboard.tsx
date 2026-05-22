@@ -8393,7 +8393,7 @@ export const StudentDashboard: React.FC<Props> = ({
   }
 
   return (
-    <div className={`min-h-[100dvh] pb-0 ${activeTab === 'STORE' ? 'bg-black' : activeTab === 'PROFILE' ? 'bg-slate-900' : 'bg-slate-50'}`}>
+    <div className={`min-h-[100dvh] pb-0 ${activeTab === 'STORE' ? 'bg-black' : 'bg-slate-50'}`}>
       <NotificationPrompt />
       {/* ADMIN SWITCH BUTTON — only visible inside content (Notes/MCQ player or HW notes) */}
       {(user.role === "ADMIN" ||
