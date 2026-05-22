@@ -502,6 +502,9 @@ export const StudentDashboard: React.FC<Props> = ({
   const _isBasicUser   = user.isPremium && user.subscriptionLevel === 'BASIC';
   const _todayKey      = new Date().toISOString().split('T')[0];
 
+  // Free quota (0 free views — credit-only, but track key for limit enforcement)
+  const _freeHtmlKey   = `nst_free_html_${user.id}_${_todayKey}`;
+
   // Basic quota
   const _basicHtmlKey  = `nst_basic_html_${user.id}_${_todayKey}`;
   const BASIC_HTML_DAILY_LIMIT = settings?.basicHtmlDailyLimit ?? 5;
@@ -517,6 +520,17 @@ export const StudentDashboard: React.FC<Props> = ({
     ? parseInt(localStorage.getItem(_ultraHtmlKey) || '0', 10)
     : 0;
   const ultraHtmlRemaining = Math.max(0, ULTRA_HTML_DAILY_LIMIT - _ultraHtmlUsed);
+
+  // Paid (credit) write unlock tracking — all tiers, max 100/day
+  const _paidWriteKey   = `nst_paid_write_${user.id}_${_todayKey}`;
+  const _paidWriteCount = parseInt(localStorage.getItem(_paidWriteKey) || '0', 10);
+  const WM_PAID_DAILY_MAX = 100;
+  // Escalating cost: base + floor(count/10)*5, capped at 20 CR
+  const _wmBaseCost = (!_isUltraUser && !_isBasicUser)
+    ? (settings?.htmlUnlockCost ?? 5)     // Free: base 5 CR
+    : 10;                                  // Basic/Ultra: base 10 CR
+  const _wmEscalation = Math.floor(_paidWriteCount / 10) * 5;
+  const _currentWmCost = Math.min(20, _wmBaseCost + _wmEscalation);
 
   // Called when a Basic/Ultra user opens HTML view to consume one free daily session
   const _trackHtmlOpen = () => {
@@ -543,7 +557,7 @@ export const StudentDashboard: React.FC<Props> = ({
       action();
       return;
     }
-    // Otherwise → show unlock prompt
+    // Otherwise → show unlock prompt (credit-based)
     setPendingWMCallback(() => action);
     setShowWMUnlockPrompt(true);
   };
@@ -3169,6 +3183,15 @@ export const StudentDashboard: React.FC<Props> = ({
       setProfileData((prev) => ({ ...prev, dailyGoalHours: hours }));
     }
   }, [user.id]);
+
+  // === STORE VISIT COUNT — auto-track whenever Store tab opens ===
+  useEffect(() => {
+    if (activeTab !== 'STORE') return;
+    if (!user?.id) return;
+    const todayStr = new Date().toISOString().split('T')[0];
+    const key = `nst_store_visits_${user.id}_${todayStr}`;
+    try { localStorage.setItem(key, String(parseInt(localStorage.getItem(key) || '0', 10) + 1)); } catch {}
+  }, [activeTab, user?.id]);
 
   // === STORE VISIT → DISCOUNT COUPON CODE INBOX ===
   // Jab user Store visit kare aur discount event active ho aur user subscribed nahi ho
@@ -12335,7 +12358,7 @@ export const StudentDashboard: React.FC<Props> = ({
                 {lv.subject} · Page {idx + 1} of {lv.pages.length} · {settings?.appName || 'IIC'} · Saved {new Date().toLocaleString()}
               </p>
               <div style={{ fontSize: '14px', lineHeight: 1.7, whiteSpace: 'pre-wrap' }}>
-                {pg.content || ''}
+                {(pg as any).chunkNotes || pg.content || (pg as any).htmlNotes || ''}
               </div>
             </>
           );
@@ -13421,14 +13444,18 @@ export const StudentDashboard: React.FC<Props> = ({
                 const htmlCost = settings?.htmlUnlockCost ?? 5;
                 const basicHtmlLimit = settings?.basicHtmlDailyLimit ?? 5;
                 const ultraHtmlLimitModal = settings?.ultraHtmlDailyLimit ?? 10;
+                const mcqFreeLimit = settings?.mcqLimitFree ?? 50;
+                const mcqBasicLimit = settings?.mcqLimitBasic ?? 70;
+                const mcqUltraLimit = settings?.mcqLimitUltra ?? 100;
 
                 type PlanRow = { icon: string; label: string; free: string; basic: string; ultra: string };
                 const planRows: PlanRow[] = [
                   { icon: '📖', label: 'Notes', free: '✓ Unlimited', basic: '✓ Unlimited', ultra: '✓ Unlimited' },
-                  { icon: '📝', label: 'MCQ Practice', free: '50/day', basic: 'Unlimited', ultra: 'Unlimited' },
+                  { icon: '📝', label: 'MCQ Practice', free: `${mcqFreeLimit}/day`, basic: `${mcqBasicLimit}/day`, ultra: `${mcqUltraLimit}/day` },
                   { icon: '🎬', label: 'Video Lectures', free: 'Coins needed', basic: `${vidBasic}/day free`, ultra: `${vidUltra}/day free` },
                   { icon: '📄', label: 'PDF Access', free: 'Coins needed', basic: `${pdfBasic}/day free`, ultra: `${pdfUltra}/day free` },
-                  { icon: '✍️', label: 'Write Mode', free: `${htmlCost} CR/use`, basic: `${basicHtmlLimit}/day free`, ultra: `${ultraHtmlLimitModal}/day free` },
+                  { icon: '✍️', label: 'Write Mode (free views)', free: '0 free', basic: `${basicHtmlLimit}/day free`, ultra: `${ultraHtmlLimitModal}/day free` },
+                  { icon: '💎', label: 'Write Mode (credit)', free: `${htmlCost} CR/use`, basic: `10 CR/use`, ultra: `10 CR/use` },
                   { icon: '📥', label: 'HTML Downloads', free: `${dlFree}/day`, basic: `${dlBasic}/day`, ultra: `${dlUltra}/day` },
                   { icon: '🌅', label: 'Daily Login Bonus', free: `+${freeBonus} CR`, basic: `+${basicBonus} CR`, ultra: `+${ultraBonus} CR` },
                   { icon: '🔊', label: 'Audio / TTS', free: '✓ Free', basic: '✓ Free', ultra: '✓ Free' },
@@ -13462,6 +13489,65 @@ export const StudentDashboard: React.FC<Props> = ({
                       ))}
                       <div className="px-3 py-2 text-[10px] text-slate-400 font-medium">
                         📌 Upgrade karo Store mein jaake → ⚡ Ultra / 🔵 Basic
+                      </div>
+                    </div>
+
+                    {/* WRITE MODE DETAIL CARD */}
+                    <div className="bg-teal-50 border border-teal-200 rounded-2xl p-3.5 space-y-2">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-lg">✍️</span>
+                        <div>
+                          <p className="font-black text-sm text-slate-800">Write Mode — Credit System</p>
+                          <p className="text-[10px] text-slate-500">Free views khatam hone ke baad credit lagta hai</p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        <div className="bg-white rounded-xl p-2 text-center border border-teal-100">
+                          <p className="text-[9px] font-black text-slate-400 uppercase">Free</p>
+                          <p className="font-black text-amber-600 text-xs mt-0.5">0 free</p>
+                          <p className="text-[9px] text-slate-400">{htmlCost} CR/use</p>
+                        </div>
+                        <div className="bg-white rounded-xl p-2 text-center border border-teal-100">
+                          <p className="text-[9px] font-black text-sky-500 uppercase">Basic</p>
+                          <p className="font-black text-sky-600 text-xs mt-0.5">{basicHtmlLimit}/day free</p>
+                          <p className="text-[9px] text-slate-400">Phir 10 CR/use</p>
+                        </div>
+                        <div className="bg-white rounded-xl p-2 text-center border border-teal-100">
+                          <p className="text-[9px] font-black text-violet-500 uppercase">Ultra Notes</p>
+                          <p className="font-black text-violet-600 text-xs mt-0.5">{ultraHtmlLimitModal}/day free</p>
+                          <p className="text-[9px] text-slate-400">Phir 10 CR/use</p>
+                        </div>
+                      </div>
+                      <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2">
+                        <p className="text-[9px] text-amber-700 font-bold">💡 Escalating Cost: Har 10 credit unlocks ke baad +5 CR (max 20 CR) · Max 100 unlocks/day</p>
+                      </div>
+                    </div>
+
+                    {/* MCQ DETAIL CARD */}
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3.5 space-y-2">
+                      <div className="flex items-center gap-2 mb-1">
+                        <span className="text-lg">📝</span>
+                        <div>
+                          <p className="font-black text-sm text-slate-800">MCQ Practice — Daily Limits</p>
+                          <p className="text-[10px] text-slate-500">Tier ke hisaab se alag limit</p>
+                        </div>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        <div className="bg-white rounded-xl p-2 text-center border border-emerald-100">
+                          <p className="text-[9px] font-black text-slate-400 uppercase">Free</p>
+                          <p className="font-black text-slate-700 text-sm mt-0.5">{mcqFreeLimit}/day</p>
+                          <p className="text-[9px] text-slate-400">Hard limit</p>
+                        </div>
+                        <div className="bg-white rounded-xl p-2 text-center border border-emerald-100">
+                          <p className="text-[9px] font-black text-sky-500 uppercase">Basic</p>
+                          <p className="font-black text-sky-600 text-sm mt-0.5">{mcqBasicLimit}/day</p>
+                          <p className="text-[9px] text-slate-400">Phir 5 CR/30 Qs</p>
+                        </div>
+                        <div className="bg-white rounded-xl p-2 text-center border border-emerald-100">
+                          <p className="text-[9px] font-black text-violet-500 uppercase">Ultra</p>
+                          <p className="font-black text-violet-600 text-sm mt-0.5">{mcqUltraLimit}/day</p>
+                          <p className="text-[9px] text-slate-400">Phir 5 CR/30 Qs</p>
+                        </div>
                       </div>
                     </div>
 
@@ -16653,8 +16739,8 @@ RULES:
         const ultraHtmlLeft = Math.max(0, ultraHtmlLimit - ultraHtmlSessions);
         const htmlCost = settings?.htmlUnlockCost ?? 5;
 
-        const mcqLimit = isUltra ? null : isBasic ? null : 50;
-        const mcqLeft = mcqLimit !== null ? Math.max(0, mcqLimit - mcqToday) : null;
+        const mcqLimit = isUltra ? 100 : isBasic ? 70 : 50;
+        const mcqLeft = Math.max(0, mcqLimit - mcqToday);
 
         const dlLimit = isUltra ? (settings?.htmlDownloadLimitUltra ?? 10) : isBasic ? (settings?.htmlDownloadLimitBasic ?? 5) : (settings?.htmlDownloadLimitFree ?? 2);
         const dlLeft  = Math.max(0, dlLimit - dlHtmlToday);
@@ -16669,12 +16755,12 @@ RULES:
             label: 'MCQ Practice',
             limitNum: mcqLimit,
             usedNum: mcqToday,
-            isUnlimited: mcqLimit === null,
+            isUnlimited: false,
             isCoins: false,
-            limitDisplay: mcqLimit !== null ? `${mcqLimit}/day` : 'Unlimited',
-            used: `${mcqToday} done${mcqLeft !== null ? ` · ${mcqLeft} left` : ''}`,
-            statusColor: mcqLeft === 0 ? 'text-rose-600' : mcqLeft !== null && mcqLeft <= 10 ? 'text-amber-600' : 'text-emerald-600',
-            barColor: mcqLeft === 0 ? '#ef4444' : mcqLeft !== null && mcqLeft <= 10 ? '#f97316' : '#10b981',
+            limitDisplay: `${mcqLimit}/day`,
+            used: `${mcqToday} done · ${mcqLeft} left`,
+            statusColor: mcqLeft === 0 ? 'text-rose-600' : mcqLeft <= 10 ? 'text-amber-600' : 'text-emerald-600',
+            barColor: mcqLeft === 0 ? '#ef4444' : mcqLeft <= 10 ? '#f97316' : '#10b981',
           },
           {
             icon: '📥',
@@ -16690,16 +16776,51 @@ RULES:
           },
           {
             icon: '✍️',
-            label: 'Styled Notes View',
-            limitNum: isUltra ? null : isBasic ? basicHtmlLimit : null,
-            usedNum: isBasic ? htmlSessions : 0,
-            isUnlimited: isUltra,
-            isCoins: !isUltra && !isBasic,
-            limitDisplay: isUltra ? 'Unlimited' : isBasic ? `${basicHtmlLimit}/day` : 'Ultra only',
-            used: isUltra ? 'Free always ✓' : isBasic ? `${htmlSessions} used · ${basicHtmlLeft} left` : 'Upgrade to Ultra',
-            statusColor: isUltra ? 'text-emerald-600' : isBasic ? (basicHtmlLeft === 0 ? 'text-rose-600' : 'text-sky-600') : 'text-rose-600',
-            barColor: isUltra ? '#10b981' : isBasic ? (basicHtmlLeft === 0 ? '#ef4444' : '#0ea5e9') : '#ef4444',
+            label: isUltra
+              ? `Write Mode (Ultra) · ${ultraHtmlLeft}/${ultraHtmlLimit} free left`
+              : isBasic
+              ? `Write Mode (Basic) · ${basicHtmlLeft}/${basicHtmlLimit} free left`
+              : 'Write Mode (Free) · 0 free',
+            limitNum: isUltra ? ultraHtmlLimit : isBasic ? basicHtmlLimit : 0,
+            usedNum: isUltra ? ultraHtmlSessions : isBasic ? htmlSessions : 0,
+            isUnlimited: false,
+            isCoins: isFree,
+            limitDisplay: isUltra ? `${ultraHtmlLimit}/day free` : isBasic ? `${basicHtmlLimit}/day free` : '0 free (credit-only)',
+            used: isUltra
+              ? `${ultraHtmlSessions} used · ${ultraHtmlLeft} left`
+              : isBasic
+              ? `${htmlSessions} used · ${basicHtmlLeft} left`
+              : 'Credit se unlock karo',
+            statusColor: isUltra
+              ? (ultraHtmlLeft === 0 ? 'text-rose-600' : 'text-emerald-600')
+              : isBasic
+              ? (basicHtmlLeft === 0 ? 'text-rose-600' : 'text-sky-600')
+              : 'text-amber-600',
+            barColor: isUltra
+              ? (ultraHtmlLeft === 0 ? '#ef4444' : '#10b981')
+              : isBasic
+              ? (basicHtmlLeft === 0 ? '#ef4444' : '#0ea5e9')
+              : '#f59e0b',
           },
+          (() => {
+            const paidWriteCount = parseInt(localStorage.getItem(`nst_paid_write_${user.id}_${todayStr}`) || '0', 10);
+            const wmBase = isFree ? (htmlCost) : 10;
+            const wmEsc = Math.floor(paidWriteCount / 10) * 5;
+            const wmCost = Math.min(20, wmBase + wmEsc);
+            const wmLeft = Math.max(0, 100 - paidWriteCount);
+            return {
+              icon: '💎',
+              label: `Write Mode (Credits) · ${wmCost} CR/unlock`,
+              limitNum: 100,
+              usedNum: paidWriteCount,
+              isUnlimited: false,
+              isCoins: true,
+              limitDisplay: `100 unlocks/day · ${wmCost} CR now`,
+              used: `${paidWriteCount} unlocks aaj · ${wmLeft} left`,
+              statusColor: wmLeft === 0 ? 'text-rose-600' : paidWriteCount >= 80 ? 'text-amber-600' : 'text-sky-600',
+              barColor: wmLeft === 0 ? '#ef4444' : paidWriteCount >= 80 ? '#f97316' : '#0ea5e9',
+            };
+          })(),
           {
             icon: '📖',
             label: 'Notes Reading',
@@ -16881,53 +17002,31 @@ RULES:
             {/* WRITE MODE */}
             <div className="bg-white border border-teal-200 rounded-2xl overflow-hidden shadow-sm">
               <div className="bg-teal-50 px-4 py-2.5 flex items-center gap-2">
-                <span className="text-lg">✏️</span>
+                <span className="text-lg">✍️</span>
                 <div>
-                  <p className="font-black text-sm text-slate-800">Ultra View</p>
-                  <p className="text-[10px] text-slate-500">Styled HTML notes — sirf Ultra users ke liye</p>
+                  <p className="font-black text-sm text-slate-800">Write Mode</p>
+                  <p className="text-[10px] text-slate-500">Styled HTML notes — Free views + credit unlock system</p>
                 </div>
               </div>
               <div className="grid grid-cols-3 divide-x divide-slate-100">
                 <div className="p-3 text-center">
-                  <p className="text-xs font-black text-slate-400">🔒 Locked</p>
-                  <p className="text-[9px] text-slate-400 mt-1">Nahi milega</p>
+                  <p className="text-xs font-black text-amber-600">💎 Credits</p>
+                  <p className="text-[9px] text-slate-400 mt-1">{settings?.htmlUnlockCost ?? 5} CR/use</p>
+                  <p className="text-[9px] text-slate-400">Max 100/day</p>
                 </div>
                 <div className="p-3 text-center">
-                  <p className="text-xs font-black text-slate-400">🔒 Locked</p>
-                  <p className="text-[9px] text-slate-400 mt-1">Nahi milega</p>
+                  <p className="text-xs font-black text-sky-600">{settings?.basicHtmlDailyLimit ?? 5} free/day</p>
+                  <p className="text-[9px] text-slate-400 mt-1">Phir 10 CR/use</p>
+                  <p className="text-[9px] text-slate-400">Max 100/day</p>
                 </div>
                 <div className="p-3 text-center">
-                  <p className="text-xs font-black text-violet-600">✅ Free</p>
-                  <p className="text-[9px] text-slate-400 mt-1">Unlimited</p>
+                  <p className="text-xs font-black text-violet-600">{settings?.ultraHtmlDailyLimit ?? 10} free/day</p>
+                  <p className="text-[9px] text-slate-400 mt-1">Phir 10 CR/use</p>
+                  <p className="text-[9px] text-slate-400">Ultra Notes ⚡</p>
                 </div>
               </div>
               <div className="px-4 pb-2.5">
-                <p className="text-[9px] text-slate-400">⚡ Ultra plan exclusive — styled HTML notes ka full experience</p>
-              </div>
-            </div>
-
-            {/* HTML VIEWS */}
-            <div className="bg-white border border-purple-200 rounded-2xl overflow-hidden shadow-sm">
-              <div className="bg-purple-50 px-4 py-2.5 flex items-center gap-2">
-                <span className="text-lg">🌐</span>
-                <div>
-                  <p className="font-black text-sm text-slate-800">HTML / Rich Notes View</p>
-                  <p className="text-[10px] text-slate-500">Chunk notes ka full HTML rendered view</p>
-                </div>
-              </div>
-              <div className="grid grid-cols-3 divide-x divide-slate-100">
-                <div className="p-3 text-center">
-                  <p className="text-xs font-black text-red-500">🔒 Locked</p>
-                  <p className="text-[9px] text-slate-400 mt-1">Available nahi</p>
-                </div>
-                <div className="p-3 text-center">
-                  <p className="text-xs font-black text-amber-600">🔒 Locked</p>
-                  <p className="text-[9px] text-slate-400 mt-1">Ultra chahiye</p>
-                </div>
-                <div className="p-3 text-center">
-                  <p className="text-xs font-black text-green-600">✅ Free</p>
-                  <p className="text-[9px] text-slate-400 mt-1">Ultra users only</p>
-                </div>
+                <p className="text-[9px] text-slate-400">💡 Credit cost escalate hoti hai — har 10 unlocks pe +5 CR (max 20 CR)</p>
               </div>
             </div>
 
@@ -16992,17 +17091,17 @@ RULES:
               </div>
               <div className="grid grid-cols-3 divide-x divide-slate-100">
                 <div className="p-3 text-center">
-                  <p className="text-xs font-black text-blue-600">MCQ Maker ✅</p>
-                  <p className="text-[9px] text-slate-400 mt-1">{settings?.mcqLimitFree ?? 50}/day limit</p>
-                  <p className="text-[9px] text-slate-400">Q&A limit same</p>
+                  <p className="text-xs font-black text-blue-600">{settings?.mcqLimitFree ?? 50}/day</p>
+                  <p className="text-[9px] text-slate-400 mt-1">Hard limit</p>
+                  <p className="text-[9px] text-slate-400">MCQ+Q&A+Flash</p>
                 </div>
                 <div className="p-3 text-center">
-                  <p className="text-xs font-black text-green-600">50 free/day</p>
+                  <p className="text-xs font-black text-green-600">{settings?.mcqLimitBasic ?? 70}/day</p>
                   <p className="text-[9px] text-slate-400 mt-1">Phir 5 coins/30 Qs</p>
                   <p className="text-[9px] text-slate-400">MCQ+Q&A+Flash</p>
                 </div>
                 <div className="p-3 text-center">
-                  <p className="text-xs font-black text-violet-600">{settings?.mcqLimitUltra ?? 100} free/day</p>
+                  <p className="text-xs font-black text-violet-600">{settings?.mcqLimitUltra ?? 100}/day</p>
                   <p className="text-[9px] text-slate-400 mt-1">Phir 5 coins/30 Qs</p>
                   <p className="text-[9px] text-slate-400">MCQ+Q&A+Flash</p>
                 </div>
@@ -17269,7 +17368,12 @@ RULES:
       )}
 
       {/* ── Write Mode Unlock Prompt ── */}
-      {showWMUnlockPrompt && (
+      {showWMUnlockPrompt && (() => {
+        const isHardBlocked = _paidWriteCount >= WM_PAID_DAILY_MAX;
+        const canAfford = (user.credits || 0) >= _currentWmCost;
+        const nextThreshold = (Math.floor(_paidWriteCount / 10) + 1) * 10;
+        const nextCost = Math.min(20, _wmBaseCost + (Math.floor(_paidWriteCount / 10) + 1) * 5);
+        return (
         <div
           className="fixed inset-0 z-[9999] flex items-center justify-center px-5"
           style={{ background: 'rgba(10,10,30,0.72)', backdropFilter: 'blur(10px)' }}
@@ -17282,87 +17386,121 @@ RULES:
           >
             {/* Header gradient */}
             <div className={`px-6 pt-8 pb-6 text-center ${
-              _isUltraUser
+              isHardBlocked
+                ? 'bg-gradient-to-br from-rose-600 via-red-600 to-rose-700'
+                : _isUltraUser
                 ? 'bg-gradient-to-br from-violet-600 via-purple-600 to-indigo-700'
                 : _isBasicUser
                 ? 'bg-gradient-to-br from-sky-500 via-blue-600 to-indigo-600'
                 : 'bg-gradient-to-br from-teal-500 via-emerald-600 to-green-700'
             }`}>
               <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-                <span className="text-3xl">✍️</span>
+                <span className="text-3xl">{isHardBlocked ? '🔒' : '✍️'}</span>
               </div>
-              <h2 className="text-white font-black text-xl leading-tight tracking-tight">Write Mode</h2>
+              <h2 className="text-white font-black text-xl leading-tight tracking-tight">
+                {isHardBlocked ? 'Daily Limit Full' : 'Write Mode'}
+              </h2>
               <p className="text-white/75 text-xs mt-1.5 font-medium">
-                {_isUltraUser
+                {isHardBlocked
+                  ? `Aaj ke ${WM_PAID_DAILY_MAX} credit unlocks ho gaye — kal vapas aao`
+                  : _isUltraUser
                   ? `Aaj ki ${settings?.ultraHtmlDailyLimit ?? 10} free views khatam ho gayi`
                   : _isBasicUser
                   ? `Aaj ki ${settings?.basicHtmlDailyLimit ?? 5} free views khatam ho gayi`
-                  : `Har baar ${settings?.htmlUnlockCost ?? 5} credits mein styled notes dekho`}
+                  : `Credits se styled notes unlock karo`}
               </p>
             </div>
 
             {/* Body */}
             <div className="bg-white px-6 pt-5 pb-6">
-              {/* Credit cost card */}
-              <div className="bg-gradient-to-r from-slate-50 to-slate-100 border border-slate-200 rounded-2xl p-4 mb-4">
-                <div className="flex items-center justify-between mb-3">
-                  <div>
-                    <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Is view ke liye</p>
-                    <p className="text-3xl font-black text-slate-800">{settings?.htmlUnlockCost ?? 5}<span className="text-base text-slate-400 font-bold ml-1.5">Credits</span></p>
-                  </div>
-                  <div className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-md" style={{ background: 'linear-gradient(135deg,#f59e0b,#f97316)' }}>
-                    <span className="text-3xl">💎</span>
-                  </div>
-                </div>
-                <div className="flex items-center justify-between bg-white rounded-xl px-3.5 py-2.5 border border-slate-100">
-                  <span className="text-xs font-bold text-slate-400">Tumhara balance</span>
-                  <span className={`text-sm font-black ${(user.credits || 0) >= (settings?.htmlUnlockCost ?? 5) ? 'text-emerald-600' : 'text-red-500'}`}>
-                    {(user.credits || 0).toLocaleString()} CR&nbsp;
-                    {(user.credits || 0) >= (settings?.htmlUnlockCost ?? 5) ? '✓' : '— kam hai'}
-                  </span>
-                </div>
-              </div>
 
-              {/* Plan info pill */}
-              <div className={`rounded-xl px-3.5 py-2.5 mb-5 flex items-center gap-2.5 ${
-                _isUltraUser ? 'bg-violet-50 border border-violet-100' : _isBasicUser ? 'bg-sky-50 border border-sky-100' : 'bg-emerald-50 border border-emerald-100'
-              }`}>
-                <span className="text-base shrink-0">{_isUltraUser ? '⚡' : _isBasicUser ? '🔵' : '🆓'}</span>
-                <p className={`text-[11px] font-bold ${_isUltraUser ? 'text-violet-700' : _isBasicUser ? 'text-sky-700' : 'text-emerald-700'}`}>
-                  {_isUltraUser
-                    ? `Ultra plan: ${settings?.ultraHtmlDailyLimit ?? 10} free views/day — aaj ki limit khatam`
-                    : _isBasicUser
-                    ? `Basic plan: ${settings?.basicHtmlDailyLimit ?? 5} free views/day — aaj ki limit khatam`
-                    : `Free plan: credits se unlock karo, ya upgrade karo`}
-                </p>
-              </div>
+              {/* Hard block message */}
+              {isHardBlocked ? (
+                <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 mb-5 text-center">
+                  <p className="text-rose-700 font-black text-sm">🔒 Aaj ke {WM_PAID_DAILY_MAX}/100 credit unlocks poore ho gaye!</p>
+                  <p className="text-rose-500 text-xs mt-1 font-medium">Kal midnight ke baad limit reset hogi.</p>
+                </div>
+              ) : (
+                <>
+                  {/* Credit cost card */}
+                  <div className="bg-gradient-to-r from-slate-50 to-slate-100 border border-slate-200 rounded-2xl p-4 mb-3">
+                    <div className="flex items-center justify-between mb-3">
+                      <div>
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Is view ke liye</p>
+                        <p className="text-3xl font-black text-slate-800">{_currentWmCost}<span className="text-base text-slate-400 font-bold ml-1.5">Credits</span></p>
+                        {_wmEscalation > 0 && (
+                          <p className="text-[10px] text-amber-600 font-bold mt-0.5">+{_wmEscalation} CR escalation ({Math.floor(_paidWriteCount / 10) * 10}+ unlocks)</p>
+                        )}
+                      </div>
+                      <div className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-md" style={{ background: 'linear-gradient(135deg,#f59e0b,#f97316)' }}>
+                        <span className="text-3xl">💎</span>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between bg-white rounded-xl px-3.5 py-2.5 border border-slate-100">
+                      <span className="text-xs font-bold text-slate-400">Tumhara balance</span>
+                      <span className={`text-sm font-black ${canAfford ? 'text-emerald-600' : 'text-red-500'}`}>
+                        {(user.credits || 0).toLocaleString()} CR&nbsp;
+                        {canAfford ? '✓' : '— kam hai'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Progress info */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 mb-4 flex items-center justify-between">
+                    <span className="text-[10px] font-bold text-slate-500">
+                      Credit unlocks aaj: <span className="text-slate-700 font-black">{_paidWriteCount}/{WM_PAID_DAILY_MAX}</span>
+                    </span>
+                    {_currentWmCost < 20 && (
+                      <span className="text-[10px] font-bold text-amber-600">
+                        Agli {nextThreshold - _paidWriteCount} pe: {nextCost} CR
+                      </span>
+                    )}
+                  </div>
+
+                  {/* Plan info pill */}
+                  <div className={`rounded-xl px-3.5 py-2.5 mb-5 flex items-center gap-2.5 ${
+                    _isUltraUser ? 'bg-violet-50 border border-violet-100' : _isBasicUser ? 'bg-sky-50 border border-sky-100' : 'bg-emerald-50 border border-emerald-100'
+                  }`}>
+                    <span className="text-base shrink-0">{_isUltraUser ? '⚡' : _isBasicUser ? '🔵' : '🆓'}</span>
+                    <p className={`text-[11px] font-bold ${_isUltraUser ? 'text-violet-700' : _isBasicUser ? 'text-sky-700' : 'text-emerald-700'}`}>
+                      {_isUltraUser
+                        ? `Ultra plan: ${settings?.ultraHtmlDailyLimit ?? 10} free views/day — limit khatam`
+                        : _isBasicUser
+                        ? `Basic plan: ${settings?.basicHtmlDailyLimit ?? 5} free views/day — limit khatam`
+                        : `Free plan: credits se unlock karo, ya upgrade karo`}
+                    </p>
+                  </div>
+                </>
+              )}
 
               {/* CTA buttons */}
               <div className="space-y-2.5">
-                {(user.credits || 0) >= (settings?.htmlUnlockCost ?? 5) ? (
-                  <button
-                    onClick={() => {
-                      const cost = settings?.htmlUnlockCost ?? 5;
-                      handleUserUpdate({ ...user, credits: Math.max(0, (user.credits || 0) - cost) });
-                      setShowWMUnlockPrompt(false);
-                      pendingWMCallback?.();
-                      setPendingWMCallback(null);
-                    }}
-                    className="w-full py-4 rounded-2xl font-black text-[15px] text-white active:scale-[0.97] transition-all flex items-center justify-center gap-2.5"
-                    style={{ background: 'linear-gradient(135deg,#059669,#10b981)', boxShadow: '0 8px 24px -4px rgba(16,185,129,0.45)' }}
-                  >
-                    <span className="text-xl">💎</span>
-                    {settings?.htmlUnlockCost ?? 5} Credits use karo — Kholo
-                  </button>
-                ) : (
-                  <button
-                    onClick={() => { setShowWMUnlockPrompt(false); setPendingWMCallback(null); onTabChange('STORE'); }}
-                    className="w-full py-4 rounded-2xl font-black text-[15px] text-white active:scale-[0.97] transition-all flex items-center justify-center gap-2.5"
-                    style={{ background: 'linear-gradient(135deg,#f59e0b,#f97316)', boxShadow: '0 8px 24px -4px rgba(245,158,11,0.45)' }}
-                  >
-                    <span className="text-xl">💰</span>
-                    Credits earn karo — Store jaao
-                  </button>
+                {!isHardBlocked && (
+                  canAfford ? (
+                    <button
+                      onClick={() => {
+                        handleUserUpdate({ ...user, credits: Math.max(0, (user.credits || 0) - _currentWmCost) });
+                        try { localStorage.setItem(_paidWriteKey, String(_paidWriteCount + 1)); } catch {}
+                        setShowWMUnlockPrompt(false);
+                        pendingWMCallback?.();
+                        setPendingWMCallback(null);
+                      }}
+                      className="w-full py-4 rounded-2xl font-black text-[15px] text-white active:scale-[0.97] transition-all flex items-center justify-center gap-2.5"
+                      style={{ background: 'linear-gradient(135deg,#059669,#10b981)', boxShadow: '0 8px 24px -4px rgba(16,185,129,0.45)' }}
+                    >
+                      <span className="text-xl">💎</span>
+                      {_currentWmCost} Credits use karo — Kholo
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => { setShowWMUnlockPrompt(false); setPendingWMCallback(null); onTabChange('STORE'); }}
+                      className="w-full py-4 rounded-2xl font-black text-[15px] text-white active:scale-[0.97] transition-all flex items-center justify-center gap-2.5"
+                      style={{ background: 'linear-gradient(135deg,#f59e0b,#f97316)', boxShadow: '0 8px 24px -4px rgba(245,158,11,0.45)' }}
+                    >
+                      <span className="text-xl">💰</span>
+                      Credits earn karo — Store jaao
+                    </button>
+                  )
                 )}
                 {!_isUltraUser && (
                   <button
@@ -17384,7 +17522,8 @@ RULES:
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 };
