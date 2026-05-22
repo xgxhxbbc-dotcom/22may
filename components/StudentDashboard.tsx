@@ -749,55 +749,84 @@ export const StudentDashboard: React.FC<Props> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.isPremium, user.subscriptionEndDate, user.subscriptionTier]);
 
-  // --- STORE VISIT → MAILBOX DISCOUNT DELIVERY (login-streak based) ---
-  // Discount tier depends on user's LOGIN STREAK (number of consecutive login days):
-  //   streak >= 5  → 20% off
-  //   streak >= 3  → 15% off
-  //   streak >= 1  → 10% off (default / first login)
-  // One coupon per day max. Coupon is a valid REDEEM_CODE stored in user inbox.
+  // --- STORE VISIT → WEEKLY DISCOUNT (top-2 study days of the week, direct claim) ---
+  // Logic: week mein jis 2 din sabse zyada padha, unke NEXT DAY discount milega.
+  // Max 2 discounts per week. Direct claim — koi redeem code nahi chahiye.
   useEffect(() => {
     if (activeTab !== 'STORE') return;
     const freshUser = (window as any).__dashUserRef?.current ?? user;
     const isSubscribed = freshUser.isPremium && freshUser.subscriptionEndDate && new Date(freshUser.subscriptionEndDate) > new Date();
     if (isSubscribed) return;
     if (!freshUser?.id) return;
-    const today = new Date().toISOString().split('T')[0];
 
-    // Determine discount % based on login streak
+    const now = new Date();
+    const today = now.toISOString().split('T')[0];
+
+    // Find Monday of the current week
+    const dayOfWeek = now.getDay(); // 0=Sun, 1=Mon...
+    const mondayOffset = (dayOfWeek + 6) % 7; // days since Monday
+    const monday = new Date(now);
+    monday.setDate(now.getDate() - mondayOffset);
+    monday.setHours(0, 0, 0, 0);
+    const weekKey = monday.toISOString().split('T')[0];
+
+    // Weekly discount count (max 2 per week)
+    const weekCountKey = `nst_wdisc_count_${freshUser.id}_${weekKey}`;
+    const discountsThisWeek = parseInt(localStorage.getItem(weekCountKey) || '0', 10);
+    if (discountsThisWeek >= 2) return;
+
+    // Already sent today?
+    const todaySentKey = `nst_wdisc_today_${freshUser.id}_${today}`;
+    if (localStorage.getItem(todaySentKey)) return;
+
+    // Get study activity for each past day this week (excluding today)
+    const weekDays: { dateStr: string; activity: number }[] = [];
+    for (let i = 0; i < mondayOffset; i++) {
+      const d = new Date(monday);
+      d.setDate(monday.getDate() + i);
+      const ds = d.toDateString();
+      const activity = parseInt(localStorage.getItem(`activity_${freshUser.id}_${ds}`) || '0', 10);
+      weekDays.push({ dateStr: ds, activity });
+    }
+    if (weekDays.length === 0) return;
+
+    // Top-2 study days by activity
+    const sorted = [...weekDays].sort((a, b) => b.activity - a.activity);
+    const top2 = sorted.slice(0, 2).filter(d => d.activity > 0);
+    if (top2.length === 0) return;
+
+    // Yesterday
+    const yesterday = new Date(now);
+    yesterday.setDate(now.getDate() - 1);
+    const yesterdayStr = yesterday.toDateString();
+
+    // Check if yesterday is in top-2
+    const yesterdayInTop2 = top2.some(d => d.dateStr === yesterdayStr);
+    if (!yesterdayInTop2) return;
+
+    // Determine discount % based on streak
     const streak = freshUser.streak || 0;
-    const discountPct = streak >= 5
-      ? 20
-      : streak >= 3
-        ? 15
-        : (settings?.storeVisitDiscountPercent ?? 10);
-    const tierKey = streak >= 5 ? '5plus' : streak >= 3 ? '3plus' : '1';
+    const discountPct = streak >= 5 ? 20 : streak >= 3 ? 15 : (settings?.storeVisitDiscountPercent ?? 10);
 
-    // Helper: send discount coupon once per day per tier
-    const sendDiscount = (pct: number, tier: string) => {
-      const sentKey = `nst_store_disc${tier}_${freshUser.id}_${today}`;
-      if (localStorage.getItem(sentKey)) return;
-      const msgId = `store-disc-${tier}-${today}`;
-      const latestUser = (window as any).__dashUserRef?.current ?? freshUser;
-      const alreadyHas = (latestUser.inbox || []).some((m: any) => m.id === msgId);
-      if (alreadyHas) return;
-      const code = 'DISC' + Math.random().toString(36).toUpperCase().slice(2, 9);
-      const expiresAt = new Date(Date.now() + 24 * 60 * 60 * 1000).toISOString();
-      const discMsg: any = {
-        id: msgId,
-        text: `🎁 Store Discount — ${pct}% OFF!\n\n⬆️ Upgrade your plan and save today!\n\n🏷️ Your ${pct}% discount code:\n${code}\n\n⏰ Valid for 24 hours. Redeem in Store.`,
-        date: new Date().toISOString(),
-        read: false,
-        type: 'REDEEM_CODE',
-        redeemCode: code,
-        discountPercent: pct,
-        expiresAt,
-      };
-      const updatedInbox = [discMsg, ...(latestUser.inbox || [])];
-      handleUserUpdate({ ...latestUser, inbox: updatedInbox });
-      localStorage.setItem(sentKey, '1');
+    // Send STORE_DISCOUNT message (direct claim — no redeem code needed)
+    const msgId = `wdisc-${freshUser.id}-${today}`;
+    const latestUser = (window as any).__dashUserRef?.current ?? freshUser;
+    if ((latestUser.inbox || []).some((m: any) => m.id === msgId)) return;
+
+    const expiresAt = new Date(Date.now() + 36 * 60 * 60 * 1000).toISOString(); // 36 hours
+    const discMsg: any = {
+      id: msgId,
+      text: `🎉 Aapne kal bahut achha padha! Iss mehnat ka inaam — Store mein ${discountPct}% OFF!\n\nNeeche "Claim Karo" button dabao — discount seedha Store mein apply ho jayega. Koi code daalne ki zaroorat nahi!`,
+      date: new Date().toISOString(),
+      read: false,
+      type: 'STORE_DISCOUNT',
+      discountPercent: discountPct,
+      expiresAt,
     };
-
-    sendDiscount(discountPct, tierKey);
+    const updatedInbox = [discMsg, ...(latestUser.inbox || [])];
+    handleUserUpdate({ ...latestUser, inbox: updatedInbox });
+    localStorage.setItem(todaySentKey, '1');
+    localStorage.setItem(weekCountKey, String(discountsThisWeek + 1));
   }, [activeTab, user?.id]);
 
   // --- MCQ DAILY TRACKING HELPER ---
@@ -7439,18 +7468,43 @@ export const StudentDashboard: React.FC<Props> = ({
     // if (activeTab === 'REWARDS') return (...); // REMOVED TO PREVENT CRASH
     if (activeTab === "STORE") {
       return (
-        <div className="animate-in fade-in duration-300">
+        <div className="animate-in fade-in duration-300 bg-black min-h-screen">
+          {/* Professional Store Header */}
+          <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-black px-4 pt-5 pb-4 border-b border-slate-700/50">
+            <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(105deg,transparent 30%,rgba(99,102,241,0.08) 50%,transparent 70%)', animation: 'shimmer-sweep 3s linear infinite' }} />
+            <div className="absolute -top-10 -right-10 w-40 h-40 bg-indigo-600/10 rounded-full blur-3xl" />
+            <div className="flex items-center justify-between relative z-10">
+              <div>
+                <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-0.5">{settings?.appName || 'IIC'}</p>
+                <h1 className="text-2xl font-black text-white tracking-tight leading-none">Premium Store</h1>
+                <p className="text-[11px] text-slate-400 mt-1 font-medium">Apna plan upgrade karo — anlock karo sab kuch</p>
+              </div>
+              <div className="flex flex-col items-end gap-1.5">
+                <div className="flex items-center gap-1.5 bg-amber-500/15 border border-amber-500/30 px-3 py-1.5 rounded-full">
+                  <span className="text-sm">🪙</span>
+                  <span className="text-amber-300 font-black text-sm">{(user.credits ?? 0).toLocaleString('en-IN')}</span>
+                  <span className="text-amber-500 text-[9px] font-bold">CR</span>
+                </div>
+                {user.isPremium && (
+                  <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${user.subscriptionLevel === 'ULTRA' ? 'text-purple-300 border-purple-500/40 bg-purple-500/15' : 'text-sky-300 border-sky-500/40 bg-sky-500/15'}`}>
+                    {user.subscriptionLevel === 'ULTRA' ? '⚡ ULTRA' : '★ BASIC'} Active
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+
           {/* Store/Earn Sub-tabs */}
-          <div className="flex gap-2 px-4 pt-4 pb-2">
+          <div className="flex gap-2 px-4 pt-3 pb-2">
             <button
               onClick={() => setStoreSubTab('STORE')}
-              className={`flex-1 py-2.5 rounded-xl text-sm font-black transition-all ${storeSubTab === 'STORE' ? 'bg-indigo-600 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+              className={`flex-1 py-2.5 rounded-xl text-sm font-black transition-all ${storeSubTab === 'STORE' ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-500/30' : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'}`}
             >
               🛒 Store
             </button>
             <button
               onClick={() => setStoreSubTab('EARN')}
-              className={`flex-1 py-2.5 rounded-xl text-sm font-black transition-all ${storeSubTab === 'EARN' ? 'bg-amber-500 text-white shadow-sm' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+              className={`flex-1 py-2.5 rounded-xl text-sm font-black transition-all ${storeSubTab === 'EARN' ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/30' : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'}`}
             >
               🎰 Earn
             </button>
@@ -7527,7 +7581,40 @@ export const StudentDashboard: React.FC<Props> = ({
     }
     if (activeTab === "PROFILE")
       return (
-        <div className="animate-in fade-in zoom-in duration-300 pb-4">
+        <div className="animate-in fade-in zoom-in duration-300 pb-24">
+          {/* Profile mini top-bar */}
+          <div className={`sticky top-0 z-[50] px-4 py-3 flex items-center justify-between border-b backdrop-blur-md ${
+            user.subscriptionLevel === 'ULTRA' && user.isPremium
+              ? 'bg-slate-900/95 border-slate-700/60 text-white'
+              : user.subscriptionLevel === 'BASIC' && user.isPremium
+                ? 'bg-sky-500/95 border-sky-400/40 text-white'
+                : 'bg-slate-800/95 border-slate-700/60 text-white'
+          }`}>
+            <div className="flex items-center gap-2.5">
+              {settings?.appLogo ? (
+                <img src={settings.appLogo} alt="logo" className="w-7 h-7 rounded-lg object-cover" />
+              ) : (
+                <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black bg-white/20">
+                  {(settings?.appName || 'IIC').charAt(0)}
+                </div>
+              )}
+              <span className="font-black text-sm tracking-tight">{settings?.appName || 'IIC'}</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className={`text-[10px] font-black px-2.5 py-1 rounded-full border ${
+                user.subscriptionLevel === 'ULTRA' && user.isPremium
+                  ? 'bg-purple-500/30 border-purple-400/50 text-purple-200'
+                  : user.subscriptionLevel === 'BASIC' && user.isPremium
+                    ? 'bg-white/20 border-white/30 text-white'
+                    : 'bg-white/15 border-white/25 text-white/90'
+              }`}>
+                {user.isPremium ? (user.subscriptionLevel === 'ULTRA' ? '⚡ ULTRA' : '★ BASIC') : '🌱 FREE'}
+              </span>
+              <span className="text-[10px] font-bold text-white/70">👤 Profile</span>
+            </div>
+          </div>
+
+          <div className="px-4 pt-4">
           <div
             className={`rounded-3xl p-8 text-center mb-6 shadow-sm relative overflow-hidden transition-all duration-500 ${
               user.subscriptionLevel === "ULTRA" && user.isPremium
@@ -7838,40 +7925,63 @@ export const StudentDashboard: React.FC<Props> = ({
             </div>
           </div>
 
-          <div className="space-y-3 mt-4">
-            {/* LIMITS BUTTON */}
+          <div className="space-y-4 mt-5">
+
+            {/* SECTION LABEL */}
+            <div className="flex items-center gap-2 px-1">
+              <span className="w-1 h-4 rounded-full bg-gradient-to-b from-emerald-400 to-teal-500 shrink-0" />
+              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Account & Settings</p>
+            </div>
+
+            {/* LIMITS BUTTON — prominent card */}
             <button
               onClick={() => { setLimitsViewPlan(_isUltraUser ? 'ULTRA' : _isBasicUser ? 'BASIC' : 'FREE'); setShowFeatureLimitsModal(true); }}
-              className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex items-center gap-3 w-full active:scale-[0.98] transition-all"
+              className={`w-full rounded-2xl p-4 flex items-center gap-3 active:scale-[0.98] transition-all relative overflow-hidden border ${
+                _isUltraUser
+                  ? 'bg-gradient-to-r from-purple-50 to-violet-50 border-purple-200 shadow-sm shadow-purple-100'
+                  : _isBasicUser
+                    ? 'bg-gradient-to-r from-sky-50 to-cyan-50 border-sky-200 shadow-sm shadow-sky-100'
+                    : 'bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-200 shadow-sm shadow-emerald-100'
+              }`}
             >
-              <div className="bg-emerald-50 p-2.5 rounded-xl text-emerald-600 shrink-0">
-                <BarChart2 size={18} />
+              <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${
+                _isUltraUser ? 'bg-purple-100 text-purple-600' : _isBasicUser ? 'bg-sky-100 text-sky-600' : 'bg-emerald-100 text-emerald-600'
+              }`}>
+                <BarChart2 size={20} />
               </div>
               <div className="flex-1 text-left min-w-0">
-                <p className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Daily Limits & Usage</p>
+                <p className={`text-[10px] font-black uppercase tracking-widest mb-0.5 ${
+                  _isUltraUser ? 'text-purple-500' : _isBasicUser ? 'text-sky-500' : 'text-emerald-600'
+                }`}>Daily Limits & Usage</p>
                 <p className="text-sm font-black text-slate-800">View All Limits</p>
+                <p className="text-[10px] text-slate-500 mt-0.5">MCQ · Notes · AI · Credits</p>
               </div>
-              <ChevronRight size={16} className="text-slate-400 shrink-0" />
+              <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
+                _isUltraUser ? 'bg-purple-100' : _isBasicUser ? 'bg-sky-100' : 'bg-emerald-100'
+              }`}>
+                <ChevronRight size={14} className={_isUltraUser ? 'text-purple-500' : _isBasicUser ? 'text-sky-500' : 'text-emerald-500'} />
+              </div>
             </button>
 
             {/* ACTION LIST */}
-            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden divide-y divide-slate-100">
+            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
               {/* ADMIN PANEL — visible only to admin / sub-admin */}
               {(user.role === "ADMIN" || user.role === "SUB_ADMIN" || isImpersonating) && (
                 <button
                   onClick={handleSwitchToAdmin}
-                  className="w-full p-4 flex items-center gap-3 hover:bg-yellow-50 transition-colors active:bg-yellow-100"
+                  className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-amber-50 transition-colors active:bg-amber-100 border-b border-slate-100"
                 >
-                  <div className="bg-yellow-100 w-10 h-10 rounded-xl flex items-center justify-center text-yellow-700 shrink-0">
+                  <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 shrink-0">
                     <Layout size={18} />
                   </div>
                   <div className="flex-1 text-left min-w-0">
-                    <p className="text-sm font-bold text-yellow-800">Admin Panel</p>
-                    <p className="text-[11px] text-yellow-600">Manage content, users & settings</p>
+                    <p className="text-sm font-bold text-slate-800">Admin Panel</p>
+                    <p className="text-[11px] text-slate-400">Manage content, users & settings</p>
                   </div>
-                  <ChevronRight size={16} className="text-yellow-400 shrink-0" />
+                  <ChevronRight size={14} className="text-slate-300 shrink-0" />
                 </button>
               )}
+
               {/* HISTORY */}
               {(() => {
                 const access = getFeatureAccess("HISTORY_PAGE");
@@ -7880,67 +7990,59 @@ export const StudentDashboard: React.FC<Props> = ({
                 return (
                   <button
                     onClick={() => {
-                      if (isLocked) {
-                        showAlert("🔒 Locked by Admin.", "ERROR");
-                        return;
-                      }
+                      if (isLocked) { showAlert("🔒 Locked by Admin.", "ERROR"); return; }
                       onTabChange("HISTORY");
                     }}
-                    className="w-full p-4 flex items-center gap-3 hover:bg-slate-50 transition-colors active:bg-slate-100"
+                    className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-slate-50 transition-colors active:bg-slate-100 border-b border-slate-100"
                   >
-                    <div className="bg-rose-100 w-10 h-10 rounded-xl flex items-center justify-center text-rose-600 shrink-0">
+                    <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center text-rose-500 shrink-0">
                       <History size={18} />
                     </div>
                     <div className="flex-1 text-left min-w-0">
                       <p className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                        History
-                        {isLocked && <Lock size={12} className="text-red-500" />}
+                        Activity History
+                        {isLocked && <Lock size={11} className="text-red-400" />}
                       </p>
-                      <p className="text-[11px] text-slate-500">Tests, activity & past sessions</p>
+                      <p className="text-[11px] text-slate-400">Tests, sessions & past activity</p>
                     </div>
-                    <ChevronRight size={16} className="text-slate-400 shrink-0" />
+                    <ChevronRight size={14} className="text-slate-300 shrink-0" />
                   </button>
                 );
               })()}
 
-              {/* Important Notes shortcut moved to bottom-nav (⭐ Important tab). */}
-
-
               {/* TEACHER STORE */}
               <button
                 onClick={() => onTabChange("TEACHER_STORE" as any)}
-                className="w-full p-4 flex items-center gap-3 hover:bg-slate-50 transition-colors active:bg-slate-100"
+                className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-slate-50 transition-colors active:bg-slate-100 border-b border-slate-100"
               >
-                <div className="bg-purple-100 w-10 h-10 rounded-xl flex items-center justify-center text-purple-600 shrink-0">
+                <div className="w-10 h-10 bg-violet-100 rounded-xl flex items-center justify-center text-violet-600 shrink-0">
                   <Crown size={18} />
                 </div>
                 <div className="flex-1 text-left min-w-0">
                   <p className="text-sm font-bold text-slate-800">
                     {user.role === "TEACHER" ? "Teacher Store" : "Upgrade to Teacher"}
                   </p>
-                  <p className="text-[11px] text-slate-500">
+                  <p className="text-[11px] text-slate-400">
                     {user.role === "TEACHER" ? "Manage your store & content" : "Unlock premium creator tools"}
                   </p>
                 </div>
-                <ChevronRight size={16} className="text-slate-400 shrink-0" />
+                <ChevronRight size={14} className="text-slate-300 shrink-0" />
               </button>
 
               {/* LOGOUT */}
-              {(settings?.isLogoutEnabled !== false ||
-                user.role === "ADMIN" ||
-                isImpersonating) && (
+              {(settings?.isLogoutEnabled !== false || user.role === "ADMIN" || isImpersonating) && (
                 <button
                   onClick={onLogout}
-                  className="w-full p-4 flex items-center gap-3 hover:bg-red-50 transition-colors active:bg-red-100"
+                  className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-red-50 transition-colors active:bg-red-100"
                 >
-                  <div className="bg-red-100 w-10 h-10 rounded-xl flex items-center justify-center text-red-600 shrink-0">
+                  <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center text-red-500 shrink-0">
                     <LogOut size={18} />
                   </div>
                   <div className="flex-1 text-left min-w-0">
-                    <p className="text-sm font-bold text-red-600">Logout Safely</p>
+                    <p className="text-sm font-bold text-red-600">Logout</p>
                     <p className="text-[11px] text-red-400">Sign out of your account</p>
                   </div>
-                  <ChevronRight size={16} className="text-red-300 shrink-0" />
+                  <ChevronRight size={14} className="text-red-300 shrink-0" />
                 </button>
               )}
             </div>
@@ -8115,6 +8217,7 @@ export const StudentDashboard: React.FC<Props> = ({
 
           </div>
 
+          </div>{/* end px-4 wrapper */}
         </div>
       );
 
@@ -8290,7 +8393,7 @@ export const StudentDashboard: React.FC<Props> = ({
   }
 
   return (
-    <div className="min-h-[100dvh] bg-slate-50 pb-0">
+    <div className={`min-h-[100dvh] pb-0 ${activeTab === 'STORE' ? 'bg-black' : activeTab === 'PROFILE' ? 'bg-slate-900' : 'bg-slate-50'}`}>
       <NotificationPrompt />
       {/* ADMIN SWITCH BUTTON — only visible inside content (Notes/MCQ player or HW notes) */}
       {(user.role === "ADMIN" ||
@@ -12464,7 +12567,7 @@ export const StudentDashboard: React.FC<Props> = ({
 
       {/* FIXED BOTTOM NAVIGATION */}
       <nav
-        className={`fixed bottom-0 left-0 right-0 w-full mx-auto bg-white/95 backdrop-blur-md border-t border-slate-200/70 shadow-[0_-8px_24px_-12px_rgba(15,23,42,0.18)] z-[300] pb-safe ${activeExternalApp || isDocFullscreen || (contentViewStep === "PLAYER" && selectedChapter) || isLandscapeUiHidden || isInternalImmersive || !!hwActiveHwId ? "hidden" : ""}`}
+        className={`fixed bottom-0 left-0 right-0 w-full mx-auto bg-white/95 backdrop-blur-md border-t border-slate-200/70 shadow-[0_-8px_24px_-12px_rgba(15,23,42,0.18)] z-[300] pb-safe ${activeExternalApp || isDocFullscreen || (contentViewStep === "PLAYER" && selectedChapter && activeTab !== 'STORE' && activeTab !== 'PROFILE') || isLandscapeUiHidden || isInternalImmersive || !!hwActiveHwId ? "hidden" : ""}`}
         aria-label="Primary"
       >
         <div className="relative flex justify-around items-stretch h-[64px] max-w-3xl mx-auto px-1">
@@ -13222,7 +13325,7 @@ export const StudentDashboard: React.FC<Props> = ({
                     <div key={msg.id || idx} className={`p-4 rounded-2xl border transition-all ${isExpired ? 'bg-slate-50 border-slate-200 opacity-60' : msg.read ? 'bg-white border-slate-200' : 'bg-indigo-50 border-indigo-200 shadow-sm'}`}>
                       <div className="flex justify-between items-start mb-2">
                         <div className="flex items-center gap-2">
-                          {msg.type === 'GIFT' ? <Gift size={15} className="text-pink-500" /> : msg.type === 'REWARD' ? <Crown size={15} className="text-amber-500" /> : msg.type === 'REDEEM_CODE' ? <Gift size={15} className="text-indigo-500" /> : <MessageSquare size={15} className="text-blue-500" />}
+                          {msg.type === 'GIFT' ? <Gift size={15} className="text-pink-500" /> : msg.type === 'REWARD' ? <Crown size={15} className="text-amber-500" /> : msg.type === 'STORE_DISCOUNT' ? <span className="text-rose-500 font-black text-xs">%</span> : (msg.type as string) === 'REDEEM_CODE' ? <Gift size={15} className="text-indigo-500" /> : <MessageSquare size={15} className="text-blue-500" />}
                           <span className="text-[10px] font-bold text-slate-400">{new Date(msg.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</span>
                           {isExpired && <span className="text-[9px] font-black text-red-500 bg-red-50 px-1.5 py-0.5 rounded-full">EXPIRED</span>}
                           {!isExpired && daysLeft !== null && daysLeft <= 7 && !msg.isClaimed && (
@@ -13234,13 +13337,13 @@ export const StudentDashboard: React.FC<Props> = ({
                         {!msg.read && <span className="w-2 h-2 bg-indigo-500 rounded-full animate-pulse shrink-0"></span>}
                       </div>
                       <p className="text-sm font-medium text-slate-800 leading-relaxed mb-3 whitespace-pre-line">{msg.text}</p>
-                      {msg.type === 'REDEEM_CODE' && msg.redeemCode && !isExpired && (
+                      {(msg.type as string) === 'REDEEM_CODE' && (msg as any).redeemCode && !isExpired && (
                         <div className="space-y-2">
                           <div className="flex items-center gap-2 bg-slate-100 rounded-xl px-3 py-2">
-                            <span className="flex-1 font-mono font-black text-sm text-slate-800 tracking-wider">{msg.redeemCode}</span>
+                            <span className="flex-1 font-mono font-black text-sm text-slate-800 tracking-wider">{(msg as any).redeemCode}</span>
                             <button
                               onClick={() => {
-                                try { navigator.clipboard.writeText(msg.redeemCode); } catch {}
+                                try { navigator.clipboard.writeText((msg as any).redeemCode); } catch {}
                               }}
                               className="text-[10px] font-black text-indigo-600 bg-indigo-50 px-2 py-1 rounded-lg active:scale-95 transition-all"
                             >
@@ -13249,7 +13352,7 @@ export const StudentDashboard: React.FC<Props> = ({
                           </div>
                           <button
                             onClick={() => {
-                              try { navigator.clipboard.writeText(msg.redeemCode); } catch {}
+                              try { navigator.clipboard.writeText((msg as any).redeemCode); } catch {}
                               setShowInbox(false);
                               setActiveTab('REDEEM');
                             }}
@@ -13269,6 +13372,25 @@ export const StudentDashboard: React.FC<Props> = ({
                             </button>
                           )}
                         </div>
+                      )}
+                      {msg.type === 'STORE_DISCOUNT' && msg.discountPercent && !msg.isClaimed && !isExpired && (
+                        <button
+                          onClick={() => {
+                            const latestUser = (window as any).__dashUserRef?.current ?? user;
+                            const newDiscount = Math.min(100, (latestUser.storeDiscount || 0) + (msg.discountPercent || 0));
+                            const updatedInbox = (latestUser.inbox || []).map((m: any) =>
+                              m.id === msg.id ? { ...m, isClaimed: true, read: true } : m
+                            );
+                            handleUserUpdate({ ...latestUser, storeDiscount: newDiscount, inbox: updatedInbox });
+                            setShowInbox(false);
+                            onTabChange('STORE');
+                            showAlert(`🎟️ ${msg.discountPercent}% discount Store mein apply ho gaya! Abhi upgrade karo.`, 'SUCCESS', 'Discount Active!');
+                          }}
+                          className="w-full py-2.5 bg-gradient-to-r from-rose-500 to-pink-500 text-white rounded-xl font-bold text-sm active:scale-95 transition-all flex items-center justify-center gap-2 shadow-sm"
+                        >
+                          <span>🎟️</span> Discount Claim Karo — Store Mein Apply Hoga
+                          <span className="bg-white/20 px-2 py-0.5 rounded-full text-xs">{msg.discountPercent}% OFF</span>
+                        </button>
                       )}
                       {msg.type === 'GIFT' && msg.gift && !msg.isClaimed && !isExpired && (
                         <button onClick={() => claimRewardMessage(msg.id, null, msg.gift)} className="w-full py-2.5 bg-gradient-to-r from-pink-500 to-rose-500 text-white rounded-xl font-bold text-sm active:scale-95 transition-all flex items-center justify-center gap-2 shadow-sm">

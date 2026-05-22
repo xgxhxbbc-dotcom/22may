@@ -78,16 +78,18 @@ export interface InboxMessage {
   text: string;
   date: string;
   read: boolean;
-  type?: 'TEXT' | 'REWARD' | 'GIFT'; // Added GIFT
+  type?: 'TEXT' | 'REWARD' | 'GIFT' | 'STORE_DISCOUNT';
+  redeemCode?: string;
+  discountPercent?: number;
   reward?: {
-      tier: 'WEEKLY' | 'MONTHLY' | 'YEARLY' | 'LIFETIME'; // Added YEARLY
+      tier: 'WEEKLY' | 'MONTHLY' | 'YEARLY' | 'LIFETIME';
       level: 'BASIC' | 'ULTRA';
       durationHours: number;
   };
   gift?: {
       type: 'CREDITS' | 'SUBSCRIPTION' | 'ANIMATION';
-      value: number | string; // Coins amount or Sub Tier or Animation ID
-      durationHours?: number; // For limited time features
+      value: number | string;
+      durationHours?: number;
   };
   expiresAt?: string;
   isClaimed?: boolean;
