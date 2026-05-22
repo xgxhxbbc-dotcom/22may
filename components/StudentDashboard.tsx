@@ -498,8 +498,9 @@ export const StudentDashboard: React.FC<Props> = ({
   }, [user?.id]);
 
   // ── HTML Write-Mode Daily Quota (ALL tiers) ──────────────────────────────
-  const _isUltraUser   = user.isPremium && user.subscriptionLevel === 'ULTRA';
-  const _isBasicUser   = user.isPremium && user.subscriptionLevel === 'BASIC';
+  const _subValid      = SubscriptionEngine.isPremium(user); // true only if not expired
+  const _isUltraUser   = _subValid && user.subscriptionLevel === 'ULTRA';
+  const _isBasicUser   = _subValid && user.subscriptionLevel === 'BASIC';
   const _todayKey      = new Date().toISOString().split('T')[0];
 
   // Free quota (0 free views — credit-only, but track key for limit enforcement)
@@ -714,11 +715,11 @@ export const StudentDashboard: React.FC<Props> = ({
     }
   }, [user.role, user.teacherExpiryDate]);
 
-  // --- EXPIRY CHECK & AUTO DOWNGRADE ---
-  useEffect(() => {
-    if (user.isPremium && !SubscriptionEngine.isPremium(user)) {
+  // --- EXPIRY CHECK & AUTO DOWNGRADE (on load + real-time every 30s) ---
+  const _doExpiryDowngrade = (currentUser: User) => {
+    if (currentUser.isPremium && !SubscriptionEngine.isPremium(currentUser)) {
       const updatedUser: User = {
-        ...user,
+        ...currentUser,
         isPremium: false,
         subscriptionTier: "FREE",
         subscriptionLevel: undefined,
@@ -726,12 +727,27 @@ export const StudentDashboard: React.FC<Props> = ({
       };
       handleUserUpdate(updatedUser);
       showAlert(
-        "Your subscription has expired. You are now on the Free Plan.",
+        "Aapki subscription khatam ho gayi. Ab aap Free Plan pe hain.",
         "ERROR",
         "Plan Expired",
       );
     }
+  };
+
+  useEffect(() => {
+    _doExpiryDowngrade(user);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user.isPremium, user.subscriptionEndDate]);
+
+  // Real-time timer: check every 30 seconds while app is open
+  useEffect(() => {
+    if (!user.isPremium || user.subscriptionTier === 'LIFETIME') return;
+    const interval = setInterval(() => {
+      _doExpiryDowngrade(user);
+    }, 30_000);
+    return () => clearInterval(interval);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.isPremium, user.subscriptionEndDate, user.subscriptionTier]);
 
   // --- STORE VISIT → MAILBOX DISCOUNT DELIVERY (login-streak based) ---
   // Discount tier depends on user's LOGIN STREAK (number of consecutive login days):
@@ -1338,6 +1354,7 @@ export const StudentDashboard: React.FC<Props> = ({
   };
   const [showDotsMenu, setShowDotsMenu] = useState(false);
   const [showFeatureLimitsModal, setShowFeatureLimitsModal] = useState(false);
+  const [limitsViewPlan, setLimitsViewPlan] = useState<'FREE' | 'BASIC' | 'ULTRA'>('FREE');
   const [showRulesPage, setShowRulesPage] = useState(false);
   const [showLoginHistory, setShowLoginHistory] = useState(false);
   const [showContentNewSheet, setShowContentNewSheet] = useState(false);
@@ -7824,7 +7841,7 @@ export const StudentDashboard: React.FC<Props> = ({
           <div className="space-y-3 mt-4">
             {/* LIMITS BUTTON */}
             <button
-              onClick={() => setShowFeatureLimitsModal(true)}
+              onClick={() => { setLimitsViewPlan(_isUltraUser ? 'ULTRA' : _isBasicUser ? 'BASIC' : 'FREE'); setShowFeatureLimitsModal(true); }}
               className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 flex items-center gap-3 w-full active:scale-[0.98] transition-all"
             >
               <div className="bg-emerald-50 p-2.5 rounded-xl text-emerald-600 shrink-0">
@@ -8311,7 +8328,7 @@ export const StudentDashboard: React.FC<Props> = ({
                 ? "bg-gradient-to-r from-blue-500 via-sky-500 to-blue-600 text-white border-b border-blue-600/40"
                 : "bg-[var(--primary)] text-white"
             : "bg-gradient-to-r from-sky-400 via-cyan-400 to-sky-500 text-white border-b border-sky-500/30"
-        } ${isFullscreenMode ? "hidden" : ""} transition-all duration-300 ease-in-out ${(isTopBarHidden || isLandscapeUiHidden) ? "-translate-y-full !h-0 overflow-hidden opacity-0 pointer-events-none" : "translate-y-0 opacity-100"}`}
+        } ${isFullscreenMode ? "hidden" : ""} transition-all duration-300 ease-in-out ${(isTopBarHidden || isLandscapeUiHidden || activeTab === 'PROFILE' || activeTab === 'STORE' || activeTab === 'CUSTOM_PAGE') ? "-translate-y-full !h-0 overflow-hidden opacity-0 pointer-events-none" : "translate-y-0 opacity-100"}`}
       >
         {/* Animation effects — wrapped in overflow-hidden so shimmer/sparkle stays clipped to top bar */}
         <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
@@ -8517,7 +8534,7 @@ export const StudentDashboard: React.FC<Props> = ({
                       {/* Feature Limits & Daily Usage */}
                       <div className="px-4 pt-1 pb-1">
                         <button
-                          onClick={() => { setShowFeatureLimitsModal(true); setShowDotsMenu(false); }}
+                          onClick={() => { setLimitsViewPlan(_isUltraUser ? 'ULTRA' : _isBasicUser ? 'BASIC' : 'FREE'); setShowFeatureLimitsModal(true); setShowDotsMenu(false); }}
                           className="w-full flex items-center gap-2 p-2.5 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 text-emerald-700 hover:from-emerald-100 hover:to-teal-100 font-bold text-xs transition-all"
                         >
                           <span className="text-base">📊</span>
@@ -16719,245 +16736,314 @@ RULES:
 
       {/* ═══════════ FEATURE LIMITS & DAILY USAGE MODAL ═══════════ */}
       {showFeatureLimitsModal && (() => {
-        const isUltra = user.isPremium && user.subscriptionLevel === 'ULTRA';
-        const isBasic = user.isPremium && user.subscriptionLevel === 'BASIC';
-        const isFree = !user.isPremium;
-        const tierLabel = isUltra ? 'Ultra ⚡' : isBasic ? 'Basic 🔵' : 'Free 🆓';
-        const tierColor = isUltra ? 'from-violet-500 to-purple-600' : isBasic ? 'from-sky-500 to-blue-600' : 'from-slate-400 to-slate-500';
+        const userIsUltra = user.isPremium && user.subscriptionLevel === 'ULTRA';
+        const userIsBasic = user.isPremium && user.subscriptionLevel === 'BASIC';
+        const userIsFree = !user.isPremium;
+
+        // Determine which plan we are VIEWING (tab selected)
+        const vp = limitsViewPlan; // 'FREE' | 'BASIC' | 'ULTRA'
+        const viewingUltra = vp === 'ULTRA';
+        const viewingBasic = vp === 'BASIC';
+        const viewingFree  = vp === 'FREE';
+
         const todayStr = new Date().toISOString().split('T')[0];
 
-        const mcqToday = parseInt(localStorage.getItem(`nst_mcq_daily_total_${todayStr}_${user.id}`) || '0', 10);
-        const htmlSessions = parseInt(localStorage.getItem(`nst_basic_html_${user.id}_${todayStr}`) || '0', 10);
-        const storeVisits = parseInt(localStorage.getItem(`nst_store_visits_${user.id}_${todayStr}`) || '0', 10);
-        const dlHtmlToday = parseInt(localStorage.getItem(`nst_dl_html_${user.id}_${todayStr}`) || '0', 10);
+        // ── Actual usage (user's real data today) ──
+        const mcqToday       = parseInt(localStorage.getItem(`nst_mcq_daily_total_${todayStr}_${user.id}`) || '0', 10);
+        const htmlSessions   = parseInt(localStorage.getItem(`nst_basic_html_${user.id}_${todayStr}`) || '0', 10);
+        const ultraHtmlSess  = parseInt(localStorage.getItem(`nst_ultra_html_${user.id}_${todayStr}`) || '0', 10);
+        const dlHtmlToday    = parseInt(localStorage.getItem(`nst_dl_html_${user.id}_${todayStr}`) || '0', 10);
+        const paidWriteCount = parseInt(localStorage.getItem(`nst_paid_write_${user.id}_${todayStr}`) || '0', 10);
+        const storeVisits    = parseInt(localStorage.getItem(`nst_store_visits_${user.id}_${todayStr}`) || '0', 10);
 
-        const basicHtmlLimit = settings?.basicHtmlDailyLimit ?? 5;
-        const basicHtmlLeft = Math.max(0, basicHtmlLimit - htmlSessions);
+        // ── Plan-wise limits from settings ──
+        const freeMcq   = settings?.mcqLimitFree  ?? 50;
+        const basicMcq  = settings?.mcqLimitBasic ?? 70;
+        const ultraMcq  = settings?.mcqLimitUltra ?? 100;
 
-        const ultraHtmlSessions = parseInt(localStorage.getItem(`nst_ultra_html_${user.id}_${todayStr}`) || '0', 10);
-        const ultraHtmlLimit = settings?.ultraHtmlDailyLimit ?? 10;
-        const ultraHtmlLeft = Math.max(0, ultraHtmlLimit - ultraHtmlSessions);
-        const htmlCost = settings?.htmlUnlockCost ?? 5;
+        const freeDl    = settings?.htmlDownloadLimitFree  ?? 2;
+        const basicDl   = settings?.htmlDownloadLimitBasic ?? 5;
+        const ultraDl   = settings?.htmlDownloadLimitUltra ?? 10;
 
-        const mcqLimit = isUltra ? 100 : isBasic ? 70 : 50;
-        const mcqLeft = Math.max(0, mcqLimit - mcqToday);
+        const basicWriteFree = settings?.basicHtmlDailyLimit ?? 5;
+        const ultraWriteFree = settings?.ultraHtmlDailyLimit ?? 10;
 
-        const dlLimit = isUltra ? (settings?.htmlDownloadLimitUltra ?? 10) : isBasic ? (settings?.htmlDownloadLimitBasic ?? 5) : (settings?.htmlDownloadLimitFree ?? 2);
-        const dlLeft  = Math.max(0, dlLimit - dlHtmlToday);
+        const basicVid  = settings?.videoFreeLimitBasic ?? 5;
+        const ultraVid  = settings?.videoFreeLimitUltra ?? 10;
 
-        const videoFreeLimit = isUltra ? (settings?.videoFreeLimitUltra ?? 10) : isBasic ? (settings?.videoFreeLimitBasic ?? 5) : 0;
-        const pdfFreeLimit = isUltra ? (settings?.pdfFreeLimitUltra ?? 10) : isBasic ? (settings?.pdfFreeLimitBasic ?? 5) : 0;
+        const basicPdf  = settings?.pdfFreeLimitBasic ?? 5;
+        const ultraPdf  = settings?.pdfFreeLimitUltra ?? 10;
 
-        type LimitRow = { icon: string; label: string; limitNum: number | null; usedNum: number; isUnlimited: boolean; isCoins: boolean; limitDisplay: string; used: string; statusColor: string; barColor: string };
-        const rows: LimitRow[] = [
-          {
-            icon: '📝',
-            label: 'MCQ Practice',
-            limitNum: mcqLimit,
-            usedNum: mcqToday,
-            isUnlimited: false,
-            isCoins: false,
-            limitDisplay: `${mcqLimit}/day`,
-            used: `${mcqToday} done · ${mcqLeft} left`,
-            statusColor: mcqLeft === 0 ? 'text-rose-600' : mcqLeft <= 10 ? 'text-amber-600' : 'text-emerald-600',
-            barColor: mcqLeft === 0 ? '#ef4444' : mcqLeft <= 10 ? '#f97316' : '#10b981',
-          },
-          {
-            icon: '📥',
-            label: 'HTML Downloads',
-            limitNum: dlLimit,
-            usedNum: dlHtmlToday,
-            isUnlimited: false,
-            isCoins: false,
-            limitDisplay: `${dlLimit}/day`,
-            used: `${dlHtmlToday} done · ${dlLeft} left`,
-            statusColor: dlLeft === 0 ? 'text-rose-600' : dlLeft <= 2 ? 'text-amber-600' : 'text-emerald-600',
-            barColor: dlLeft === 0 ? '#ef4444' : dlLeft <= 2 ? '#f97316' : '#10b981',
-          },
-          {
-            icon: '✍️',
-            label: isUltra
-              ? `Write Mode (Ultra) · ${ultraHtmlLeft}/${ultraHtmlLimit} free left`
-              : isBasic
-              ? `Write Mode (Basic) · ${basicHtmlLeft}/${basicHtmlLimit} free left`
-              : 'Write Mode (Free) · 0 free',
-            limitNum: isUltra ? ultraHtmlLimit : isBasic ? basicHtmlLimit : 0,
-            usedNum: isUltra ? ultraHtmlSessions : isBasic ? htmlSessions : 0,
-            isUnlimited: false,
-            isCoins: isFree,
-            limitDisplay: isUltra ? `${ultraHtmlLimit}/day free` : isBasic ? `${basicHtmlLimit}/day free` : '0 free (credit-only)',
-            used: isUltra
-              ? `${ultraHtmlSessions} used · ${ultraHtmlLeft} left`
-              : isBasic
-              ? `${htmlSessions} used · ${basicHtmlLeft} left`
-              : 'Credit se unlock karo',
-            statusColor: isUltra
-              ? (ultraHtmlLeft === 0 ? 'text-rose-600' : 'text-emerald-600')
-              : isBasic
-              ? (basicHtmlLeft === 0 ? 'text-rose-600' : 'text-sky-600')
-              : 'text-amber-600',
-            barColor: isUltra
-              ? (ultraHtmlLeft === 0 ? '#ef4444' : '#10b981')
-              : isBasic
-              ? (basicHtmlLeft === 0 ? '#ef4444' : '#0ea5e9')
-              : '#f59e0b',
-          },
+        const htmlCost  = settings?.htmlUnlockCost ?? 5;
+        const wmMax     = settings?.writeModeMaxLimit ?? 100;
+        const wmEsc     = Math.floor(paidWriteCount / 10) * 5;
+        const wmCost    = Math.min(20, (userIsFree ? htmlCost : 10) + wmEsc);
+
+        // ── Limits for the VIEWED plan ──
+        const vpMcq         = viewingUltra ? ultraMcq  : viewingBasic ? basicMcq  : freeMcq;
+        const vpDl          = viewingUltra ? ultraDl   : viewingBasic ? basicDl   : freeDl;
+        const vpWriteFree   = viewingUltra ? ultraWriteFree : viewingBasic ? basicWriteFree : 0;
+        const vpVidFree     = viewingUltra ? ultraVid  : viewingBasic ? basicVid  : 0;
+        const vpPdfFree     = viewingUltra ? ultraPdf  : viewingBasic ? basicPdf  : 0;
+
+        // ── Is user viewing their own plan? ──
+        const isOwnPlan = (viewingUltra && userIsUltra) || (viewingBasic && userIsBasic) || (viewingFree && userIsFree);
+
+        // ── Usage for own plan (for progress bars) ──
+        const ownMcqUsed      = mcqToday;
+        const ownMcqLeft      = Math.max(0, vpMcq - ownMcqUsed);
+        const ownDlUsed       = dlHtmlToday;
+        const ownDlLeft       = Math.max(0, vpDl - ownDlUsed);
+        const ownWriteUsed    = viewingUltra ? ultraHtmlSess : viewingBasic ? htmlSessions : 0;
+        const ownWriteLeft    = Math.max(0, vpWriteFree - ownWriteUsed);
+
+        // ── Tab color config ──
+        const tabCfg = {
+          FREE:  { label: '🆓 Free',  color: 'from-slate-400 to-slate-500',  activeBg: 'bg-slate-100', activeText: 'text-slate-700', dot: '#94a3b8' },
+          BASIC: { label: '🔵 Basic', color: 'from-sky-500 to-blue-600',     activeBg: 'bg-sky-100',   activeText: 'text-sky-700',   dot: '#0ea5e9' },
+          ULTRA: { label: '⚡ Ultra', color: 'from-violet-500 to-purple-600', activeBg: 'bg-violet-100',activeText: 'text-violet-700',dot: '#8b5cf6' },
+        };
+        const vpCfg = tabCfg[vp];
+
+        type LimitRow = {
+          icon: string; label: string;
+          limitNum: number | null; usedNum: number;
+          isUnlimited: boolean; isCoins: boolean;
+          limitDisplay: string; compDisplay?: string;
+          used: string; statusColor: string; barColor: string;
+          showBar: boolean;
+        };
+
+        const mkRow = (
+          icon: string, label: string,
+          lim: number | null, used: number,
+          unlim: boolean, coins: boolean,
+          limDisp: string, usedStr: string,
+          sColor: string, bColor: string,
+          showBar: boolean,
+          compDisp?: string
+        ): LimitRow => ({ icon, label, limitNum: lim, usedNum: used, isUnlimited: unlim, isCoins: coins, limitDisplay: limDisp, compDisplay: compDisp, used: usedStr, statusColor: sColor, barColor: bColor, showBar });
+
+        // ── Build rows based on viewed plan ──
+        const limitedRows: LimitRow[] = [
+          // MCQ
           (() => {
-            const paidWriteCount = parseInt(localStorage.getItem(`nst_paid_write_${user.id}_${todayStr}`) || '0', 10);
-            const wmBase = isFree ? (htmlCost) : 10;
-            const wmEsc = Math.floor(paidWriteCount / 10) * 5;
-            const wmCost = Math.min(20, wmBase + wmEsc);
-            const wmLeft = Math.max(0, 100 - paidWriteCount);
-            return {
-              icon: '💎',
-              label: `Write Mode (Credits) · ${wmCost} CR/unlock`,
-              limitNum: 100,
-              usedNum: paidWriteCount,
-              isUnlimited: false,
-              isCoins: true,
-              limitDisplay: `100 unlocks/day · ${wmCost} CR now`,
-              used: `${paidWriteCount} unlocks aaj · ${wmLeft} left`,
-              statusColor: wmLeft === 0 ? 'text-rose-600' : paidWriteCount >= 80 ? 'text-amber-600' : 'text-sky-600',
-              barColor: wmLeft === 0 ? '#ef4444' : paidWriteCount >= 80 ? '#f97316' : '#0ea5e9',
-            };
+            if (isOwnPlan) {
+              return mkRow('📝','MCQ Practice', vpMcq, ownMcqUsed, false, false,
+                `${vpMcq}/day`,
+                `${ownMcqUsed} done · ${ownMcqLeft} left`,
+                ownMcqLeft === 0 ? 'text-rose-600' : ownMcqLeft <= 10 ? 'text-amber-600' : 'text-emerald-600',
+                ownMcqLeft === 0 ? '#ef4444' : ownMcqLeft <= 10 ? '#f97316' : '#10b981', true);
+            }
+            return mkRow('📝','MCQ Practice', null, 0, false, false,
+              `${vpMcq}/day`, viewingFree ? 'Yeh plan mein' : 'Is plan pe milega',
+              'text-slate-500', '#94a3b8', false);
           })(),
-          {
-            icon: '📖',
-            label: 'Notes Reading',
-            limitNum: null,
-            usedNum: 0,
-            isUnlimited: true,
-            isCoins: false,
-            limitDisplay: 'Unlimited',
-            used: 'No daily cap',
-            statusColor: 'text-emerald-600',
-            barColor: '#10b981',
-          },
-          {
-            icon: '🎬',
-            label: 'Video Lectures',
-            limitNum: videoFreeLimit > 0 ? videoFreeLimit : null,
-            usedNum: 0,
-            isUnlimited: false,
-            isCoins: isFree,
-            limitDisplay: videoFreeLimit > 0 ? `${videoFreeLimit} free/day` : 'Coins needed',
-            used: videoFreeLimit > 0 ? `${videoFreeLimit} free, uske baad coins` : `${settings?.defaultVideoCost ?? 10} CR each`,
-            statusColor: isUltra || isBasic ? 'text-emerald-600' : 'text-amber-600',
-            barColor: isUltra || isBasic ? '#10b981' : '#f59e0b',
-          },
-          {
-            icon: '🔊',
-            label: 'Audio / TTS',
-            limitNum: null,
-            usedNum: 0,
-            isUnlimited: true,
-            isCoins: false,
-            limitDisplay: 'Unlimited',
-            used: 'No daily cap',
-            statusColor: 'text-emerald-600',
-            barColor: '#10b981',
-          },
-          {
-            icon: '📄',
-            label: 'PDF / Notes Access',
-            limitNum: pdfFreeLimit > 0 ? pdfFreeLimit : null,
-            usedNum: 0,
-            isUnlimited: false,
-            isCoins: isFree,
-            limitDisplay: pdfFreeLimit > 0 ? `${pdfFreeLimit} free/day` : 'Coins needed',
-            used: pdfFreeLimit > 0 ? `${pdfFreeLimit} free, baaki coins se` : `${settings?.defaultPdfCost ?? 5} CR each`,
-            statusColor: isUltra || isBasic ? 'text-emerald-600' : 'text-amber-600',
-            barColor: isUltra || isBasic ? '#10b981' : '#f59e0b',
-          },
-          {
-            icon: '🏬',
-            label: 'Store Visits Today',
-            limitNum: null,
-            usedNum: storeVisits,
-            isUnlimited: true,
-            isCoins: false,
-            limitDisplay: 'Unlimited',
-            used: `${storeVisits} visits`,
-            statusColor: 'text-slate-600',
-            barColor: '#94a3b8',
-          },
-          {
-            icon: '💰',
-            label: 'Credits Balance',
-            limitNum: null,
-            usedNum: 0,
-            isUnlimited: true,
-            isCoins: false,
-            limitDisplay: 'Earn daily',
-            used: `${(user.credits || 0).toLocaleString('en-IN')} CR available`,
-            statusColor: (user.credits||0) >= 20 ? 'text-emerald-600' : (user.credits||0) > 0 ? 'text-amber-600' : 'text-rose-600',
-            barColor: (user.credits||0) >= 20 ? '#10b981' : (user.credits||0) > 0 ? '#f59e0b' : '#ef4444',
-          },
+          // HTML Downloads
+          (() => {
+            if (isOwnPlan) {
+              return mkRow('📥','HTML Downloads', vpDl, ownDlUsed, false, false,
+                `${vpDl}/day`,
+                `${ownDlUsed} done · ${ownDlLeft} left`,
+                ownDlLeft === 0 ? 'text-rose-600' : ownDlLeft <= 2 ? 'text-amber-600' : 'text-emerald-600',
+                ownDlLeft === 0 ? '#ef4444' : ownDlLeft <= 2 ? '#f97316' : '#10b981', true);
+            }
+            return mkRow('📥','HTML Downloads', null, 0, false, false,
+              `${vpDl}/day`, 'Is plan pe milega',
+              'text-slate-500', '#94a3b8', false);
+          })(),
+          // Write Mode
+          (() => {
+            const wLabel = viewingUltra ? `Ultra · ${ultraWriteFree}/day free`
+                         : viewingBasic ? `Basic · ${basicWriteFree}/day free`
+                         : 'Write Mode · 0 free (credits only)';
+            if (isOwnPlan && vpWriteFree > 0) {
+              return mkRow('✍️', wLabel, vpWriteFree, ownWriteUsed, false, false,
+                `${vpWriteFree}/day free`,
+                `${ownWriteUsed} used · ${ownWriteLeft} left`,
+                ownWriteLeft === 0 ? 'text-rose-600' : 'text-emerald-600',
+                ownWriteLeft === 0 ? '#ef4444' : '#10b981', true);
+            }
+            if (isOwnPlan && viewingFree) {
+              return mkRow('✍️', 'Write Mode · 0 free', null, 0, false, true,
+                '0 free', 'Credit se unlock karo', 'text-amber-600', '#f59e0b', false);
+            }
+            return mkRow('✍️', wLabel, null, 0, false, viewingFree,
+              viewingFree ? '0 free' : `${vpWriteFree}/day free`,
+              viewingFree ? 'Sirf credits se' : 'Is plan pe milega',
+              viewingFree ? 'text-amber-600' : 'text-slate-500',
+              viewingFree ? '#f59e0b' : '#94a3b8', false);
+          })(),
         ];
+
+        const unlimitedRows: LimitRow[] = [
+          mkRow('📖','Notes Reading', null, 0, true, false, 'Unlimited', 'No daily cap', 'text-emerald-600', '#10b981', false),
+          mkRow('🔊','Audio / TTS', null, 0, true, false, 'Unlimited', 'No daily cap', 'text-emerald-600', '#10b981', false),
+          ...(isOwnPlan ? [
+            mkRow('🏬','Store Visits', null, storeVisits, true, false, 'Unlimited', `${storeVisits} visits aaj`, 'text-slate-600', '#94a3b8', false),
+            mkRow('💰','Credits Balance', null, 0, true, false, 'Earn daily', `${(user.credits || 0).toLocaleString('en-IN')} CR available`, (user.credits||0) >= 20 ? 'text-emerald-600' : (user.credits||0) > 0 ? 'text-amber-600' : 'text-rose-600', (user.credits||0) >= 20 ? '#10b981' : (user.credits||0) > 0 ? '#f59e0b' : '#ef4444', false),
+          ] : []),
+        ];
+
+        const creditsRows: LimitRow[] = [
+          mkRow('💎',`Write Mode (Credits) · ${wmCost} CR/unlock`, wmMax, isOwnPlan ? paidWriteCount : 0, false, true,
+            `${wmMax}/day · ${wmCost} CR now`,
+            isOwnPlan ? `${paidWriteCount} unlocks aaj · ${Math.max(0,wmMax-paidWriteCount)} left` : `Max ${wmMax}/day, ${wmCost} CR each`,
+            'text-sky-600', '#0ea5e9', false),
+          mkRow('🎬','Video Lectures', null, 0, false, true,
+            vpVidFree > 0 ? `${vpVidFree} free/day` : 'Coins needed',
+            vpVidFree > 0 ? `${vpVidFree} free, phir ${settings?.defaultVideoCost ?? 10} CR` : `${settings?.defaultVideoCost ?? 10} CR each`,
+            vpVidFree > 0 ? 'text-emerald-600' : 'text-sky-600', vpVidFree > 0 ? '#10b981' : '#0ea5e9', false),
+          mkRow('📄','PDF / Notes Access', null, 0, false, true,
+            vpPdfFree > 0 ? `${vpPdfFree} free/day` : 'Coins needed',
+            vpPdfFree > 0 ? `${vpPdfFree} free, phir ${settings?.defaultPdfCost ?? 5} CR` : `${settings?.defaultPdfCost ?? 5} CR each`,
+            vpPdfFree > 0 ? 'text-emerald-600' : 'text-sky-600', vpPdfFree > 0 ? '#10b981' : '#0ea5e9', false),
+        ];
+
+        const renderRow = (row: LimitRow, i: number) => {
+          const pct = row.showBar && row.limitNum ? Math.min(100, Math.round((row.usedNum / row.limitNum) * 100)) : 0;
+          const tagColor = row.isUnlimited ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                         : row.isCoins     ? 'bg-sky-50 text-sky-700 border-sky-200'
+                         :                   'bg-amber-50 text-amber-700 border-amber-200';
+          return (
+            <div key={i} className="px-5 py-3 border-b border-slate-100">
+              <div className="flex items-center gap-3">
+                <span className="text-xl shrink-0">{row.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[12px] font-black text-slate-700 leading-tight">{row.label}</p>
+                  <p className={`text-[10px] font-bold mt-0.5 ${row.statusColor}`}>{row.used}</p>
+                </div>
+                <span className={`shrink-0 text-[9px] font-black px-2 py-0.5 rounded-full border whitespace-nowrap ${tagColor}`}>{row.limitDisplay}</span>
+              </div>
+              {row.showBar && row.limitNum && (
+                <div className="mt-2 ml-9">
+                  <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
+                    <div className="h-1.5 rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: row.barColor }} />
+                  </div>
+                  <p className="text-[9px] text-slate-400 mt-0.5">{row.usedNum} / {row.limitNum} used</p>
+                </div>
+              )}
+            </div>
+          );
+        };
+
+        // ── Is the viewed plan higher than user's own? ──
+        const planOrder = { FREE: 0, BASIC: 1, ULTRA: 2 };
+        const userPlan: 'FREE'|'BASIC'|'ULTRA' = userIsUltra ? 'ULTRA' : userIsBasic ? 'BASIC' : 'FREE';
+        const canUpgradeTo = planOrder[vp] > planOrder[userPlan];
 
         return (
           <div className="fixed inset-0 z-[9999] flex items-end justify-center" style={{ background: 'rgba(0,0,0,0.55)', backdropFilter: 'blur(6px)' }} onClick={() => setShowFeatureLimitsModal(false)}>
             <div className="bg-white rounded-t-3xl w-full max-w-lg max-h-[88vh] flex flex-col animate-in slide-in-from-bottom-10 duration-200" onClick={e => e.stopPropagation()}>
+
               {/* Header */}
               <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-100">
                 <div>
                   <h2 className="text-base font-black text-slate-800">Daily Limits & Usage</h2>
-                  <p className="text-[11px] text-slate-500 mt-0.5">Aaj kitna use kiya? Plan limits yahan dekho</p>
+                  <p className="text-[11px] text-slate-500 mt-0.5">Plan compare karo — apna plan select karo</p>
                 </div>
-                <div className="flex items-center gap-2">
-                  <span className={`text-[10px] font-black px-3 py-1 rounded-full text-white bg-gradient-to-r ${tierColor}`}>{tierLabel}</span>
-                  <button onClick={() => setShowFeatureLimitsModal(false)} className="p-1.5 rounded-full bg-slate-100 text-slate-500">✕</button>
+                <button onClick={() => setShowFeatureLimitsModal(false)} className="p-1.5 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors">✕</button>
+              </div>
+
+              {/* Plan Tabs — FREE | BASIC | ULTRA */}
+              <div className="px-5 pt-3 pb-2">
+                <div className="bg-slate-100 rounded-2xl p-1 flex gap-1">
+                  {(['FREE', 'BASIC', 'ULTRA'] as const).map(plan => {
+                    const cfg = tabCfg[plan];
+                    const isActive = limitsViewPlan === plan;
+                    const isUserPlan = plan === userPlan;
+                    return (
+                      <button
+                        key={plan}
+                        onClick={() => setLimitsViewPlan(plan)}
+                        className={`flex-1 py-2 px-1 rounded-xl text-[11px] font-black transition-all flex flex-col items-center gap-0.5 relative ${isActive ? `bg-white shadow-sm ${cfg.activeText}` : 'text-slate-500 hover:text-slate-700'}`}
+                      >
+                        <span>{cfg.label}</span>
+                        {isUserPlan && (
+                          <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-full ${isActive ? 'bg-gradient-to-r ' + cfg.color + ' text-white' : 'bg-slate-200 text-slate-500'}`}>
+                            My Plan
+                          </span>
+                        )}
+                        {!isUserPlan && isActive && (
+                          <span className="text-[8px] font-bold text-slate-400">Preview</span>
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
-              {/* Ultra banner */}
-              {isUltra && (
-                <div className="mx-4 mt-3 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-violet-500/10 to-purple-500/10 border border-violet-200 flex items-center gap-2">
+
+              {/* Banner */}
+              {viewingUltra && (
+                <div className="mx-4 mb-1 px-4 py-2.5 rounded-2xl bg-gradient-to-r from-violet-500/10 to-purple-500/10 border border-violet-200 flex items-center gap-2">
                   <span className="text-base">⚡</span>
                   <p className="text-[11px] font-black text-violet-700">Ultra mein sab Unlimited + High Quality access</p>
                 </div>
               )}
-              {/* Color legend */}
-              <div className="px-5 py-2 flex items-center gap-3">
+              {viewingBasic && (
+                <div className="mx-4 mb-1 px-4 py-2 rounded-2xl bg-sky-50 border border-sky-200 flex items-center gap-2">
+                  <span className="text-base">🔵</span>
+                  <p className="text-[11px] font-black text-sky-700">Basic plan — extra free views + higher daily limits</p>
+                </div>
+              )}
+              {viewingFree && (
+                <div className="mx-4 mb-1 px-4 py-2 rounded-2xl bg-slate-50 border border-slate-200 flex items-center gap-2">
+                  <span className="text-base">🆓</span>
+                  <p className="text-[11px] font-black text-slate-600">Free plan — basic access, credits se unlock karo</p>
+                </div>
+              )}
+
+              {/* Legend */}
+              <div className="px-5 py-1.5 flex items-center gap-3">
                 <span className="flex items-center gap-1 text-[9px] font-bold text-emerald-600"><span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" />Unlimited</span>
                 <span className="flex items-center gap-1 text-[9px] font-bold text-amber-600"><span className="w-2 h-2 rounded-full bg-amber-400 inline-block" />Limited</span>
-                <span className="flex items-center gap-1 text-[9px] font-bold text-sky-600"><span className="w-2 h-2 rounded-full bg-sky-400 inline-block" />Coins</span>
+                <span className="flex items-center gap-1 text-[9px] font-bold text-sky-600"><span className="w-2 h-2 rounded-full bg-sky-400 inline-block" />Credits</span>
+                {isOwnPlan && <span className="text-[9px] font-bold text-violet-600 ml-auto">📊 Actual aaj ka usage</span>}
+                {!isOwnPlan && <span className="text-[9px] font-bold text-slate-400 ml-auto">👀 Plan preview</span>}
               </div>
+
               {/* Rows */}
-              <div className="overflow-y-auto flex-1 divide-y divide-slate-100 pb-2">
-                {rows.map((row, i) => {
-                  const showBar = !row.isUnlimited && !row.isCoins && row.limitNum !== null && row.limitNum > 0;
-                  const pct = showBar ? Math.min(100, Math.round((row.usedNum / row.limitNum!) * 100)) : 0;
-                  const tagColor = row.isUnlimited ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : row.isCoins ? 'bg-sky-50 text-sky-700 border-sky-200' : 'bg-amber-50 text-amber-700 border-amber-200';
-                  return (
-                    <div key={i} className="px-5 py-3">
-                      <div className="flex items-center gap-3">
-                        <span className="text-xl shrink-0">{row.icon}</span>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-[12px] font-black text-slate-700 leading-tight">{row.label}</p>
-                          <p className={`text-[10px] font-bold mt-0.5 ${row.statusColor}`}>{row.used}</p>
-                        </div>
-                        <span className={`shrink-0 text-[9px] font-black px-2 py-0.5 rounded-full border whitespace-nowrap ${tagColor}`}>{row.limitDisplay}</span>
-                      </div>
-                      {showBar && (
-                        <div className="mt-2 ml-9">
-                          <div className="w-full h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                            <div className="h-1.5 rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: row.barColor }} />
-                          </div>
-                          <p className="text-[9px] text-slate-400 mt-0.5">{row.usedNum} / {row.limitNum} used</p>
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+              <div className="overflow-y-auto flex-1 pb-2">
+                <div className="px-5 pt-2 pb-1">
+                  <p className="text-[9px] font-black text-amber-500 uppercase tracking-widest flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-amber-400 inline-block" /> Daily Limited
+                  </p>
+                </div>
+                {limitedRows.map((row, i) => renderRow(row, i))}
+
+                <div className="px-5 pt-3 pb-1">
+                  <p className="text-[9px] font-black text-emerald-500 uppercase tracking-widest flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500 inline-block" /> Unlimited Access
+                  </p>
+                </div>
+                {unlimitedRows.map((row, i) => renderRow(row, i + 100))}
+
+                <div className="px-5 pt-3 pb-1">
+                  <p className="text-[9px] font-black text-sky-500 uppercase tracking-widest flex items-center gap-1">
+                    <span className="w-2 h-2 rounded-full bg-sky-400 inline-block" /> Credits Based
+                  </p>
+                </div>
+                {creditsRows.map((row, i) => renderRow(row, i + 200))}
               </div>
+
               {/* Footer */}
-              {!isUltra && (
+              {canUpgradeTo && (
+                <div className="px-5 py-4 border-t border-slate-100">
+                  <button
+                    onClick={() => { setShowFeatureLimitsModal(false); onTabChange('STORE'); }}
+                    className={`w-full py-3 rounded-2xl bg-gradient-to-r ${vpCfg.color} text-white font-black text-sm active:scale-95 transition shadow-lg`}
+                  >
+                    {viewingUltra ? '⚡ Ultra pe Upgrade Karo — Sab Unlock' : '🔵 Basic pe Upgrade Karo — Zyada Access'}
+                  </button>
+                </div>
+              )}
+              {!canUpgradeTo && !userIsUltra && (
                 <div className="px-5 py-4 border-t border-slate-100">
                   <button
                     onClick={() => { setShowFeatureLimitsModal(false); onTabChange('STORE'); }}
                     className="w-full py-3 rounded-2xl bg-gradient-to-r from-violet-500 to-purple-600 text-white font-black text-sm active:scale-95 transition shadow-lg shadow-violet-200"
                   >
-                    ⚡ Upgrade Plan — Unlock Everything
+                    ⚡ Ultra plan dekho — Sab Unlock
                   </button>
                 </div>
               )}

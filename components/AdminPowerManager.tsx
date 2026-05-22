@@ -9,7 +9,7 @@ interface Props {
 }
 
 export const AdminPowerManager: React.FC<Props> = ({ settings, onUpdate }) => {
-    const [activeTab, setActiveTab] = useState<'PRICING' | 'VISIBILITY' | 'TOPBAR' | 'BOTTOMNAV' | 'HOMEGRID'>('PRICING');
+    const [activeTab, setActiveTab] = useState<'PRICING' | 'DAILY_LIMITS' | 'VISIBILITY' | 'TOPBAR' | 'BOTTOMNAV' | 'HOMEGRID'>('PRICING');
     const [localSettings, setLocalSettings] = useState<SystemSettings>(settings);
 
     const updateSetting = (key: keyof SystemSettings, value: any) => {
@@ -53,6 +53,7 @@ export const AdminPowerManager: React.FC<Props> = ({ settings, onUpdate }) => {
             <div className="flex flex-wrap gap-2 mb-6 bg-slate-100 p-1.5 rounded-xl">
                 {[
                     { id: 'PRICING', icon: DollarSign, label: 'Pricing & Costs' },
+                    { id: 'DAILY_LIMITS', icon: BarChart3, label: 'Daily Limits' },
                     { id: 'VISIBILITY', icon: Eye, label: 'Modules' },
                     { id: 'TOPBAR', icon: Crown, label: 'Top Bar' },
                     { id: 'BOTTOMNAV', icon: Navigation, label: 'Bottom Nav' },
@@ -100,6 +101,166 @@ export const AdminPowerManager: React.FC<Props> = ({ settings, onUpdate }) => {
                                     </div>
                                 </div>
                             ))}
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* TAB: DAILY LIMITS */}
+            {activeTab === 'DAILY_LIMITS' && (
+                <div className="space-y-5">
+                    <p className="text-[11px] text-slate-500 bg-amber-50 border border-amber-200 rounded-xl px-4 py-2.5 font-medium">
+                        ⚠️ Yahan changes karne par sab students pe turant effect hoga. Save karna mat bhoolein.
+                    </p>
+
+                    {/* WRITE MODE LIMITS */}
+                    <div className="bg-teal-50 border border-teal-200 rounded-xl p-4">
+                        <h4 className="font-black text-teal-800 text-sm mb-1 flex items-center gap-2">✍️ Write Mode (HTML Notes)</h4>
+                        <p className="text-[10px] text-teal-600 mb-3">Free views/day per plan aur credit system config</p>
+                        <div className="grid grid-cols-3 gap-3 mb-3">
+                            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+                                <label className="text-[9px] font-black text-slate-400 uppercase block mb-1">Free (0 free)</label>
+                                <p className="text-[10px] text-slate-500">Always credits-only</p>
+                            </div>
+                            <div className="bg-white p-3 rounded-lg border border-sky-200 shadow-sm">
+                                <label className="text-[9px] font-black text-sky-600 uppercase block mb-1">Basic Free/Day</label>
+                                <input type="number" min="0"
+                                    value={localSettings.basicHtmlDailyLimit ?? 5}
+                                    onChange={e => updateSetting('basicHtmlDailyLimit', Number(e.target.value))}
+                                    className="w-full p-1.5 border rounded font-bold text-sm" />
+                            </div>
+                            <div className="bg-white p-3 rounded-lg border border-violet-200 shadow-sm">
+                                <label className="text-[9px] font-black text-violet-600 uppercase block mb-1">Ultra Free/Day</label>
+                                <input type="number" min="0"
+                                    value={localSettings.ultraHtmlDailyLimit ?? 10}
+                                    onChange={e => updateSetting('ultraHtmlDailyLimit', Number(e.target.value))}
+                                    className="w-full p-1.5 border rounded font-bold text-sm" />
+                            </div>
+                        </div>
+                        <div className="grid grid-cols-3 gap-3">
+                            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+                                <label className="text-[9px] font-black text-slate-500 uppercase block mb-1">Credit Cost (Free user)</label>
+                                <input type="number" min="1"
+                                    value={localSettings.htmlUnlockCost ?? 5}
+                                    onChange={e => updateSetting('htmlUnlockCost', Number(e.target.value))}
+                                    className="w-full p-1.5 border rounded font-bold text-sm" />
+                            </div>
+                            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+                                <label className="text-[9px] font-black text-slate-500 uppercase block mb-1">Credit Cost (Paid, after free)</label>
+                                <input type="number" min="1"
+                                    value={(localSettings as any).writeModeCreditPaid ?? 10}
+                                    onChange={e => updateSetting('writeModeCreditPaid' as any, Number(e.target.value))}
+                                    className="w-full p-1.5 border rounded font-bold text-sm" />
+                            </div>
+                            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+                                <label className="text-[9px] font-black text-slate-500 uppercase block mb-1">Max Credit Unlocks/Day</label>
+                                <input type="number" min="1"
+                                    value={(localSettings as any).writeModeMaxLimit ?? 100}
+                                    onChange={e => updateSetting('writeModeMaxLimit' as any, Number(e.target.value))}
+                                    className="w-full p-1.5 border rounded font-bold text-sm" />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* MCQ LIMITS */}
+                    <div className="bg-amber-50 border border-amber-200 rounded-xl p-4">
+                        <h4 className="font-black text-amber-800 text-sm mb-1 flex items-center gap-2">📝 MCQ Practice (Daily Limit)</h4>
+                        <p className="text-[10px] text-amber-600 mb-3">Har plan ke liye daily MCQ questions limit</p>
+                        <div className="grid grid-cols-3 gap-3">
+                            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+                                <label className="text-[9px] font-black text-slate-500 uppercase block mb-1">Free/Day</label>
+                                <input type="number" min="1"
+                                    value={localSettings.mcqLimitFree ?? 50}
+                                    onChange={e => updateSetting('mcqLimitFree', Number(e.target.value))}
+                                    className="w-full p-1.5 border rounded font-bold text-sm" />
+                            </div>
+                            <div className="bg-white p-3 rounded-lg border border-sky-200 shadow-sm">
+                                <label className="text-[9px] font-black text-sky-600 uppercase block mb-1">Basic/Day</label>
+                                <input type="number" min="1"
+                                    value={localSettings.mcqLimitBasic ?? 70}
+                                    onChange={e => updateSetting('mcqLimitBasic', Number(e.target.value))}
+                                    className="w-full p-1.5 border rounded font-bold text-sm" />
+                            </div>
+                            <div className="bg-white p-3 rounded-lg border border-violet-200 shadow-sm">
+                                <label className="text-[9px] font-black text-violet-600 uppercase block mb-1">Ultra/Day</label>
+                                <input type="number" min="1"
+                                    value={localSettings.mcqLimitUltra ?? 100}
+                                    onChange={e => updateSetting('mcqLimitUltra', Number(e.target.value))}
+                                    className="w-full p-1.5 border rounded font-bold text-sm" />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* HTML DOWNLOADS LIMITS */}
+                    <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                        <h4 className="font-black text-blue-800 text-sm mb-1 flex items-center gap-2">📥 HTML Downloads (Daily Limit)</h4>
+                        <p className="text-[10px] text-blue-600 mb-3">Notes download limit per plan per day</p>
+                        <div className="grid grid-cols-3 gap-3">
+                            <div className="bg-white p-3 rounded-lg border border-slate-200 shadow-sm">
+                                <label className="text-[9px] font-black text-slate-500 uppercase block mb-1">Free/Day</label>
+                                <input type="number" min="0"
+                                    value={(localSettings as any).htmlDownloadLimitFree ?? 2}
+                                    onChange={e => updateSetting('htmlDownloadLimitFree' as any, Number(e.target.value))}
+                                    className="w-full p-1.5 border rounded font-bold text-sm" />
+                            </div>
+                            <div className="bg-white p-3 rounded-lg border border-sky-200 shadow-sm">
+                                <label className="text-[9px] font-black text-sky-600 uppercase block mb-1">Basic/Day</label>
+                                <input type="number" min="0"
+                                    value={(localSettings as any).htmlDownloadLimitBasic ?? 5}
+                                    onChange={e => updateSetting('htmlDownloadLimitBasic' as any, Number(e.target.value))}
+                                    className="w-full p-1.5 border rounded font-bold text-sm" />
+                            </div>
+                            <div className="bg-white p-3 rounded-lg border border-violet-200 shadow-sm">
+                                <label className="text-[9px] font-black text-violet-600 uppercase block mb-1">Ultra/Day</label>
+                                <input type="number" min="0"
+                                    value={(localSettings as any).htmlDownloadLimitUltra ?? 10}
+                                    onChange={e => updateSetting('htmlDownloadLimitUltra' as any, Number(e.target.value))}
+                                    className="w-full p-1.5 border rounded font-bold text-sm" />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* VIDEO LIMITS */}
+                    <div className="bg-rose-50 border border-rose-200 rounded-xl p-4">
+                        <h4 className="font-black text-rose-800 text-sm mb-1 flex items-center gap-2">🎬 Video Lectures</h4>
+                        <p className="text-[10px] text-rose-600 mb-3">Free videos/day (Basic & Ultra). Free users always pay coins.</p>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="bg-white p-3 rounded-lg border border-sky-200 shadow-sm">
+                                <label className="text-[9px] font-black text-sky-600 uppercase block mb-1">Basic Free/Day</label>
+                                <input type="number" min="0"
+                                    value={localSettings.videoFreeLimitBasic ?? 5}
+                                    onChange={e => updateSetting('videoFreeLimitBasic', Number(e.target.value))}
+                                    className="w-full p-1.5 border rounded font-bold text-sm" />
+                            </div>
+                            <div className="bg-white p-3 rounded-lg border border-violet-200 shadow-sm">
+                                <label className="text-[9px] font-black text-violet-600 uppercase block mb-1">Ultra Free/Day</label>
+                                <input type="number" min="0"
+                                    value={(localSettings as any).videoFreeLimitUltra ?? 10}
+                                    onChange={e => updateSetting('videoFreeLimitUltra' as any, Number(e.target.value))}
+                                    className="w-full p-1.5 border rounded font-bold text-sm" />
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* PDF LIMITS */}
+                    <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4">
+                        <h4 className="font-black text-emerald-800 text-sm mb-1 flex items-center gap-2">📄 PDF / Notes Access</h4>
+                        <p className="text-[10px] text-emerald-600 mb-3">Free PDF accesses/day (Basic & Ultra). Free users always pay coins.</p>
+                        <div className="grid grid-cols-2 gap-3">
+                            <div className="bg-white p-3 rounded-lg border border-sky-200 shadow-sm">
+                                <label className="text-[9px] font-black text-sky-600 uppercase block mb-1">Basic Free/Day</label>
+                                <input type="number" min="0"
+                                    value={localSettings.pdfFreeLimitBasic ?? 5}
+                                    onChange={e => updateSetting('pdfFreeLimitBasic', Number(e.target.value))}
+                                    className="w-full p-1.5 border rounded font-bold text-sm" />
+                            </div>
+                            <div className="bg-white p-3 rounded-lg border border-violet-200 shadow-sm">
+                                <label className="text-[9px] font-black text-violet-600 uppercase block mb-1">Ultra Free/Day</label>
+                                <input type="number" min="0"
+                                    value={(localSettings as any).pdfFreeLimitUltra ?? 10}
+                                    onChange={e => updateSetting('pdfFreeLimitUltra' as any, Number(e.target.value))}
+                                    className="w-full p-1.5 border rounded font-bold text-sm" />
+                            </div>
                         </div>
                     </div>
                 </div>

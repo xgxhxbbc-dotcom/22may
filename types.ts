@@ -644,7 +644,7 @@ export interface SystemSettings {
   adminCode?: string;
   adminEmail?: string;
   adminPhones?: {id: string, number: string, name: string, isDefault?: boolean}[];
-  paymentNumbers?: { id: string, number: string, name: string, dailyClicks: number, lastResetDate: string }[]; // Updated
+  paymentNumbers?: { id: string, number: string, name: string, dailyClicks: number, lastResetDate: string, highTraffic?: boolean }[];
   defaultAdminPermissions?: string[];
   welcomeTitle?: string;
   welcomeMessage?: string;

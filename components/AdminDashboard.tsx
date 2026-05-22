@@ -20,6 +20,7 @@ import { UniversalChat } from './UniversalChat';
 import { ChallengeCreator20 } from './admin/ChallengeCreator20';
 import { FeatureAccessPage } from './admin/FeatureAccessPage';
 import { AdminPowerManager } from './AdminPowerManager';
+import AdminHelp from './AdminHelp';
 import { AdminTrendingNotes } from './AdminTrendingNotes';
 import { SyllabusManager } from './SyllabusManager';
 import { FeatureGroupList } from './admin/FeatureGroupList';
@@ -135,7 +136,8 @@ type AdminTab =
   | 'DAILY_GK_MANAGER' // NEW
   | 'TEACHERS' // NEW
   | 'TRENDING_NOTES_MANAGER' // NEW: Live trending important notes
-  | 'GLOBAL_CHAT'; // NEW: Chat moderation
+  | 'GLOBAL_CHAT' // NEW: Chat moderation
+  | 'ADMIN_HELP'; // Help Guide
 
 interface ContentConfig {
     freeLink?: string;
@@ -9311,45 +9313,110 @@ Statement 2"
 
                           {/* PAYMENT NUMBERS MANAGER */}
                           <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm mb-6">
-                              <h4 className="font-bold text-slate-800 flex items-center gap-2 mb-4"><MessageSquare size={18} className="text-green-600" /> WhatsApp Support Numbers</h4>
+                              <h4 className="font-bold text-slate-800 flex items-center gap-2 mb-1"><MessageSquare size={18} className="text-green-600" /> WhatsApp Support Numbers</h4>
                               <p className="text-xs text-slate-600 mb-4">Add multiple numbers to distribute student traffic. Maximum 1000 users per day per number is recommended.</p>
                               
                               <div className="space-y-3 mb-4">
-                                  {localSettings.paymentNumbers?.map((num, idx) => (
-                                      <div key={num.id} className="flex items-center justify-between bg-slate-50 p-3 rounded-lg border border-slate-200">
-                                          <div>
-                                              <p className="font-bold text-sm text-slate-800">{num.name}</p>
-                                              <p className="text-xs text-slate-600 font-mono">{num.number}</p>
-                                          </div>
-                                          <div className="flex items-center gap-4">
-                                              <div className="text-right">
-                                                  <p className="text-xs font-bold text-slate-500 uppercase">Traffic</p>
-                                                  <div className="flex items-center gap-1">
-                                                       <p className="font-black text-green-600">{num.dailyClicks || 0}</p>
-                                                       <button 
-                                                           onClick={() => {
-                                                               const updated = [...(localSettings.paymentNumbers || [])];
-                                                               updated[idx].dailyClicks = 0;
-                                                               setLocalSettings({...localSettings, paymentNumbers: updated});
-                                                           }}
-                                                           className="text-[9px] text-slate-500 underline hover:text-slate-600 ml-1"
-                                                       >
-                                                           Reset
-                                                       </button>
+                                  {localSettings.paymentNumbers?.map((num, idx) => {
+                                      const editId = `pay_edit_${num.id}`;
+                                      const isEditing = !!(document.getElementById(editId) as HTMLInputElement | null)?.dataset?.editing;
+                                      return (
+                                      <div key={num.id} className={`rounded-xl border ${num.highTraffic ? 'border-orange-300 bg-orange-50' : 'border-slate-200 bg-slate-50'} overflow-hidden`}>
+                                          {/* Main row */}
+                                          <div className="flex items-center justify-between p-3">
+                                              <div className="flex items-center gap-2 flex-1 min-w-0">
+                                                  {num.highTraffic && (
+                                                      <span className="flex-shrink-0 text-[9px] font-black bg-orange-500 text-white px-1.5 py-0.5 rounded-full uppercase tracking-wide">🔥 High</span>
+                                                  )}
+                                                  <div className="min-w-0">
+                                                      <p className="font-bold text-sm text-slate-800 truncate">{num.name}</p>
+                                                      <p className="text-xs text-slate-600 font-mono">{num.number}</p>
                                                   </div>
                                               </div>
-                                              <button 
-                                                  onClick={() => {
-                                                      const updated = localSettings.paymentNumbers!.filter((_, i) => i !== idx);
-                                                      setLocalSettings({...localSettings, paymentNumbers: updated});
-                                                  }}
-                                                  className="text-red-400 hover:text-red-600 p-2"
-                                              >
-                                                  <Trash2 size={16} />
-                                              </button>
+                                              <div className="flex items-center gap-2 flex-shrink-0 ml-2">
+                                                  <div className="text-right">
+                                                      <p className="text-[9px] font-bold text-slate-500 uppercase">Today</p>
+                                                      <div className="flex items-center gap-1">
+                                                           <p className={`font-black text-sm ${num.dailyClicks > 800 ? 'text-red-600' : 'text-green-600'}`}>{num.dailyClicks || 0}</p>
+                                                           <button 
+                                                               onClick={() => {
+                                                                   const updated = [...(localSettings.paymentNumbers || [])];
+                                                                   updated[idx] = {...updated[idx], dailyClicks: 0};
+                                                                   setLocalSettings({...localSettings, paymentNumbers: updated});
+                                                               }}
+                                                               className="text-[9px] text-slate-400 underline hover:text-slate-600"
+                                                           >Reset</button>
+                                                      </div>
+                                                  </div>
+                                                  {/* High Traffic toggle */}
+                                                  <button
+                                                      title={num.highTraffic ? 'Remove High Traffic' : 'Mark as High Traffic'}
+                                                      onClick={() => {
+                                                          const updated = [...(localSettings.paymentNumbers || [])];
+                                                          updated[idx] = {...updated[idx], highTraffic: !updated[idx].highTraffic};
+                                                          setLocalSettings({...localSettings, paymentNumbers: updated});
+                                                      }}
+                                                      className={`text-xs p-1.5 rounded-lg transition-all ${num.highTraffic ? 'bg-orange-500 text-white' : 'bg-slate-100 text-slate-400 hover:bg-orange-100 hover:text-orange-500'}`}
+                                                  >🔥</button>
+                                                  {/* Edit toggle */}
+                                                  <button
+                                                      onClick={() => {
+                                                          const updated = [...(localSettings.paymentNumbers || [])];
+                                                          updated[idx] = {...updated[idx], _editing: !(updated[idx] as any)._editing} as any;
+                                                          setLocalSettings({...localSettings, paymentNumbers: updated});
+                                                      }}
+                                                      className="text-slate-400 hover:text-blue-600 p-1.5 rounded-lg hover:bg-blue-50 transition-all"
+                                                  ><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg></button>
+                                                  <button 
+                                                      onClick={() => {
+                                                          if (!confirm(`Delete "${num.name}"?`)) return;
+                                                          const updated = localSettings.paymentNumbers!.filter((_, i) => i !== idx);
+                                                          setLocalSettings({...localSettings, paymentNumbers: updated});
+                                                      }}
+                                                      className="text-red-400 hover:text-red-600 p-1.5 rounded-lg hover:bg-red-50 transition-all"
+                                                  ><Trash2 size={14} /></button>
+                                              </div>
                                           </div>
+                                          {/* Inline edit row */}
+                                          {(num as any)._editing && (
+                                              <div className="border-t border-slate-200 bg-white p-3 flex gap-2">
+                                                  <input
+                                                      type="text"
+                                                      defaultValue={num.name}
+                                                      id={`edit_name_${num.id}`}
+                                                      placeholder="Name"
+                                                      className="flex-1 p-2 border border-slate-300 rounded-lg text-sm"
+                                                  />
+                                                  <input
+                                                      type="text"
+                                                      defaultValue={num.number}
+                                                      id={`edit_num_${num.id}`}
+                                                      placeholder="Number"
+                                                      className="flex-1 p-2 border border-slate-300 rounded-lg text-sm"
+                                                  />
+                                                  <button
+                                                      onClick={() => {
+                                                          const newName = (document.getElementById(`edit_name_${num.id}`) as HTMLInputElement)?.value.trim();
+                                                          const newNum = (document.getElementById(`edit_num_${num.id}`) as HTMLInputElement)?.value.trim();
+                                                          if (!newName || !newNum) return;
+                                                          const updated = [...(localSettings.paymentNumbers || [])];
+                                                          updated[idx] = {...updated[idx], name: newName, number: newNum, _editing: false} as any;
+                                                          setLocalSettings({...localSettings, paymentNumbers: updated});
+                                                      }}
+                                                      className="bg-blue-600 text-white px-3 rounded-lg font-bold text-xs"
+                                                  >Save</button>
+                                                  <button
+                                                      onClick={() => {
+                                                          const updated = [...(localSettings.paymentNumbers || [])];
+                                                          updated[idx] = {...updated[idx], _editing: false} as any;
+                                                          setLocalSettings({...localSettings, paymentNumbers: updated});
+                                                      }}
+                                                      className="bg-slate-100 text-slate-600 px-3 rounded-lg font-bold text-xs"
+                                                  >Cancel</button>
+                                              </div>
+                                          )}
                                       </div>
-                                  ))}
+                                  )})}
                               </div>
 
                               <div className="flex gap-2">
@@ -16519,6 +16586,19 @@ Statement 2"
                       handleSaveSettings(newSettings);
                   }}
               />
+          </div>
+      )}
+
+      {/* --- ADMIN HELP GUIDE --- */}
+      {activeTab === 'ADMIN_HELP' && (
+          <div className="bg-white rounded-3xl shadow-sm border border-slate-200">
+              <div className="p-4 border-b flex items-center gap-4">
+                  <button onClick={() => setActiveTab('DASHBOARD')} className="bg-slate-100 p-2 rounded-full hover:bg-slate-200 text-slate-600"><ArrowLeft size={20} /></button>
+                  <span className="ml-2 font-black text-slate-800">Admin Help Guide</span>
+              </div>
+              <div className="p-4">
+                  <AdminHelp />
+              </div>
           </div>
       )}
 

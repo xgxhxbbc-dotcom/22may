@@ -925,6 +925,17 @@ export const ALL_FEATURES: Feature[] = [
         icon: 'Sliders',
         color: 'violet'
     },
+    {
+        id: 'ADMIN_HELP',
+        label: 'Help Guide',
+        group: 'ADVANCED',
+        surfaceLevel: 3,
+        adminVisible: true,
+        adminTab: 'ADMIN_HELP',
+        icon: 'HelpCircle',
+        color: 'indigo',
+        description: 'Admin dashboard ke saare buttons aur sections ki full guide.'
+    },
 
     // --- ANALYSIS DUMMIES (Not switchable individually) ---
     { id: 'ACCURACY_STAT', label: 'Accuracy Stat', group: 'ANALYSIS', surfaceLevel: 2, adminVisible: false, isDummy: true },

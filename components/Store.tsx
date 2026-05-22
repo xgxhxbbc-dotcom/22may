@@ -252,9 +252,15 @@ export const Store: React.FC<Props> = ({ user, settings }) => {
                       <p className="text-xs text-indigo-300 font-bold uppercase tracking-wider">Active Subscription</p>
                       <h4 className="text-white font-black">{user.subscriptionLevel === 'ULTRA' ? 'ULTRA MAX' : 'BASIC PRO'}</h4>
                   </div>
-                  <div className="text-right">
-                      <p className="text-[10px] text-indigo-300 font-medium">Remaining Time</p>
-                      <p className="text-lg font-black text-yellow-400">{daysRemaining || 0} Days</p>
+                  <div className="flex items-center gap-4">
+                      <div className="text-center">
+                          <p className="text-[10px] text-yellow-300 font-bold uppercase tracking-wider">Credits</p>
+                          <p className="text-lg font-black text-yellow-400">{(user.credits ?? 0).toLocaleString('en-IN')} <span className="text-xs font-bold text-yellow-300">CR</span></p>
+                      </div>
+                      <div className="text-right">
+                          <p className="text-[10px] text-indigo-300 font-medium">Remaining Time</p>
+                          <p className="text-lg font-black text-yellow-400">{daysRemaining || 0} Days</p>
+                      </div>
                   </div>
               </div>
           </div>
@@ -318,7 +324,52 @@ export const Store: React.FC<Props> = ({ user, settings }) => {
               <h2 className="text-4xl font-serif text-white tracking-tight mb-2">Select your plan</h2>
               <p className="text-slate-500 text-sm font-medium">Unlock your full potential today</p>
               
-                      {/* Discount banner removed — discount code mailbox mein aata hai */}
+              {/* SPECIAL DISCOUNT EVENT BANNER */}
+              {showEventBanner && (
+                  <div className={`mt-4 p-4 rounded-2xl border flex flex-col gap-2 animate-in fade-in ${
+                      activeEvent
+                        ? 'bg-gradient-to-r from-yellow-900/40 to-orange-900/40 border-yellow-500/40'
+                        : 'bg-gradient-to-r from-slate-800/60 to-slate-900/60 border-slate-600/40'
+                  }`}>
+                      <div className="flex items-center gap-3">
+                          <span className="text-2xl">{activeEvent ? '🔥' : '⏳'}</span>
+                          <div className="text-left">
+                              <p className={`text-sm font-black ${activeEvent ? 'text-yellow-300' : 'text-slate-300'}`}>
+                                  {activeEvent
+                                    ? `${event?.eventName || 'Flash Sale'} — ${event?.discountPercent || 0}% OFF!`
+                                    : `${event?.eventName || 'Flash Sale'} — Jald aane wala hai!`}
+                              </p>
+                              <p className={`text-xs ${activeEvent ? 'text-orange-300' : 'text-slate-500'}`}>
+                                  {activeEvent ? 'Discount sabhi plans pe apply ho gaya hai!' : 'Discount abhi start nahi hua, rukiye...'}
+                              </p>
+                          </div>
+                      </div>
+                      {timeLeft && (
+                          <div className="flex justify-center gap-2 mt-1">
+                              {timeLeft.days > 0 && (
+                                  <div className="bg-black/30 rounded-lg px-2 py-1 text-center min-w-[44px]">
+                                      <p className="text-lg font-black text-white font-mono">{String(timeLeft.days).padStart(2,'0')}</p>
+                                      <p className="text-[9px] text-slate-400 uppercase">Days</p>
+                                  </div>
+                              )}
+                              <div className="bg-black/30 rounded-lg px-2 py-1 text-center min-w-[44px]">
+                                  <p className="text-lg font-black text-white font-mono">{String(timeLeft.hours).padStart(2,'0')}</p>
+                                  <p className="text-[9px] text-slate-400 uppercase">Hrs</p>
+                              </div>
+                              <div className="bg-black/30 rounded-lg px-2 py-1 text-center min-w-[44px]">
+                                  <p className="text-lg font-black text-white font-mono">{String(timeLeft.minutes).padStart(2,'0')}</p>
+                                  <p className="text-[9px] text-slate-400 uppercase">Min</p>
+                              </div>
+                              <div className="bg-black/30 rounded-lg px-2 py-1 text-center min-w-[44px]">
+                                  <p className="text-lg font-black text-white font-mono">{String(timeLeft.seconds).padStart(2,'0')}</p>
+                                  <p className="text-[9px] text-slate-400 uppercase">Sec</p>
+                              </div>
+                          </div>
+                      )}
+                  </div>
+              )}
+
+              {/* PERSONAL REDEEM CODE DISCOUNT BANNER */}
               {user.storeDiscount && user.storeDiscount > 0 && (
                   <div className="mt-4 p-4 rounded-2xl bg-gradient-to-r from-rose-900/40 to-pink-900/40 border border-rose-500/40 flex items-center gap-3 animate-in fade-in">
                       <span className="text-2xl">🎟️</span>
@@ -381,15 +432,19 @@ export const Store: React.FC<Props> = ({ user, settings }) => {
                   const original = tierType === 'BASIC' ? plan.basicOriginalPrice : plan.ultraOriginalPrice;
                   let price = tierType === 'BASIC' ? plan.basicPrice : plan.ultraPrice;
 
-                  // Apply Discount Logic (Event discount removed — now comes via mailbox coupon code)
                   let discountPercentVal = 0;
 
-                  // 1. Renewal Bonus (5% Extra for active Premium users)
-                  if (user.isPremium) {
+                  // 1. Special Discount Event (applies only when event is active, not during cooldown)
+                  if (activeEvent && event?.discountPercent) {
+                      discountPercentVal += event.discountPercent;
+                  }
+
+                  // 2. Renewal Bonus (5% Extra — only for ACTIVE subscribers, not expired)
+                  if (isSubscribed) {
                       discountPercentVal += 5;
                   }
 
-                  // 2. PERSONAL STORE DISCOUNT (Applied via Redeem Code from mailbox)
+                  // 3. PERSONAL STORE DISCOUNT (Applied via Redeem Code from mailbox)
                   if (user.storeDiscount) {
                       discountPercentVal += user.storeDiscount;
                   }
@@ -403,7 +458,7 @@ export const Store: React.FC<Props> = ({ user, settings }) => {
                   const isYearly = plan.name.includes('Yearly');
 
                   // Check if renewal bonus is active for this user (Used for UI Badge only)
-                  const hasRenewalBonus = user.isPremium;
+                  const hasRenewalBonus = !!isSubscribed;
 
                   return (
                       <button
@@ -457,12 +512,17 @@ export const Store: React.FC<Props> = ({ user, settings }) => {
           <button
                  onClick={() => {
                      if (!selectedPlan) return;
-                     // Calculate Final Price (event discount removed — via mailbox coupon)
                      let finalPrice = tierType === 'BASIC' ? selectedPlan.basicPrice : selectedPlan.ultraPrice;
                      let discountPercentVal = 0;
-                     if (user.isPremium) {
+                     // 1. Special Discount Event
+                     if (activeEvent && event?.discountPercent) {
+                         discountPercentVal += event.discountPercent;
+                     }
+                     // 2. Premium Renewal Bonus (only ACTIVE subscribers)
+                     if (isSubscribed) {
                          discountPercentVal += 5;
                      }
+                     // 3. Personal redeem code discount
                      if (user.storeDiscount) {
                          discountPercentVal += user.storeDiscount;
                      }
@@ -502,11 +562,16 @@ export const Store: React.FC<Props> = ({ user, settings }) => {
               <div className="grid grid-cols-3 gap-3">
                   {packages.slice(0, 6).map(pkg => {
                       let finalPrice = pkg.price;
-                      // Discount logic (event discount removed — via mailbox coupon)
                       let creditDiscount = 0;
-                      if (user.isPremium || (user.subscriptionHistory && user.subscriptionHistory.length > 0)) {
+                      // 1. Special Discount Event
+                      if (activeEvent && event?.discountPercent) {
+                          creditDiscount += event.discountPercent;
+                      }
+                      // 2. Active Subscriber Bonus (5% — only for non-expired subscriptions)
+                      if (isSubscribed) {
                           creditDiscount += 5;
                       }
+                      // 3. Personal redeem code discount
                       if (user.storeDiscount) {
                           creditDiscount += user.storeDiscount;
                       }
