@@ -959,6 +959,7 @@ const AdminDashboardInner: React.FC<Props> = ({ onNavigate, settings, onUpdateSe
   // --- USER EDIT MODAL STATE ---
   const [editingUser, setEditingUser] = useState<User | null>(null);
   const [editUserCredits, setEditUserCredits] = useState(0);
+  const [editUserScore, setEditUserScore] = useState(0);
   const [editUserPass, setEditUserPass] = useState('');
   const [dmText, setDmText] = useState('');
   const [dmUser, setDmUser] = useState<User | null>(null);
@@ -1874,6 +1875,7 @@ const AdminDashboardInner: React.FC<Props> = ({ onNavigate, settings, onUpdateSe
   const openEditUser = (user: User) => {
       setEditingUser(user);
       setEditUserCredits(user.credits);
+      setEditUserScore(user.totalScore || 0);
       setEditUserPass(user.password);
       setEditSubscriptionTier(user.subscriptionTier || 'FREE');
       setEditSubscriptionLevel(user.subscriptionLevel || 'BASIC');
@@ -2065,7 +2067,8 @@ const AdminDashboardInner: React.FC<Props> = ({ onNavigate, settings, onUpdateSe
 
       const updatedUser: User = { 
           ...editingUser, 
-          credits: editUserCredits, 
+          credits: editUserCredits,
+          totalScore: editUserScore,
           password: editUserPass,
           subscriptionTier: editSubscriptionTier,
           subscriptionLevel: editSubscriptionLevel,
@@ -2112,14 +2115,7 @@ const AdminDashboardInner: React.FC<Props> = ({ onNavigate, settings, onUpdateSe
                   totalScore: (dmUser.totalScore || 0) + scoreToAdd,
               };
           } else if (giftType === 'CREDITS') {
-              // Gift credits with expiry
-              const creditsToAdd = Number(giftValue) || 10;
-              const expiryDate = new Date();
-              expiryDate.setDate(expiryDate.getDate() + giftCreditsExpiry);
-              userUpdates = {
-                  giftedCredits: (dmUser.giftedCredits || 0) + creditsToAdd,
-                  giftedCreditsExpiry: expiryDate.toISOString(),
-              };
+              // Gift credits via inbox — user must claim to receive them
               giftPayload = {
                   type: giftType,
                   value: giftValue,
@@ -15701,6 +15697,17 @@ Statement 2"
               <div className="bg-white p-6 rounded-2xl w-full shadow-2xl max-h-[90vh] overflow-y-auto">
                   <h3 className="text-lg font-bold mb-4">Edit User: {editingUser.name}</h3>
                   <div className="space-y-4">
+                      {/* SCORE */}
+                      <div>
+                          <label className="text-xs font-bold text-slate-600 uppercase">⭐ Total Score</label>
+                          <div className="flex items-center gap-2 mt-1">
+                              <button onClick={() => setEditUserScore(s => Math.max(0, s - 50))} className="w-9 h-9 bg-red-100 text-red-600 rounded-lg font-black text-lg hover:bg-red-200">−</button>
+                              <input type="number" value={editUserScore} onChange={e => setEditUserScore(Number(e.target.value))} className="flex-1 p-2 border rounded-lg text-center font-bold" />
+                              <button onClick={() => setEditUserScore(s => s + 50)} className="w-9 h-9 bg-green-100 text-green-600 rounded-lg font-black text-lg hover:bg-green-200">+</button>
+                          </div>
+                          <p className="text-[10px] text-slate-500 mt-1">Current: {editingUser?.totalScore || 0} pts — Level {(() => { const s = editUserScore; return s >= 20000 ? '8 🏆' : s >= 10000 ? '7 👑' : s >= 5000 ? '6 🌟' : s >= 2000 ? '5 💎' : s >= 700 ? '4 🔥' : s >= 300 ? '3 ⚡' : s >= 100 ? '2 ✨' : '1 🌱'; })()}</p>
+                      </div>
+
                       {/* CREDITS */}
                       <div>
                           <label className="text-xs font-bold text-slate-600 uppercase">💎 Credits</label>

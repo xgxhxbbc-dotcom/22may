@@ -26,6 +26,7 @@ interface LeaderboardUser {
   dailyPdfCount?: number;
   dailyWriteCount?: number;
   credits?: number;
+  giftedCredits?: number;
   role?: string;
 }
 
@@ -59,6 +60,7 @@ export const LevelLeaderboard: React.FC<Props> = ({ user, settings, onBack }) =>
               dailyPdfCount: u.dailyPdfCount || 0,
               dailyWriteCount: u.dailyWriteCount || 0,
               credits: u.credits || 0,
+              giftedCredits: u.giftedCredits || 0,
               role: u.role,
             })).filter((u: LeaderboardUser) => u.role !== 'ADMIN' && u.role !== 'SUB_ADMIN');
           }
@@ -85,6 +87,7 @@ export const LevelLeaderboard: React.FC<Props> = ({ user, settings, onBack }) =>
                 dailyPdfCount: u.dailyPdfCount || 0,
                 dailyWriteCount: u.dailyWriteCount || 0,
                 credits: u.credits || 0,
+                giftedCredits: u.giftedCredits || 0,
                 role: u.role,
               }));
           }
@@ -351,7 +354,7 @@ export const LevelLeaderboard: React.FC<Props> = ({ user, settings, onBack }) =>
                       { icon: '📄', label: 'PDFs Today', val: selectedUser.dailyPdfCount || 0, color: 'text-green-400' },
                       { icon: '✍️', label: 'Write Mode', val: selectedUser.dailyWriteCount || 0, color: 'text-purple-400' },
                       { icon: '🔥', label: 'Day Streak', val: selectedUser.streak || 0, color: 'text-orange-400' },
-                      { icon: '🪙', label: 'Credits', val: selectedUser.credits || 0, color: 'text-amber-400' },
+                      { icon: '🪙', label: 'Credits', val: (selectedUser.credits || 0) + (selectedUser.giftedCredits || 0), color: 'text-amber-400' },
                     ].map(s => (
                       <div key={s.label} className="bg-white/4 rounded-xl py-2.5 px-3 border border-white/6">
                         <div className="flex items-center gap-1.5 mb-0.5">

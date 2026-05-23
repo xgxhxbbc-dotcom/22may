@@ -13,17 +13,43 @@ export interface LevelInfo {
 
 export const LEVEL_INFO: LevelInfo[] = [
   { level: 1, minScore: 0,     label: 'Beginner',   emoji: '🌱', color: '#64748b', gradient: 'from-slate-500 to-slate-600',               glowColor: 'rgba(100,116,139,0.4)', discount: 0,  animationIntensity: 0 },
-  { level: 2, minScore: 100,   label: 'Apprentice', emoji: '✨', color: '#06b6d4', gradient: 'from-cyan-400 to-sky-500',                   glowColor: 'rgba(6,182,212,0.45)',  discount: 0,  animationIntensity: 1 },
-  { level: 3, minScore: 300,   label: 'Scholar',    emoji: '⚡', color: '#3b82f6', gradient: 'from-blue-400 to-indigo-500',                glowColor: 'rgba(59,130,246,0.5)',  discount: 5,  animationIntensity: 2 },
+  { level: 2, minScore: 100,   label: 'Apprentice', emoji: '✨', color: '#06b6d4', gradient: 'from-cyan-400 to-sky-500',                   glowColor: 'rgba(6,182,212,0.45)',  discount: 3,  animationIntensity: 1 },
+  { level: 3, minScore: 300,   label: 'Scholar',    emoji: '⚡', color: '#3b82f6', gradient: 'from-blue-400 to-indigo-500',                glowColor: 'rgba(59,130,246,0.5)',  discount: 6,  animationIntensity: 2 },
   { level: 4, minScore: 700,   label: 'Expert',     emoji: '🔥', color: '#f97316', gradient: 'from-orange-400 to-red-500',                 glowColor: 'rgba(249,115,22,0.65)', discount: 10, animationIntensity: 2, nameColor: '#f97316' },
-  { level: 5, minScore: 2000,  label: 'Master',     emoji: '💎', color: '#a855f7', gradient: 'from-violet-400 to-purple-600',              glowColor: 'rgba(168,85,247,0.7)',  discount: 15, animationIntensity: 3, nameColor: '#a855f7' },
-  { level: 6, minScore: 5000,  label: 'Elite',      emoji: '🌟', color: '#eab308', gradient: 'from-yellow-400 to-amber-500',               glowColor: 'rgba(234,179,8,0.75)',  discount: 20, animationIntensity: 3, nameColor: '#eab308' },
-  { level: 7, minScore: 10000, label: 'Champion',   emoji: '👑', color: '#f59e0b', gradient: 'from-amber-400 to-orange-400',               glowColor: 'rgba(245,158,11,0.8)',  discount: 25, animationIntensity: 3, nameColor: '#f59e0b' },
-  { level: 8, minScore: 20000, label: 'Legend',     emoji: '🏆', color: '#10b981', gradient: 'from-emerald-400 via-cyan-400 to-violet-500', glowColor: 'rgba(16,185,129,0.9)', discount: 30, animationIntensity: 4, nameColor: '#10b981' },
+  { level: 5, minScore: 2000,  label: 'Master',     emoji: '💎', color: '#a855f7', gradient: 'from-violet-400 to-purple-600',              glowColor: 'rgba(168,85,247,0.7)',  discount: 13, animationIntensity: 3, nameColor: '#a855f7' },
+  { level: 6, minScore: 5000,  label: 'Elite',      emoji: '🌟', color: '#eab308', gradient: 'from-yellow-400 to-amber-500',               glowColor: 'rgba(234,179,8,0.75)',  discount: 17, animationIntensity: 3, nameColor: '#eab308' },
+  { level: 7, minScore: 10000, label: 'Champion',   emoji: '👑', color: '#f59e0b', gradient: 'from-amber-400 to-orange-400',               glowColor: 'rgba(245,158,11,0.8)',  discount: 20, animationIntensity: 3, nameColor: '#f59e0b' },
+  { level: 8, minScore: 20000, label: 'Legend',     emoji: '🏆', color: '#10b981', gradient: 'from-emerald-400 via-cyan-400 to-violet-500', glowColor: 'rgba(16,185,129,0.9)', discount: 20, animationIntensity: 4, nameColor: '#10b981' },
 ];
 
 export const MAX_LEVEL = 8;
 export const LEVEL_THRESHOLDS = LEVEL_INFO.map(l => l.minScore);
+
+// ── Level-based daily limit bonuses ────────────────────────────────────────
+export interface LevelLimitBonus {
+  mcqBonus: number;           // Extra MCQ practice per day
+  writeFreeBonus: number;     // Extra free Write Mode sessions per day
+  dlBonus: number;            // Extra HTML downloads per day
+  videoFreeBonus: number;     // Extra free video sessions per day
+  pdfFreeBonus: number;       // Extra free PDF sessions per day
+  creditWriteMax: number;     // Max credit-paid Write Mode sessions per day
+  bonusLoginCredits: number;  // Extra CR on daily login (L6+ exclusive perk)
+}
+
+export const getLevelLimitBonus = (level: number): LevelLimitBonus => {
+  const tbl: Record<number, LevelLimitBonus> = {
+    1: { mcqBonus: 0,  writeFreeBonus: 0,  dlBonus: 0,  videoFreeBonus: 0,  pdfFreeBonus: 0,  creditWriteMax: 100, bonusLoginCredits: 0 },
+    2: { mcqBonus: 1,  writeFreeBonus: 1,  dlBonus: 1,  videoFreeBonus: 1,  pdfFreeBonus: 1,  creditWriteMax: 100, bonusLoginCredits: 0 },
+    3: { mcqBonus: 2,  writeFreeBonus: 2,  dlBonus: 2,  videoFreeBonus: 2,  pdfFreeBonus: 2,  creditWriteMax: 100, bonusLoginCredits: 0 },
+    4: { mcqBonus: 3,  writeFreeBonus: 3,  dlBonus: 3,  videoFreeBonus: 3,  pdfFreeBonus: 3,  creditWriteMax: 100, bonusLoginCredits: 0 },
+    5: { mcqBonus: 5,  writeFreeBonus: 5,  dlBonus: 5,  videoFreeBonus: 5,  pdfFreeBonus: 5,  creditWriteMax: 100, bonusLoginCredits: 0 },
+    6: { mcqBonus: 7,  writeFreeBonus: 7,  dlBonus: 7,  videoFreeBonus: 7,  pdfFreeBonus: 7,  creditWriteMax: 120, bonusLoginCredits: 2 },
+    7: { mcqBonus: 10, writeFreeBonus: 10, dlBonus: 10, videoFreeBonus: 10, pdfFreeBonus: 10, creditWriteMax: 130, bonusLoginCredits: 3 },
+    8: { mcqBonus: 15, writeFreeBonus: 15, dlBonus: 15, videoFreeBonus: 15, pdfFreeBonus: 15, creditWriteMax: 150, bonusLoginCredits: 5 },
+  };
+  const lvl = Math.min(8, Math.max(1, level));
+  return tbl[lvl] ?? tbl[1];
+};
 
 export const getLevelInfo = (score: number): LevelInfo => {
   let info = LEVEL_INFO[0];

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { TopBarEffectsLayer } from "../utils/topBarEffects";
-import { getLevelInfo, getNextLevelInfo, getLevelProgress, LEVEL_INFO, ACTIVITY_SCORES, getLevelTopBarEffects } from "../utils/levelSystem";
+import { getLevelInfo, getNextLevelInfo, getLevelProgress, LEVEL_INFO, ACTIVITY_SCORES, getLevelTopBarEffects, getLevelLimitBonus } from "../utils/levelSystem";
 import { tryEarnScore, awardMilestone, getDailyScoreEarned, DAILY_SCORE_LIMIT, getDailyScoreLimit, getActiveBoost } from "../utils/scoreSystem";
 import { applyDeduction, getTotalCredits } from "../utils/creditSystem";
 import { LevelLeaderboard } from "./LevelLeaderboard";
@@ -507,12 +507,17 @@ export const StudentDashboard: React.FC<Props> = ({
   const _isBasicUser   = _subValid && user.subscriptionLevel === 'BASIC';
   const _todayKey      = new Date().toISOString().split('T')[0];
 
+  // ── Level-based limit bonus ─────────────────────────────────────────────
+  const _userLevelInfo  = getLevelInfo(user.totalScore || 0);
+  const _userLevel      = (user.role === 'ADMIN' || user.role === 'SUB_ADMIN') ? 8 : _userLevelInfo.level;
+  const _lvlBonus       = getLevelLimitBonus(_userLevel);
+
   // Free quota (0 free views — credit-only, but track key for limit enforcement)
   const _freeHtmlKey   = `nst_free_html_${user.id}_${_todayKey}`;
 
   // Basic quota
   const _basicHtmlKey  = `nst_basic_html_${user.id}_${_todayKey}`;
-  const BASIC_HTML_DAILY_LIMIT = settings?.basicHtmlDailyLimit ?? 5;
+  const BASIC_HTML_DAILY_LIMIT = (settings?.basicHtmlDailyLimit ?? 5) + _lvlBonus.writeFreeBonus;
   const _basicHtmlUsed = _isBasicUser
     ? parseInt(localStorage.getItem(_basicHtmlKey) || '0', 10)
     : 0;
@@ -520,16 +525,16 @@ export const StudentDashboard: React.FC<Props> = ({
 
   // Ultra quota
   const _ultraHtmlKey  = `nst_ultra_html_${user.id}_${_todayKey}`;
-  const ULTRA_HTML_DAILY_LIMIT = settings?.ultraHtmlDailyLimit ?? 10;
+  const ULTRA_HTML_DAILY_LIMIT = (settings?.ultraHtmlDailyLimit ?? 10) + _lvlBonus.writeFreeBonus;
   const _ultraHtmlUsed = _isUltraUser
     ? parseInt(localStorage.getItem(_ultraHtmlKey) || '0', 10)
     : 0;
   const ultraHtmlRemaining = Math.max(0, ULTRA_HTML_DAILY_LIMIT - _ultraHtmlUsed);
 
-  // Paid (credit) write unlock tracking — all tiers, max 100/day
+  // Paid (credit) write unlock tracking — max varies by level (L6: 120, L7: 130, L8: 150)
   const _paidWriteKey   = `nst_paid_write_${user.id}_${_todayKey}`;
   const _paidWriteCount = parseInt(localStorage.getItem(_paidWriteKey) || '0', 10);
-  const WM_PAID_DAILY_MAX = 100;
+  const WM_PAID_DAILY_MAX = _lvlBonus.creditWriteMax;
   // Escalating cost: base + floor(count/10)*5, capped at 20 CR
   const _wmBaseCost = (!_isUltraUser && !_isBasicUser)
     ? (settings?.htmlUnlockCost ?? 5)     // Free: base 5 CR
@@ -549,6 +554,7 @@ export const StudentDashboard: React.FC<Props> = ({
   const _trackBasicHtmlOpen = _trackHtmlOpen;
 
   // ── WRITE MODE GATE: intercept Write Mode button clicks ───────────────────
+  const _wmAutoSkipKey = `nst_wm_autoskip_${user.id}`;
   const handleWriteModeGate = (action: () => void) => {
     // Ultra with free views → open directly + track
     if (_isUltraUser && ultraHtmlRemaining > 0) {
@@ -562,7 +568,20 @@ export const StudentDashboard: React.FC<Props> = ({
       action();
       return;
     }
+    // Auto-skip if user opted in and can afford + not hard-blocked
+    if (
+      localStorage.getItem(_wmAutoSkipKey) === 'true' &&
+      _paidWriteCount < WM_PAID_DAILY_MAX &&
+      getTotalCredits(user) >= _currentWmCost
+    ) {
+      const _skip = applyDeduction(user, _currentWmCost);
+      if (_skip) handleUserUpdate(_skip);
+      try { localStorage.setItem(_paidWriteKey, String(_paidWriteCount + 1)); } catch {}
+      action();
+      return;
+    }
     // Otherwise → show unlock prompt (credit-based)
+    setWmDontShowChecked(false);
     setPendingWMCallback(() => action);
     setShowWMUnlockPrompt(true);
   };
@@ -585,7 +604,7 @@ export const StudentDashboard: React.FC<Props> = ({
     : _isUltraUser ? (settings?.htmlDownloadLimitUltra ?? 10)
     : _isBasicUser ? (settings?.htmlDownloadLimitBasic ?? 5)
     : (settings?.htmlDownloadLimitFree ?? 2);
-  const _dlHtmlLeft  = Math.max(0, _dlHtmlLimit - _dlHtmlUsed);
+  const _dlHtmlLeft  = Math.max(0, (_dlHtmlLimit + _lvlBonus.dlBonus) - _dlHtmlUsed);
 
   /**
    * Wraps any download call with daily limit enforcement.
@@ -1518,6 +1537,7 @@ export const StudentDashboard: React.FC<Props> = ({
 
   const [showLevelModal, setShowLevelModal] = useState(false);
   const [expandedLevelRow, setExpandedLevelRow] = useState<number | null>(null);
+  const [selectedLevelDetail, setSelectedLevelDetail] = useState<typeof LEVEL_INFO[0] | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showFeatureMatrix, setShowFeatureMatrix] = useState(false);
   const [isFullscreenMode, setIsFullscreenMode] = useState(false);
@@ -1830,6 +1850,7 @@ export const StudentDashboard: React.FC<Props> = ({
   const [hwNotesViewMode, setHwNotesViewMode] = useState<'html' | 'chunk'>('chunk');
   const [showWMUnlockPrompt, setShowWMUnlockPrompt] = useState(false);
   const [pendingWMCallback, setPendingWMCallback] = useState<(() => void) | null>(null);
+  const [wmDontShowChecked, setWmDontShowChecked] = useState(false);
   // Reset focus mode when homework is closed
   useEffect(() => {
     if (!hwActiveHwId) setHwImmersive(false);
@@ -3833,10 +3854,7 @@ export const StudentDashboard: React.FC<Props> = ({
     // Detect credit deduction and show toast (compare total credits including bonus/gifted)
     const prevCredits = getTotalCredits(user);
     const newCredits = getTotalCredits(updatedUser);
-    if (
-      newCredits < prevCredits &&
-      !localStorage.getItem('nst_credit_toast_disabled')
-    ) {
+    if (newCredits < prevCredits) {
       const deducted = prevCredits - newCredits;
       if (creditToastTimerRef.current) clearTimeout(creditToastTimerRef.current);
       setCreditDeductToast({ visible: true, previous: prevCredits, deducted, current: newCredits });
@@ -9007,7 +9025,21 @@ export const StudentDashboard: React.FC<Props> = ({
                     <p className="text-5xl mb-1">{levelUpCelebration.emoji}</p>
                     <p className="text-white text-2xl font-black">Level {levelUpCelebration.level}</p>
                     <p className="text-white/70 text-sm font-bold">{levelUpCelebration.label}</p>
-                    <p className="text-white/50 text-[10px] mt-2">Tap to dismiss</p>
+                    {/* Level Benefits */}
+                    <div className="mt-3 space-y-1.5">
+                      {(() => {
+                        const lvlInfo = LEVEL_INFO.find(l => l.level === levelUpCelebration.level);
+                        if (!lvlInfo) return null;
+                        const benefits: string[] = [];
+                        if (lvlInfo.discount > 0) benefits.push(`🏷️ ${lvlInfo.discount}% Discount on purchases`);
+                        if (lvlInfo.animationIntensity >= 1) benefits.push(`✨ Top Bar Animation unlocked`);
+                        if (lvlInfo.nameColor) benefits.push(`🎨 Colored name in Leaderboard`);
+                        return benefits.map((b, i) => (
+                          <div key={i} className="bg-white/15 rounded-xl px-3 py-1.5 text-white text-[11px] font-bold">{b}</div>
+                        ));
+                      })()}
+                    </div>
+                    <p className="text-white/50 text-[10px] mt-3">Tap to dismiss</p>
                   </div>
                 </div>
               </div>
@@ -13206,7 +13238,7 @@ export const StudentDashboard: React.FC<Props> = ({
               >
                 <Trophy size={11} /> Reward
                 {(() => {
-                  const cnt = (user.inbox || []).filter(m => m.type === 'REWARD' && !m.isClaimed && (!m.expiresAt || new Date(m.expiresAt).getTime() > Date.now())).length;
+                  const cnt = (user.inbox || []).filter(m => (m.type === 'REWARD' || m.type === 'GIFT') && !m.isClaimed && (!m.expiresAt || new Date(m.expiresAt).getTime() > Date.now())).length;
                   return cnt > 0 ? <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${inboxTab === 'REWARDS' ? 'bg-white/20 text-white' : 'bg-red-500 text-white'}`}>{cnt}</span> : null;
                 })()}
               </button>
@@ -13349,15 +13381,16 @@ export const StudentDashboard: React.FC<Props> = ({
               })()}
 
               {inboxTab === 'REWARDS' && (() => {
-                const pendingRewardMsgs = (user.inbox || []).filter(m => m.type === 'REWARD' && !m.isClaimed && (!m.expiresAt || new Date(m.expiresAt).getTime() > Date.now()));
+                const pendingRewardMsgs = (user.inbox || []).filter(m => (m.type === 'REWARD' || m.type === 'GIFT') && !m.isClaimed && (!m.expiresAt || new Date(m.expiresAt).getTime() > Date.now()));
                 return (
                   <div className="space-y-3">
                     {/* Credits balance */}
                         <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-4 flex items-center justify-between">
                           <div>
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Aapke Credits</p>
-                            <p className="text-2xl font-black text-yellow-400">{(user.credits || 0) + (user.bonusCredits || 0)} CR</p>
+                            <p className="text-2xl font-black text-yellow-400">{(user.credits || 0) + (user.bonusCredits || 0) + (user.giftedCredits || 0)} CR</p>
                             {(user.bonusCredits || 0) > 0 && <p className="text-[9px] text-emerald-400 font-bold mt-0.5">🎁 {user.bonusCredits} Bonus (Subscription)</p>}
+                            {(user.giftedCredits || 0) > 0 && <p className="text-[9px] text-pink-400 font-bold mt-0.5">🎀 {user.giftedCredits} Gift Credits</p>}
                           </div>
                           <button onClick={() => { setShowInbox(false); onTabChange('STORE'); }} className="text-xs font-black bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-4 py-2 rounded-full active:scale-95 transition-all">
                             Store Dekho →
@@ -13423,7 +13456,9 @@ export const StudentDashboard: React.FC<Props> = ({
                                     {isDiscount && <span className="text-[9px] font-black bg-rose-100 text-rose-700 border border-rose-200 px-2 py-0.5 rounded-full">💸 Discount</span>}
                                   </div>
                                   <button onClick={() => claimRewardMessage(msg.id, msg.reward || null, msg.gift || null)} className={`w-full py-2 bg-gradient-to-r ${btnGrad} text-white rounded-xl font-black text-xs active:scale-95 transition-all flex items-center justify-center gap-1.5 shadow-sm`}>
-                                    <Crown size={12} /> Claim Reward
+                                    {msg.type === 'GIFT' ? <Gift size={12} /> : <Crown size={12} />}
+                                    {msg.type === 'GIFT' ? 'Claim Gift' : 'Claim Reward'}
+                                    {msg.type === 'GIFT' && msg.gift?.type === 'CREDITS' && <span className="bg-white/20 px-1.5 py-0.5 rounded-full text-[10px]">+{msg.gift.value} CR</span>}
                                   </button>
                                 </div>
                               </div>
@@ -16815,7 +16850,7 @@ RULES:
         const progress = getLevelProgress(totalScore);
         return (
           <div className="fixed inset-0 z-[9998] flex flex-col justify-end" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setShowScorePanel(false)}>
-            <div className="bg-[#0e0e0e] rounded-t-3xl max-h-[88vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+            <div className="bg-[#0e0e0e] rounded-t-3xl max-h-[88vh] overflow-y-auto no-scrollbar w-full" onClick={e => e.stopPropagation()}>
               {/* Header */}
               <div className="sticky top-0 bg-[#0e0e0e] pt-3 pb-2 px-5 flex items-center justify-between border-b border-white/6 z-10">
                 <div className="w-10 h-1 bg-slate-700 rounded-full absolute left-1/2 -translate-x-1/2 top-1.5" />
@@ -16960,8 +16995,9 @@ RULES:
                       const isCurrentLevel = lvl.level === l.level;
                       const isUnlocked = totalScore >= l.minScore;
                       return (
-                        <div key={l.level} className="flex-shrink-0 flex flex-col items-center gap-1.5 w-[60px]"
-                          style={{ opacity: isUnlocked ? 1 : 0.38 }}>
+                        <button key={l.level} onClick={() => setSelectedLevelDetail(l)}
+                          className="flex-shrink-0 flex flex-col items-center gap-1.5 w-[60px] active:scale-95 transition-transform"
+                          style={{ opacity: isUnlocked ? 1 : 0.5 }}>
                           <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-xl relative"
                             style={{
                               background: isCurrentLevel ? `${l.color}30` : isUnlocked ? `${l.color}14` : 'rgba(255,255,255,0.04)',
@@ -16977,17 +17013,246 @@ RULES:
                           </div>
                           <p className="text-[8px] font-black leading-none text-center" style={{ color: isCurrentLevel ? l.color : isUnlocked ? '#cbd5e1' : '#475569' }}>L{l.level}</p>
                           <p className="text-[7px] text-center leading-tight" style={{ color: l.discount > 0 ? '#10b981' : '#475569' }}>{l.discount > 0 ? `${l.discount}%` : '—'}</p>
-                        </div>
+                        </button>
                       );
                     })}
                   </div>
                   <div className="px-4 pb-3 flex items-center justify-between">
-                    <p className="text-[8px] text-slate-600">← Swipe to see all levels</p>
+                    <p className="text-[8px] text-slate-600">← Swipe · Kisi bhi level pe tap karo</p>
                     <p className="text-[8px] text-emerald-600 font-bold">Green % = store discount</p>
                   </div>
                 </div>
 
                 <div className="h-4" />
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ═══════════ LEVEL DETAIL POPUP ═══════════ */}
+      {selectedLevelDetail && (() => {
+        const l = selectedLevelDetail;
+        const totalScore = user.totalScore || 0;
+        const userLvl = getLevelInfo(totalScore);
+        const isCurrentLevel = userLvl.level === l.level;
+        const isUnlocked = totalScore >= l.minScore;
+        const ptsNeeded = Math.max(0, l.minScore - totalScore);
+        const nextLevelInfo = LEVEL_INFO[l.level];
+        const prevLevelInfo = LEVEL_INFO[l.level - 2]; // previous level (0-indexed: l.level-2)
+        const maxScoreStr = nextLevelInfo
+          ? `${l.minScore.toLocaleString('en-IN')} – ${(nextLevelInfo.minScore - 1).toLocaleString('en-IN')}`
+          : `${l.minScore.toLocaleString('en-IN')}+`;
+        const animLabels = ['Koi nahi', 'Subtle shimmer ✨', 'Glow effect 🌟', 'Strong glow + sparks 💫', 'Legendary animation 🌈'];
+        const animActive = l.animationIntensity > 0;
+        // Progress toward this level
+        const progressPct = isUnlocked ? 100 : Math.round((totalScore / Math.max(1, l.minScore)) * 100);
+        // Benefits list
+        const benefits = [
+          {
+            emoji: '🏷️',
+            title: l.discount > 0 ? `${l.discount}% Store Discount` : 'Store Discount: Nahi',
+            desc: l.discount > 0
+              ? `Sabhi store purchases pe automatic ${l.discount}% off — coins, subscriptions sab`
+              : 'Koi discount nahi milega — Level 2 se shuru hoga (3%)',
+            color: l.discount > 0 ? l.color : undefined,
+            active: l.discount > 0,
+          },
+          {
+            emoji: '✨',
+            title: animActive ? `Top Bar Animation: ${animLabels[l.animationIntensity]}` : 'Top Bar Animation: Nahi',
+            desc: animActive
+              ? 'Aapke top bar pe dynamic animation effect dikhega — subscription se independent'
+              : 'Koi top bar animation nahi — Level 2 se unlock hoga',
+            color: animActive ? '#818cf8' : undefined,
+            active: animActive,
+          },
+          {
+            emoji: '🎨',
+            title: l.nameColor ? 'Colored Username 🔥' : 'Username Color: Normal',
+            desc: l.nameColor
+              ? 'Leaderboard, chat aur profile mein aapka naam vibrant color mein dikhega'
+              : 'Naam ka koi special color nahi — Level 4 se unlock hoga',
+            color: l.nameColor,
+            active: !!l.nameColor,
+          },
+          {
+            emoji: '🏆',
+            title: 'Level Leaderboard Entry',
+            desc: 'Sabhi users ke saath global level leaderboard mein rank dikhegi',
+            color: '#eab308',
+            active: true,
+          },
+          {
+            emoji: '📊',
+            title: 'Activity Score Tracking',
+            desc: 'MCQ, video, PDF, audio se daily score earn karo — level up karo',
+            color: '#10b981',
+            active: true,
+          },
+          {
+            emoji: '🎁',
+            title: 'Level-Up Celebration',
+            desc: 'Level change hone pe special popup aur benefits card dikhega',
+            color: '#f59e0b',
+            active: true,
+          },
+          // ── Limit bonuses ──
+          (() => {
+            const lb = getLevelLimitBonus(l.level);
+            const hasBonus = lb.mcqBonus > 0;
+            return {
+              emoji: '📈',
+              title: hasBonus
+                ? `Daily Limit Bonus: +${lb.mcqBonus} MCQ · +${lb.writeFreeBonus} Write · +${lb.dlBonus} Downloads`
+                : 'Daily Limit Bonus: Nahi (Level 2 se milega)',
+              desc: hasBonus
+                ? `MCQ Practice, Write Mode free sessions, HTML Downloads — sabke daily limits mein +${lb.mcqBonus} bonus. Video & PDF free sessions bhi +${lb.videoFreeBonus}.`
+                : 'Abhi tak koi limit bonus nahi. Level 2 mein +1, Level 3 mein +2, aur aage badhega.',
+              color: hasBonus ? '#06b6d4' : undefined,
+              active: hasBonus,
+            };
+          })(),
+          // ── L6+ new perks ──
+          ...(l.level >= 6 ? [{
+            emoji: '💰',
+            title: `Bonus Daily Login Credits: +${getLevelLimitBonus(l.level).bonusLoginCredits} CR/day`,
+            desc: `Roz login karne pe ${getLevelLimitBonus(l.level).bonusLoginCredits} extra credits aapke plan bonus ke upar milenge — L6+ exclusive perk!`,
+            color: '#f59e0b',
+            active: true,
+          }] : []),
+          ...(l.level >= 6 ? [{
+            emoji: '✍️',
+            title: `Extended Credit Write Mode: ${getLevelLimitBonus(l.level).creditWriteMax}/day`,
+            desc: `Credit se unlock kiye ja sakne wale Write Mode sessions aaj ke liye ${getLevelLimitBonus(l.level).creditWriteMax} tak badh jaate hain (base: 100) — L6 = 120, L7 = 130, L8 = 150.`,
+            color: '#8b5cf6',
+            active: true,
+          }] : []),
+          ...(l.level >= 5 ? [{
+            emoji: '💎',
+            title: 'Elite Status Badge',
+            desc: 'Leaderboard mein special Elite/Legend badge ke saath dikh-o ge',
+            color: l.color,
+            active: true,
+          }] : []),
+          ...(l.level === 8 ? [{
+            emoji: '🌈',
+            title: 'MAX LEVEL — Legend',
+            desc: 'Aap sabse upar ho! 20% max discount + legendary animation permanently unlock',
+            color: '#10b981',
+            active: true,
+          }] : []),
+        ];
+        return (
+          <div className="fixed inset-0 z-[9999] flex items-end justify-center" style={{ background: 'rgba(0,0,0,0.8)' }} onClick={() => setSelectedLevelDetail(null)}>
+            <div className="bg-[#111] rounded-t-3xl w-full max-h-[88vh] overflow-y-auto no-scrollbar" onClick={e => e.stopPropagation()}>
+              {/* Handle */}
+              <div className="flex justify-center pt-2.5 pb-1">
+                <div className="w-10 h-1 bg-slate-700 rounded-full" />
+              </div>
+              <div className="px-5 pt-2 pb-10 space-y-4">
+                {/* Hero */}
+                <div className="text-center rounded-2xl py-5 relative overflow-hidden" style={{ background: `linear-gradient(135deg, ${l.color}20, ${l.color}08)`, border: `1.5px solid ${l.color}50`, boxShadow: `0 0 40px ${l.glowColor}` }}>
+                  <div className="text-6xl mb-2.5" style={{ filter: `drop-shadow(0 0 20px ${l.glowColor})` }}>{l.emoji}</div>
+                  <div className="flex items-center justify-center gap-2 mb-1">
+                    <span className="text-xl font-black text-white">Level {l.level}</span>
+                    <span className="text-base font-black" style={{ color: l.color }}>· {l.label}</span>
+                  </div>
+                  <p className="text-[10px] text-slate-500 mb-3">Score Range: {maxScoreStr} pts</p>
+                  {/* Status badge */}
+                  {isCurrentLevel ? (
+                    <div className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[11px] font-black text-white" style={{ background: l.color }}>
+                      ✅ Aap is level pe ho!
+                    </div>
+                  ) : isUnlocked ? (
+                    <div className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[11px] font-black" style={{ background: `${l.color}22`, color: l.color, border: `1px solid ${l.color}50` }}>
+                      🔓 Aapne unlock kar liya
+                    </div>
+                  ) : (
+                    <div className="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full text-[11px] font-black text-slate-300 bg-white/8 border border-white/15">
+                      🔒 {ptsNeeded.toLocaleString('en-IN')} pts aur chahiye
+                    </div>
+                  )}
+                  {/* Progress bar if not yet unlocked */}
+                  {!isUnlocked && (
+                    <div className="mt-3 px-4">
+                      <div className="h-2 bg-white/10 rounded-full overflow-hidden">
+                        <div className="h-full rounded-full transition-all" style={{ width: `${progressPct}%`, background: `linear-gradient(90deg, ${l.color}88, ${l.color})` }} />
+                      </div>
+                      <p className="text-[8px] text-slate-600 mt-1">{progressPct}% complete · {totalScore.toLocaleString('en-IN')} / {l.minScore.toLocaleString('en-IN')} pts</p>
+                    </div>
+                  )}
+                </div>
+
+                {/* Previous vs This level comparison (if not L1) */}
+                {prevLevelInfo && (
+                  <div className="rounded-2xl overflow-hidden border border-white/10">
+                    <div className="px-4 py-2.5 border-b border-white/6" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                      <p className="text-[10px] font-black text-white uppercase tracking-widest">📈 Level {prevLevelInfo.level} se upgrade</p>
+                    </div>
+                    <div className="grid grid-cols-2 divide-x divide-white/8">
+                      <div className="p-3 text-center opacity-50">
+                        <div className="text-2xl mb-1">{prevLevelInfo.emoji}</div>
+                        <p className="text-[9px] font-black" style={{ color: prevLevelInfo.color }}>L{prevLevelInfo.level} · {prevLevelInfo.label}</p>
+                        <p className="text-[8px] text-slate-600 mt-1">{prevLevelInfo.discount > 0 ? `${prevLevelInfo.discount}% discount` : 'No discount'}</p>
+                      </div>
+                      <div className="p-3 text-center" style={{ background: `${l.color}08` }}>
+                        <div className="text-2xl mb-1" style={{ filter: `drop-shadow(0 0 8px ${l.glowColor})` }}>{l.emoji}</div>
+                        <p className="text-[9px] font-black" style={{ color: l.color }}>L{l.level} · {l.label}</p>
+                        <p className="text-[8px] mt-1" style={{ color: l.discount > prevLevelInfo.discount ? '#10b981' : '#64748b' }}>
+                          {l.discount > 0 ? `${l.discount}% discount` : 'No discount'}
+                          {l.discount > prevLevelInfo.discount ? ` (+${l.discount - prevLevelInfo.discount}%)` : ''}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                {/* All Benefits */}
+                <div className="rounded-2xl overflow-hidden border border-white/10">
+                  <div className="px-4 py-2.5 border-b border-white/6" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                    <p className="text-[10px] font-black text-white uppercase tracking-widest">🎁 Saari Features — Level {l.level}</p>
+                  </div>
+                  <div className="p-3 space-y-2">
+                    {benefits.map((b, i) => (
+                      <div key={i} className="flex items-start gap-3 p-2.5 rounded-xl"
+                        style={{
+                          background: b.active && b.color ? `${b.color}10` : 'rgba(255,255,255,0.02)',
+                          border: `1px solid ${b.active && b.color ? b.color + '28' : 'rgba(255,255,255,0.05)'}`,
+                          opacity: b.active ? 1 : 0.5
+                        }}>
+                        <span className="text-xl flex-shrink-0 mt-0.5">{b.emoji}</span>
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-black leading-tight" style={{ color: b.active && b.color ? b.color : b.active ? '#cbd5e1' : '#475569' }}>
+                            {b.title}
+                          </p>
+                          <p className="text-[9px] text-slate-500 mt-0.5 leading-snug">{b.desc}</p>
+                        </div>
+                        {b.active && <span className="text-[10px] text-green-400 flex-shrink-0 mt-0.5 font-black">✓</span>}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                {/* Next level teaser */}
+                {nextLevelInfo && (
+                  <button onClick={() => setSelectedLevelDetail(nextLevelInfo)}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-2xl border border-white/10 active:scale-[0.98] transition-all"
+                    style={{ background: `${nextLevelInfo.color}08` }}>
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-xl">{nextLevelInfo.emoji}</span>
+                      <div className="text-left">
+                        <p className="text-[11px] font-black" style={{ color: nextLevelInfo.color }}>Level {nextLevelInfo.level} · {nextLevelInfo.label} →</p>
+                        <p className="text-[9px] text-slate-500">{nextLevelInfo.minScore.toLocaleString('en-IN')} pts pe unlock · {nextLevelInfo.discount}% discount</p>
+                      </div>
+                    </div>
+                    <span className="text-slate-600 text-xs">›</span>
+                  </button>
+                )}
+
+                <button onClick={() => setSelectedLevelDetail(null)} className="w-full py-3.5 rounded-2xl font-black text-sm text-white" style={{ background: `${l.color}dd` }}>
+                  Samajh Gaya ✓
+                </button>
               </div>
             </div>
           </div>
@@ -17016,26 +17281,29 @@ RULES:
         const paidWriteCount = parseInt(localStorage.getItem(`nst_paid_write_${user.id}_${todayStr}`) || '0', 10);
         const storeVisits    = parseInt(localStorage.getItem(`nst_store_visits_${user.id}_${todayStr}`) || '0', 10);
 
-        // ── Plan-wise limits from settings ──
-        const freeMcq   = settings?.mcqLimitFree  ?? 50;
-        const basicMcq  = settings?.mcqLimitBasic ?? 70;
-        const ultraMcq  = settings?.mcqLimitUltra ?? 100;
+        // ── Level bonus for this user ──
+        const _lvlBonusModal = getLevelLimitBonus(_userLevel);
 
-        const freeDl    = settings?.htmlDownloadLimitFree  ?? 2;
-        const basicDl   = settings?.htmlDownloadLimitBasic ?? 5;
-        const ultraDl   = settings?.htmlDownloadLimitUltra ?? 10;
+        // ── Plan-wise limits from settings (+ level bonus) ──
+        const freeMcq   = (settings?.mcqLimitFree  ?? 50)  + _lvlBonusModal.mcqBonus;
+        const basicMcq  = (settings?.mcqLimitBasic ?? 70)  + _lvlBonusModal.mcqBonus;
+        const ultraMcq  = (settings?.mcqLimitUltra ?? 100) + _lvlBonusModal.mcqBonus;
 
-        const basicWriteFree = settings?.basicHtmlDailyLimit ?? 5;
-        const ultraWriteFree = settings?.ultraHtmlDailyLimit ?? 10;
+        const freeDl    = (settings?.htmlDownloadLimitFree  ?? 2)  + _lvlBonusModal.dlBonus;
+        const basicDl   = (settings?.htmlDownloadLimitBasic ?? 5)  + _lvlBonusModal.dlBonus;
+        const ultraDl   = (settings?.htmlDownloadLimitUltra ?? 10) + _lvlBonusModal.dlBonus;
 
-        const basicVid  = settings?.videoFreeLimitBasic ?? 5;
-        const ultraVid  = settings?.videoFreeLimitUltra ?? 10;
+        const basicWriteFree = (settings?.basicHtmlDailyLimit ?? 5)  + _lvlBonusModal.writeFreeBonus;
+        const ultraWriteFree = (settings?.ultraHtmlDailyLimit ?? 10) + _lvlBonusModal.writeFreeBonus;
 
-        const basicPdf  = settings?.pdfFreeLimitBasic ?? 5;
-        const ultraPdf  = settings?.pdfFreeLimitUltra ?? 10;
+        const basicVid  = (settings?.videoFreeLimitBasic ?? 5)  + _lvlBonusModal.videoFreeBonus;
+        const ultraVid  = (settings?.videoFreeLimitUltra ?? 10) + _lvlBonusModal.videoFreeBonus;
+
+        const basicPdf  = (settings?.pdfFreeLimitBasic ?? 5)  + _lvlBonusModal.pdfFreeBonus;
+        const ultraPdf  = (settings?.pdfFreeLimitUltra ?? 10) + _lvlBonusModal.pdfFreeBonus;
 
         const htmlCost  = settings?.htmlUnlockCost ?? 5;
-        const wmMax     = settings?.writeModeMaxLimit ?? 100;
+        const wmMax     = isOwnPlan ? WM_PAID_DAILY_MAX : (settings?.writeModeMaxLimit ?? 100);
         const wmEsc     = Math.floor(paidWriteCount / 10) * 5;
         const wmCost    = Math.min(20, (userIsFree ? htmlCost : 10) + wmEsc);
 
@@ -17204,6 +17472,24 @@ RULES:
                 </div>
                 <button onClick={() => setShowFeatureLimitsModal(false)} className="p-1.5 rounded-full bg-slate-100 text-slate-500 hover:bg-slate-200 transition-colors">✕</button>
               </div>
+
+              {/* Level Bonus Banner */}
+              {_lvlBonusModal.mcqBonus > 0 && (
+                <div className="mx-5 mt-3 px-3 py-2 rounded-xl flex items-center gap-2" style={{ background: 'linear-gradient(90deg, #06b6d410, #8b5cf610)', border: '1.5px solid #06b6d440' }}>
+                  <span className="text-base">{_userLevelInfo.emoji}</span>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-[10px] font-black text-slate-700 leading-tight">
+                      Level {_userLevel} Bonus Active
+                    </p>
+                    <p className="text-[9px] text-slate-500 leading-tight">
+                      +{_lvlBonusModal.mcqBonus} MCQ · +{_lvlBonusModal.writeFreeBonus} Write · +{_lvlBonusModal.dlBonus} DL · +{_lvlBonusModal.videoFreeBonus} Video/PDF — ye limits mein already jud gaya hai
+                    </p>
+                  </div>
+                  {_lvlBonusModal.bonusLoginCredits > 0 && (
+                    <span className="shrink-0 text-[9px] font-black px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">+{_lvlBonusModal.bonusLoginCredits} CR/day</span>
+                  )}
+                </div>
+              )}
 
               {/* Plan Tabs — FREE | BASIC | ULTRA */}
               <div className="px-5 pt-3 pb-2">
@@ -17480,11 +17766,15 @@ RULES:
                 {(() => {
                   const lc = settings?.loginBonusConfig;
                   const f = lc?.freeBonus ?? 2, b = lc?.basicBonus ?? 5, u = lc?.ultraBonus ?? 10;
+                  const lvlBonusCr = _lvlBonus.bonusLoginCredits;
                   if (f === 0 && b === 0 && u === 0) return null;
                   return (
                     <div className="flex items-center justify-between bg-green-50 rounded-xl px-3 py-2">
                       <p className="text-xs font-bold text-slate-700">🌅 Daily Login Bonus</p>
-                      <span className="text-xs font-black text-green-700">Free +{f} / Basic +{b} / Ultra +{u}</span>
+                      <span className="text-xs font-black text-green-700">
+                        Free +{f} / Basic +{b} / Ultra +{u}
+                        {lvlBonusCr > 0 && <span className="text-cyan-700"> +{lvlBonusCr} (L{_userLevel})</span>}
+                      </span>
                     </div>
                   );
                 })()}
@@ -17832,6 +18122,9 @@ RULES:
                   canAfford ? (
                     <button
                       onClick={() => {
+                        if (wmDontShowChecked) {
+                          try { localStorage.setItem(_wmAutoSkipKey, 'true'); } catch {}
+                        }
                         const _wmUpdated = applyDeduction(user, _currentWmCost);
                         if (_wmUpdated) handleUserUpdate(_wmUpdated);
                         try { localStorage.setItem(_paidWriteKey, String(_paidWriteCount + 1)); } catch {}
@@ -17864,6 +18157,25 @@ RULES:
                   >
                     <span className="text-lg">👑</span>
                     {_isBasicUser ? 'Ultra pe upgrade — 10 free views/day' : 'Upgrade karo — Basic ya Ultra plan'}
+                  </button>
+                )}
+                {/* Don't show again toggle */}
+                {!isHardBlocked && canAfford && (
+                  <button
+                    onClick={() => setWmDontShowChecked(v => !v)}
+                    className="w-full flex items-center justify-between px-4 py-3 rounded-2xl border transition-all active:scale-[0.98]"
+                    style={{
+                      background: wmDontShowChecked ? 'rgba(16,185,129,0.08)' : 'rgba(0,0,0,0)',
+                      borderColor: wmDontShowChecked ? '#10b981' : '#e2e8f0'
+                    }}
+                  >
+                    <div className="flex items-center gap-2.5">
+                      <span className="text-base">{wmDontShowChecked ? '✅' : '⬜'}</span>
+                      <div className="text-left">
+                        <p className="text-xs font-black text-slate-700">Dobara mat dikhana</p>
+                        <p className="text-[9px] text-slate-400">Agli baar credits auto-kat jayenge (popup nahi aayega)</p>
+                      </div>
+                    </div>
                   </button>
                 )}
                 <button
@@ -17924,16 +18236,6 @@ RULES:
                   <p className="text-emerald-400 font-black text-sm">{creditDeductToast.current.toLocaleString('en-IN')}</p>
                 </div>
               </div>
-              {/* Don't show again */}
-              <button
-                onClick={() => {
-                  localStorage.setItem('nst_credit_toast_disabled', '1');
-                  setCreditDeductToast(null);
-                }}
-                className="w-full text-[11px] text-slate-600 hover:text-slate-400 font-bold transition-colors py-1"
-              >
-                Dobara mat dikhana
-              </button>
             </div>
           </div>
         </div>

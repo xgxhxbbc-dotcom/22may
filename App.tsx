@@ -9,6 +9,7 @@ import { ref as rtdbRef, set as rtdbSet } from 'firebase/database';
 import { doc as fsDoc, setDoc as fsSetDoc } from 'firebase/firestore';
 import { storage } from './utils/storage';
 import { recalculateSubscriptionStatus, addSubscription } from './utils/subscriptionUtils';
+import { getLevelInfo, getLevelLimitBonus } from './utils/levelSystem';
 import { signInAnonymously } from 'firebase/auth';
 import { fetchChapters, fetchLessonContent } from './services/groq';
 import { AppLoadingScreen } from './components/AppLoadingScreen';
@@ -522,6 +523,10 @@ const App: React.FC = () => {
                   if (state.user.subscriptionLevel === 'BASIC') bonusAmount = state.settings.loginBonusConfig?.basicBonus ?? 5;
                   if (state.user.subscriptionLevel === 'ULTRA') bonusAmount = state.settings.loginBonusConfig?.ultraBonus ?? 10;
               }
+              // Add level-based bonus credits (L6: +2, L7: +3, L8: +5)
+              const _loginUserLevel = getLevelInfo(state.user.totalScore || 0).level;
+              const _loginLvlBonus  = getLevelLimitBonus(_loginUserLevel);
+              bonusAmount += _loginLvlBonus.bonusLoginCredits;
 
               const loginExpiryHours = state.settings.rewardExpiryHours ?? 12;
               newReward = {

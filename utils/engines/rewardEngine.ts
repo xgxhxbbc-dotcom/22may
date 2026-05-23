@@ -1,4 +1,5 @@
 import { User, SystemSettings } from '../../types';
+import { getLevelInfo, getLevelLimitBonus } from '../levelSystem';
 
 export const RewardEngine = {
     calculateDailyBonus: (user: User, settings?: SystemSettings): number => {
@@ -9,6 +10,10 @@ export const RewardEngine = {
             if (level === 'BASIC') baseBonus = settings?.loginBonusConfig?.basicBonus ?? 5;
             if (level === 'ULTRA') baseBonus = settings?.loginBonusConfig?.ultraBonus ?? 10;
         }
+
+        // Add level-based bonus credits (L6: +2, L7: +3, L8: +5)
+        const userLevel = getLevelInfo(user.totalScore || 0).level;
+        baseBonus += getLevelLimitBonus(userLevel).bonusLoginCredits;
 
         return baseBonus;
     },
