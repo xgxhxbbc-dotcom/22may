@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { TopBarEffectsLayer } from "../utils/topBarEffects";
+import { getLevelInfo, getNextLevelInfo, getLevelProgress, LEVEL_INFO, ACTIVITY_SCORES } from "../utils/levelSystem";
 import {
   User,
   Subject,
@@ -1391,6 +1392,7 @@ export const StudentDashboard: React.FC<Props> = ({
     setTimeout(() => setRewardEffect(null), 2400);
   };
   const [showDotsMenu, setShowDotsMenu] = useState(false);
+  const [showScorePanel, setShowScorePanel] = useState(false);
   const [showFeatureLimitsModal, setShowFeatureLimitsModal] = useState(false);
   const [limitsViewPlan, setLimitsViewPlan] = useState<'FREE' | 'BASIC' | 'ULTRA'>('FREE');
   const [showRulesPage, setShowRulesPage] = useState(false);
@@ -3401,17 +3403,20 @@ export const StudentDashboard: React.FC<Props> = ({
     if (gift) {
       if (gift.type === "CREDITS") {
         updatedUser.credits = (user.credits || 0) + Number(gift.value);
-        successMsg = `🎁 Gift Claimed! Added ${gift.value} Credits.`;
+        updatedUser.totalScore = (user.totalScore || 0) + 5;
+        successMsg = `🎁 Gift Claimed! Added ${gift.value} Credits. (+5 score)`;
         triggerRewardEffect(Number(gift.value), 'Gift Reward');
       } else if (gift.type === "SUBSCRIPTION") {
         const [tier, level] = (gift.value as string).split("_");
         const duration = gift.durationHours || 24;
         applySubscription(tier, level, duration);
+        updatedUser.totalScore = (user.totalScore || 0) + 5;
         triggerRewardEffect(0, 'Subscription Unlocked! 🎉');
       }
     } else if (reward) {
       const duration = reward.durationHours || 4;
       applySubscription(reward.tier, reward.level, duration);
+      updatedUser.totalScore = (user.totalScore || 0) + 5;
       triggerRewardEffect(0, 'Reward Claimed! 🎉');
     }
     handleUserUpdate(updatedUser);
@@ -3959,7 +3964,7 @@ export const StudentDashboard: React.FC<Props> = ({
         showAlert(`Insufficient Credits! Need ${app.creditCost}.`, "ERROR");
         return;
       }
-      const u = { ...user, credits: user.credits - app.creditCost };
+      const u = { ...user, credits: user.credits - app.creditCost, totalScore: (user.totalScore || 0) + app.creditCost };
       handleUserUpdate(u);
       setActiveExternalApp(app.url);
     } else {
@@ -7506,8 +7511,9 @@ export const StudentDashboard: React.FC<Props> = ({
               <div className="flex flex-col items-end gap-1.5">
                 <div className="flex items-center gap-1.5 bg-amber-500/15 border border-amber-500/30 px-3 py-1.5 rounded-full">
                   <span className="text-sm">🪙</span>
-                  <span className="text-amber-300 font-black text-sm">{(user.credits ?? 0).toLocaleString('en-IN')}</span>
+                  <span className="text-amber-300 font-black text-sm">{((user.credits ?? 0) + (user.bonusCredits ?? 0)).toLocaleString('en-IN')}</span>
                   <span className="text-amber-500 text-[9px] font-bold">CR</span>
+                  {(user.bonusCredits ?? 0) > 0 && <span className="text-[8px] font-black text-emerald-400 bg-emerald-500/20 px-1 rounded-full">+{user.bonusCredits}🎁</span>}
                 </div>
                 {user.isPremium && (
                   <div className="flex flex-col items-end gap-1">
@@ -7710,6 +7716,49 @@ export const StudentDashboard: React.FC<Props> = ({
                   )}
                 </div>
 
+                {/* LEVEL BADGE */}
+                {(() => {
+                  const totalScore = user.totalScore || 0;
+                  const lvl = getLevelInfo(totalScore);
+                  const nextLvl = getNextLevelInfo(totalScore);
+                  const progress = getLevelProgress(totalScore);
+                  return (
+                    <button
+                      onClick={() => setShowScorePanel(true)}
+                      className="w-full mb-4 rounded-2xl overflow-hidden border border-white/10 active:scale-[0.98] transition-transform"
+                      style={{ boxShadow: `0 0 18px ${lvl.glowColor}` }}
+                    >
+                      <div className="p-[1.5px] rounded-2xl" style={{ background: `linear-gradient(135deg, ${lvl.color}99, ${lvl.color}33)` }}>
+                        <div className="bg-[#111] rounded-[14px] p-3 flex items-center gap-3">
+                          <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl shrink-0"
+                            style={{ background: `${lvl.color}22`, boxShadow: `0 0 14px ${lvl.glowColor}` }}>
+                            {lvl.emoji}
+                          </div>
+                          <div className="flex-1 min-w-0 text-left">
+                            <div className="flex items-center gap-1.5 mb-0.5">
+                              <span className="text-[11px] font-black text-white">Level {lvl.level} · {lvl.label}</span>
+                              {lvl.discount > 0 && (
+                                <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full text-white"
+                                  style={{ background: `${lvl.color}bb` }}>
+                                  {lvl.discount}% OFF Store
+                                </span>
+                              )}
+                            </div>
+                            <p className="text-[10px] text-slate-400 mb-1.5">
+                              {totalScore} pts{nextLvl ? ` · ${nextLvl.minScore - totalScore} to ${nextLvl.emoji} L${nextLvl.level}` : ' · MAX LEVEL 🏆'}
+                            </p>
+                            <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
+                              <div className="h-full rounded-full transition-all"
+                                style={{ width: `${progress}%`, background: `linear-gradient(90deg, ${lvl.color}aa, ${lvl.color})` }} />
+                            </div>
+                          </div>
+                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-500 shrink-0"><polyline points="9 18 15 12 9 6"/></svg>
+                        </div>
+                      </div>
+                    </button>
+                  );
+                })()}
+
                 {/* Info pills */}
                 <div className="flex flex-wrap gap-1.5 mb-4">
                   <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-white/5 border border-white/10 text-slate-400">
@@ -7733,7 +7782,7 @@ export const StudentDashboard: React.FC<Props> = ({
                 {/* Stats row */}
                 <div className="grid grid-cols-3 gap-2 mb-3">
                   {[
-                    { val: (user.credits ?? 0).toLocaleString('en-IN'), label: 'Credits', color: 'text-amber-400' },
+                    { val: ((user.credits ?? 0) + (user.bonusCredits ?? 0)).toLocaleString('en-IN'), label: (user.bonusCredits ?? 0) > 0 ? `Credits +🎁${user.bonusCredits}` : 'Credits', color: 'text-amber-400' },
                     { val: user.streak > 0 ? `🔥 ${user.streak}` : '0', label: 'Streak', color: user.streak > 0 ? 'text-orange-400' : 'text-slate-500' },
                     { val: user.createdAt && !isNaN(new Date(user.createdAt).getTime()) ? Math.floor((Date.now() - new Date(user.createdAt).getTime()) / (1000 * 60 * 60 * 24)) : 0, label: 'Days', color: 'text-slate-300' },
                   ].map(s => (
@@ -11990,6 +12039,7 @@ export const StudentDashboard: React.FC<Props> = ({
                       ...user,
                       name: newNameInput,
                       credits: user.credits - cost,
+                      totalScore: (user.totalScore || 0) + cost,
                     };
                     handleUserUpdate(u);
                     setShowNameChangeModal(false);
@@ -13115,7 +13165,8 @@ export const StudentDashboard: React.FC<Props> = ({
                         <div className="bg-gradient-to-br from-slate-900 to-slate-800 rounded-2xl p-4 flex items-center justify-between">
                           <div>
                             <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-1">Aapke Credits</p>
-                            <p className="text-2xl font-black text-yellow-400">{user.credits || 0} CR</p>
+                            <p className="text-2xl font-black text-yellow-400">{(user.credits || 0) + (user.bonusCredits || 0)} CR</p>
+                            {(user.bonusCredits || 0) > 0 && <p className="text-[9px] text-emerald-400 font-bold mt-0.5">🎁 {user.bonusCredits} Bonus (Subscription)</p>}
                           </div>
                           <button onClick={() => { setShowInbox(false); onTabChange('STORE'); }} className="text-xs font-black bg-gradient-to-r from-indigo-500 to-purple-500 text-white px-4 py-2 rounded-full active:scale-95 transition-all">
                             Store Dekho →
@@ -16548,6 +16599,112 @@ RULES:
           />
         </button>
       )}
+
+      {/* ═══════════ SCORE / LEVEL PANEL ═══════════ */}
+      {showScorePanel && (() => {
+        const totalScore = user.totalScore || 0;
+        const lvl = getLevelInfo(totalScore);
+        const nextLvl = getNextLevelInfo(totalScore);
+        const progress = getLevelProgress(totalScore);
+        return (
+          <div className="fixed inset-0 z-[9998] flex flex-col justify-end" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setShowScorePanel(false)}>
+            <div className="bg-[#0e0e0e] rounded-t-3xl max-h-[88vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div className="sticky top-0 bg-[#0e0e0e] pt-3 pb-2 px-5 flex items-center justify-between border-b border-white/6 z-10">
+                <div className="w-10 h-1 bg-slate-700 rounded-full absolute left-1/2 -translate-x-1/2 top-1.5" />
+                <p className="text-sm font-black text-white mt-2">⚡ Activity Score</p>
+                <button onClick={() => setShowScorePanel(false)} className="w-7 h-7 flex items-center justify-center rounded-full bg-white/8 text-slate-400 mt-2">✕</button>
+              </div>
+
+              <div className="px-4 py-4 space-y-4">
+                {/* Current level big card */}
+                <div className="rounded-2xl p-4 text-center"
+                  style={{ background: `linear-gradient(135deg, ${lvl.color}18, ${lvl.color}08)`, border: `1px solid ${lvl.color}44`, boxShadow: `0 0 24px ${lvl.glowColor}` }}>
+                  <div className="text-5xl mb-2" style={{ filter: `drop-shadow(0 0 12px ${lvl.glowColor})` }}>{lvl.emoji}</div>
+                  <p className="text-xl font-black text-white mb-0.5">Level {lvl.level} · {lvl.label}</p>
+                  <p className="text-3xl font-black mb-1" style={{ color: lvl.color }}>{totalScore.toLocaleString('en-IN')}</p>
+                  <p className="text-[10px] text-slate-500 uppercase tracking-widest">Total Points</p>
+                  {lvl.discount > 0 && (
+                    <div className="mt-2 inline-block px-3 py-1 rounded-full text-xs font-black text-white" style={{ background: lvl.color }}>
+                      🏷️ {lvl.discount}% Store Discount Unlocked
+                    </div>
+                  )}
+                </div>
+
+                {/* Progress to next level */}
+                {nextLvl ? (
+                  <div className="rounded-2xl p-3.5 bg-white/4 border border-white/8">
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-bold text-slate-300">Progress to Level {nextLvl.level} {nextLvl.emoji}</span>
+                      <span className="text-[10px] font-bold text-slate-400">{nextLvl.minScore - totalScore} pts remaining</span>
+                    </div>
+                    <div className="h-2 bg-white/8 rounded-full overflow-hidden">
+                      <div className="h-full rounded-full transition-all" style={{ width: `${progress}%`, background: `linear-gradient(90deg, ${lvl.color}88, ${lvl.color})` }} />
+                    </div>
+                    <p className="text-[10px] text-slate-500 mt-1.5">{nextLvl.label} unlocks {nextLvl.discount}% store discount</p>
+                  </div>
+                ) : (
+                  <div className="rounded-2xl p-3.5 bg-amber-900/20 border border-amber-500/30 text-center">
+                    <p className="text-sm font-black text-amber-400">🏆 Maximum Level Achieved!</p>
+                    <p className="text-[10px] text-amber-500/70 mt-1">You have unlocked 30% store discount</p>
+                  </div>
+                )}
+
+                {/* How to earn */}
+                <div className="rounded-2xl p-3.5 bg-white/4 border border-white/8">
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">Score Kaise Kamayein</p>
+                  {[
+                    { icon: '📹', label: 'Video dekhna', pts: `+${ACTIVITY_SCORES.VIDEO} pts` },
+                    { icon: '📄', label: 'PDF/Notes padhna', pts: `+${ACTIVITY_SCORES.PDF} pts` },
+                    { icon: '🎧', label: 'Audio sunna', pts: `+${ACTIVITY_SCORES.AUDIO} pts` },
+                    { icon: '❓', label: 'MCQ attempt (max 20)', pts: `+${ACTIVITY_SCORES.MCQ_PER_ANSWER}×attempt` },
+                    { icon: '📅', label: 'Daily login', pts: `+${ACTIVITY_SCORES.DAILY_LOGIN} pts` },
+                  ].map(item => (
+                    <div key={item.label} className="flex items-center justify-between py-1.5 border-b border-white/4 last:border-0">
+                      <span className="text-sm">{item.icon} <span className="text-slate-300 text-xs font-medium">{item.label}</span></span>
+                      <span className="text-xs font-black text-emerald-400">{item.pts}</span>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Streak warning */}
+                <div className="rounded-2xl p-3.5 bg-red-900/15 border border-red-500/25">
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">⚠️ Streak Break Penalty</p>
+                  <p className="text-xs text-red-400 font-medium">Streak tutne par score 1 level neeche gir jayega.</p>
+                  <p className="text-[10px] text-slate-500 mt-1">Rozana login karo aur streak bachao! 🔥</p>
+                </div>
+
+                {/* All levels table */}
+                <div className="rounded-2xl p-3.5 bg-white/4 border border-white/8">
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">Sabhi Levels</p>
+                  <div className="space-y-2">
+                    {LEVEL_INFO.map(l => {
+                      const isCurrentLevel = lvl.level === l.level;
+                      return (
+                        <div key={l.level} className={`flex items-center gap-3 rounded-xl px-3 py-2 transition-all ${isCurrentLevel ? 'bg-white/8 border border-white/12' : 'opacity-60'}`}>
+                          <span className="text-lg w-7 text-center">{l.emoji}</span>
+                          <div className="flex-1">
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-xs font-black text-white">L{l.level} · {l.label}</span>
+                              {isCurrentLevel && <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full text-white" style={{ background: l.color }}>YOU</span>}
+                            </div>
+                            <p className="text-[10px] text-slate-500">{l.minScore.toLocaleString('en-IN')} pts required</p>
+                          </div>
+                          <span className="text-[10px] font-black" style={{ color: l.level === 1 ? '#64748b' : '#10b981' }}>
+                            {l.discount > 0 ? `${l.discount}% OFF` : 'No discount'}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="h-6" />
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {/* ═══════════ FEATURE LIMITS & DAILY USAGE MODAL ═══════════ */}
       {showFeatureLimitsModal && (() => {

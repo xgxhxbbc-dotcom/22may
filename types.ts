@@ -182,6 +182,9 @@ export interface User {
   lastRewardClaimDate?: string; // To track daily 3-hour study reward
   lastLoginRewardDate?: string; // NEW: Daily Login Bonus (10 coins)
   storeDiscount?: number; // NEW: Personal Store Discount %
+  totalScore?: number; // Cumulative activity score for score-based store discounts
+  lastScoreDate?: string; // ISO Date string of last score update
+  bonusCredits?: number; // Temporary credits that came with subscription (cleared on expiry)
   dailyMcqDate?: string; // YYYY-MM-DD for daily MCQ tracking
   dailyMcqCount?: number; // MCQs attempted today
   dailyMcqCorrect?: number; // Correct MCQs today

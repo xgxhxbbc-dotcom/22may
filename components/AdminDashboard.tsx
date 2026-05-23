@@ -2194,13 +2194,22 @@ const AdminDashboardInner: React.FC<Props> = ({ onNavigate, settings, onUpdateSe
                   try { await set(ref(rtdb, `redeem_codes/${newGiftCode.code}`), newGiftCode); } catch (_) {}
               }
           }
+          // Save locally FIRST — always succeeds regardless of cloud status
           const updated = [...newCodes, ...giftCodes];
           setGiftCodes(updated);
           localStorage.setItem('nst_admin_codes', JSON.stringify(updated));
           alert(`${newCodeCount} Codes Generated Successfully!`);
       } catch (error: any) {
           console.error("Code Generation Error:", error);
-          alert(`Failed to generate codes: ${error.message}`);
+          // Even on cloud error — save whatever was generated locally so admin doesn't lose codes
+          if (newCodes.length > 0) {
+              const updated = [...newCodes, ...giftCodes];
+              setGiftCodes(updated);
+              localStorage.setItem('nst_admin_codes', JSON.stringify(updated));
+              alert(`⚠️ Cloud sync failed (${error.message})\n\nCodes locally saved karein — students ke liye RTDB/Firestore manually deploy karein ya dobara try karein.`);
+          } else {
+              alert(`Code generation failed: ${error.message}`);
+          }
       }
   };
 

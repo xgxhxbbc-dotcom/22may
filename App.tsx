@@ -465,6 +465,9 @@ const App: React.FC = () => {
               // Consecutive Login: Increment
               const prev = updatedUser.streak || 0;
               updatedUser.streak = prev + 1;
+              // SCORE INCREMENT: +10 per consecutive day
+              updatedUser.totalScore = (updatedUser.totalScore || 0) + 10;
+              updatedUser.lastScoreDate = new Date().toISOString();
               // Track longest streak & award 100 credits for new record
               const prevLongest = updatedUser.longestStreak || 0;
               if (updatedUser.streak > prevLongest) {
@@ -487,6 +490,14 @@ const App: React.FC = () => {
               if (!sessionStorage.getItem('nst_streak_popup_shown')) {
                   sessionStorage.setItem('nst_streak_popup_shown', 'true');
                   setStreakLoginPopup({ newStreak: 1, prevStreak: prev > 1 ? prev : 0, isNewRecord: false });
+              }
+              // SCORE PENALTY: Streak break → drop 1 level (import-free inline logic)
+              if (prev > 1) {
+                  const thresholds = [0, 100, 300, 700, 2000, 5000, 10000, 20000];
+                  const cs = updatedUser.totalScore || 0;
+                  let lvl = 0;
+                  for (let i = 0; i < thresholds.length; i++) { if (cs >= thresholds[i]) lvl = i; else break; }
+                  if (lvl > 0) updatedUser.totalScore = thresholds[lvl - 1];
               }
           }
       }
@@ -930,9 +941,12 @@ const App: React.FC = () => {
           const isNowPremium = updatedUser.isPremium;
 
           if (expiredNow || JSON.stringify(updatedUser) !== JSON.stringify(state.user)) {
+               // Clear bonusCredits BEFORE save when subscription just expired
+               if (wasPremium && !isNowPremium && (updatedUser as any).bonusCredits > 0) {
+                   (updatedUser as any).bonusCredits = 0;
+               }
                localStorage.setItem('nst_current_user', JSON.stringify(updatedUser));
                saveUserToLive(updatedUser);
-
                // Handle Expiry Event (Access Lock)
                if (wasPremium && !isNowPremium) {
                    const freeModes = state.settings.appMode?.allowedModesForFree || ['SCHOOL'];

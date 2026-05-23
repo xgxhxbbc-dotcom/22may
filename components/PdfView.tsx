@@ -1174,7 +1174,8 @@ export const PdfView: React.FC<Props> = ({
                   if (user.credits >= pdfCost) {
                       const updatedUser = {
                           ...user, credits: user.credits - pdfCost,
-                          dailyPdfDate: todayStr, dailyPdfCount: dailyCount + 1
+                          dailyPdfDate: todayStr, dailyPdfCount: dailyCount + 1,
+                          totalScore: (user.totalScore || 0) + 3 + pdfCost
                       };
                       localStorage.setItem('nst_current_user', JSON.stringify(updatedUser));
                       saveUserToLive(updatedUser);
@@ -1183,7 +1184,8 @@ export const PdfView: React.FC<Props> = ({
                   // else: let them proceed anyway (don't block for zero balance)
               } else {
                   const updatedUser = {
-                      ...user, dailyPdfDate: todayStr, dailyPdfCount: dailyCount + 1
+                      ...user, dailyPdfDate: todayStr, dailyPdfCount: dailyCount + 1,
+                      totalScore: (user.totalScore || 0) + 3
                   };
                   localStorage.setItem('nst_current_user', JSON.stringify(updatedUser));
                   saveUserToLive(updatedUser);

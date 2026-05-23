@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, CreditPackage, SystemSettings } from '../types';
-import { Crown, Sparkles, Check, Zap, MessageSquare, Lock, Timer, Ticket, ShieldCheck, Star, ChevronRight, Flame } from 'lucide-react';
+import { Crown, Sparkles, Check, Zap, MessageSquare, Lock, Timer, Ticket, ShieldCheck, Star, ChevronRight, Flame, TrendingUp } from 'lucide-react';
+import { getLevelInfo, getNextLevelInfo, getLevelProgress, getScoreDiscountFromScore } from '../utils/levelSystem';
 
 interface Props {
   user: User;
@@ -24,6 +25,12 @@ export const Store: React.FC<Props> = ({ user, settings }) => {
 
   const packages = settings?.packages || DEFAULT_PACKAGES;
   const subscriptionPlans = settings?.subscriptionPlans || [];
+
+  const totalScore = user.totalScore || 0;
+  const scoreDiscount = getScoreDiscountFromScore(totalScore);
+  const scoreTier = getLevelInfo(totalScore);
+  const nextTierInfo = getNextLevelInfo(totalScore);
+  const scoreTierProgress = getLevelProgress(totalScore);
 
   useEffect(() => {
     if (subscriptionPlans.length > 0 && !selectedPlanId) {
@@ -279,6 +286,41 @@ export const Store: React.FC<Props> = ({ user, settings }) => {
           </div>
         )}
 
+        {/* SCORE LEVEL BANNER */}
+        <div className="mb-4 rounded-2xl overflow-hidden border border-white/10">
+          <div className={`bg-gradient-to-r ${scoreTier.gradient} p-0.5`}>
+            <div className="bg-[#0e0e0e] rounded-[14px] p-3.5 flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl flex items-center justify-center shrink-0 text-xl"
+                style={{ background: `${scoreTier.color}22`, boxShadow: `0 0 12px ${scoreTier.glowColor}` }}>
+                {scoreTier.emoji}
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center gap-2 mb-0.5">
+                  <span className="text-xs font-black text-white">Level {scoreTier.level} {scoreTier.label}</span>
+                  <span className="text-[9px] text-slate-400">{totalScore} pts</span>
+                  {scoreDiscount > 0 && (
+                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full text-white`}
+                      style={{ background: `linear-gradient(90deg, ${scoreTier.color}cc, ${scoreTier.color})` }}>
+                      {scoreDiscount}% OFF
+                    </span>
+                  )}
+                </div>
+                {nextTierInfo ? (
+                  <p className="text-[10px] text-slate-400">
+                    {nextTierInfo.minScore - totalScore} aur → Level {nextTierInfo.level} {nextTierInfo.emoji} ({nextTierInfo.discount}% OFF)
+                  </p>
+                ) : (
+                  <p className="text-[10px] text-amber-400">Max Level — 30% discount unlocked! 🏆</p>
+                )}
+                <div className="mt-1.5 h-1 bg-white/10 rounded-full overflow-hidden">
+                  <div className={`h-full bg-gradient-to-r ${scoreTier.gradient} rounded-full transition-all`}
+                    style={{ width: `${scoreTierProgress}%` }} />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         {/* PERSONAL DISCOUNT BANNER */}
         {user.storeDiscount && user.storeDiscount > 0 && (
           <div className="mb-5 p-3.5 rounded-2xl bg-gradient-to-r from-rose-900/50 to-pink-900/50 border border-rose-500/40 flex items-center gap-3 animate-in fade-in">
@@ -325,6 +367,7 @@ export const Store: React.FC<Props> = ({ user, settings }) => {
             if (activeEvent && event?.discountPercent) discountPercentVal += event.discountPercent;
             if (isSubscribed) discountPercentVal += 5;
             if (user.storeDiscount) discountPercentVal += user.storeDiscount;
+            if (scoreDiscount > 0) discountPercentVal += scoreDiscount;
             if (discountPercentVal > 0) {
               if (discountPercentVal > 100) discountPercentVal = 100;
               price = Math.round(price * (1 - discountPercentVal / 100));
@@ -397,6 +440,7 @@ export const Store: React.FC<Props> = ({ user, settings }) => {
               if (activeEvent && event?.discountPercent) discountPercentVal += event.discountPercent;
               if (isSubscribed) discountPercentVal += 5;
               if (user.storeDiscount) discountPercentVal += user.storeDiscount;
+              if (scoreDiscount > 0) discountPercentVal += scoreDiscount;
               if (discountPercentVal > 0) {
                 if (discountPercentVal > 100) discountPercentVal = 100;
                 finalPrice = Math.round(finalPrice * (1 - discountPercentVal / 100));
@@ -447,6 +491,7 @@ export const Store: React.FC<Props> = ({ user, settings }) => {
             if (activeEvent && event?.discountPercent) creditDiscount += event.discountPercent;
             if (isSubscribed) creditDiscount += 5;
             if (user.storeDiscount) creditDiscount += user.storeDiscount;
+            if (scoreDiscount > 0) creditDiscount += scoreDiscount;
             if (creditDiscount > 0) {
               if (creditDiscount > 100) creditDiscount = 100;
               finalPrice = Math.round(pkg.price * (1 - creditDiscount / 100));

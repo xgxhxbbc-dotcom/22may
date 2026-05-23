@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { Gift, ArrowRight, AlertCircle, CheckCircle, Map, ExternalLink, X } from 'lucide-react';
 import { User, SystemSettings, SubscriptionHistoryEntry } from '../types';
+import { SUBSCRIPTION_BONUS } from '../utils/levelSystem';
 import { ref, get, update, runTransaction } from "firebase/database";
 import { doc, getDoc, updateDoc } from "firebase/firestore";
 import { rtdb, db, saveUserToLive } from "../firebase";
@@ -169,7 +170,8 @@ export const RedeemSection: React.FC<Props> = ({ user, onSuccess }) => {
         // 3. APPLY REWARD TO USER
         let updatedUser = { 
             ...user, 
-            redeemedCodes: [...(user.redeemedCodes || []), targetCode.code] 
+            redeemedCodes: [...(user.redeemedCodes || []), targetCode.code],
+            totalScore: (user.totalScore || 0) + 5  // +5 score for any redeem code
         };
         let successMessage = '';
 
@@ -221,8 +223,16 @@ export const RedeemSection: React.FC<Props> = ({ user, onSuccess }) => {
                 grantSource: 'REWARD' // Via Code
             };
             updatedUser.subscriptionHistory = [historyEntry, ...(updatedUser.subscriptionHistory || [])];
+
+            // Subscription bonus: +100 score + bonusCredits
+            const bonusKey = `${subTier}_${subLevel}`;
+            const bonus = SUBSCRIPTION_BONUS[bonusKey] || { score: 100, bonusCredits: 0 };
+            updatedUser.totalScore = (updatedUser.totalScore || 0) + bonus.score;
+            if (bonus.bonusCredits > 0) {
+                updatedUser.bonusCredits = (updatedUser.bonusCredits || 0) + bonus.bonusCredits;
+            }
             
-            successMessage = `Success! Unlocked ${subTier} ${subLevel} Plan!`;
+            successMessage = `Success! Unlocked ${subTier} ${subLevel} Plan!${bonus.bonusCredits > 0 ? ` +${bonus.bonusCredits} Bonus Credits!` : ''} (+${bonus.score} Score)`;
 
         } else if (targetCode.type === 'DISCOUNT') {
             // Handle Discount Coupon

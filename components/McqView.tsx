@@ -799,6 +799,9 @@ export const McqView: React.FC<Props> = ({
       }
       updatedUser.progress[subjectId] = progress;
 
+      // Add activity score (+2 per MCQ attempted, max 20 per session)
+      updatedUser.totalScore = (updatedUser.totalScore || 0) + Math.min(attemptsCount * 2, 20);
+
       // 5. Save & Sync
       onUpdateUser(updatedUser); 
       localStorage.setItem('nst_current_user', JSON.stringify(updatedUser));

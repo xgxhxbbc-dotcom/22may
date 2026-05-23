@@ -99,6 +99,10 @@ export const AudioPlaylistView: React.FC<Props> = ({
       if (price === 0) hasAccess = true;
 
       if (hasAccess) {
+          const scoredUser = { ...user, totalScore: (user.totalScore || 0) + 2 };
+          localStorage.setItem('nst_current_user', JSON.stringify(scoredUser));
+          saveUserToLive(scoredUser);
+          onUpdateUser(scoredUser);
           onPlayAudio(track);
           return;
       }
@@ -116,7 +120,7 @@ export const AudioPlaylistView: React.FC<Props> = ({
   };
 
   const processPaymentAndPlay = (track: any, price: number, enableAuto: boolean = false) => {
-      let updatedUser = { ...user, credits: user.credits - price };
+      let updatedUser = { ...user, credits: user.credits - price, totalScore: (user.totalScore || 0) + 2 + price };
       if (enableAuto) updatedUser.isAutoDeductEnabled = true;
 
       localStorage.setItem('nst_current_user', JSON.stringify(updatedUser));
