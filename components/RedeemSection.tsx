@@ -258,6 +258,11 @@ export const RedeemSection: React.FC<Props> = ({ user, onSuccess }) => {
             const color = targetCode.effectColor || '#fbbf24';
             (updatedUser as any).topBarEffectColor = color;
             successMessage = `🎨 Top Bar Effect Color applied! Your app now glows with a custom shimmer.`;
+        } else if (targetCode.type === 'SCORE') {
+            // Handle Score Points code
+            const scoreAmount = (targetCode as any).scoreAmount || 100;
+            updatedUser.totalScore = (updatedUser.totalScore || 0) + scoreAmount;
+            successMessage = `⭐ Score Mila! +${scoreAmount} Points aapke account mein add ho gaye!`;
         } else if (targetCode.type === 'SCORE_BOOST') {
             // Handle Score Booster code
             const boostPct = (targetCode as any).scoreBoostPercent || 10;
@@ -266,6 +271,13 @@ export const RedeemSection: React.FC<Props> = ({ user, onSuccess }) => {
             (updatedUser as any).scoreBoostPercent = boostPct;
             (updatedUser as any).scoreBoostExpiry = expiry;
             successMessage = `🚀 Score Boost Activated! +${boostPct}% extra score for the next ${durationHrs} hour${durationHrs === 1 ? '' : 's'}!`;
+        } else if (targetCode.type === 'SCORE_LIMIT_BOOST') {
+            // Handle Daily Score Limit Boost — permanently increases the user's daily limit by %
+            const limitBoostPct = (targetCode as any).scoreLimitBoostPercent || 10;
+            const prevBoost = (updatedUser as any).scoreLimitBoostPercent || 0;
+            // Stacks additively with previous boosts
+            (updatedUser as any).scoreLimitBoostPercent = prevBoost + limitBoostPct;
+            successMessage = `📈 Daily Score Limit Boost! +${limitBoostPct}% limit badh gayi permanently! (Total Boost: ${prevBoost + limitBoostPct}%)`;
         } else {
             // Handle Credits (Default)
             const amount = targetCode.amount || 0;

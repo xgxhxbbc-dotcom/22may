@@ -64,7 +64,10 @@ export const Store: React.FC<Props> = ({ user, settings }) => {
 
   const activeEvent = isEventActive();
   const inCooldown = isCooldownPhase();
-  const showEventBanner = (activeEvent || inCooldown) && ((isSubscribed && event?.showToPremiumUsers) || (!isSubscribed && event?.showToFreeUsers));
+  const showEventBanner = (activeEvent || inCooldown) && (
+    (isSubscribed && (event?.showToPremiumUsers ?? true)) ||
+    (!isSubscribed && (event?.showToFreeUsers ?? true))
+  );
 
   const [timeLeft, setTimeLeft] = useState<{days: number, hours: number, minutes: number, seconds: number} | null>(null);
 
@@ -310,7 +313,7 @@ export const Store: React.FC<Props> = ({ user, settings }) => {
                     {nextTierInfo.minScore - totalScore} aur → Level {nextTierInfo.level} {nextTierInfo.emoji} ({nextTierInfo.discount}% OFF)
                   </p>
                 ) : (
-                  <p className="text-[10px] text-amber-400">Max Level — 30% discount unlocked! 🏆</p>
+                  <p className="text-[10px] text-amber-400">Max Level (Legend) — 30% discount unlocked! 🏆</p>
                 )}
                 <div className="mt-1.5 h-1 bg-white/10 rounded-full overflow-hidden">
                   <div className={`h-full bg-gradient-to-r ${scoreTier.gradient} rounded-full transition-all`}

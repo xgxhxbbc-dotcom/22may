@@ -18,8 +18,8 @@ export const LEVEL_INFO: LevelInfo[] = [
   { level: 4, minScore: 700,   label: 'Expert',     emoji: '🔥', color: '#f97316', gradient: 'from-orange-400 to-red-500',                 glowColor: 'rgba(249,115,22,0.65)', discount: 10, animationIntensity: 2, nameColor: '#f97316' },
   { level: 5, minScore: 2000,  label: 'Master',     emoji: '💎', color: '#a855f7', gradient: 'from-violet-400 to-purple-600',              glowColor: 'rgba(168,85,247,0.7)',  discount: 15, animationIntensity: 3, nameColor: '#a855f7' },
   { level: 6, minScore: 5000,  label: 'Elite',      emoji: '🌟', color: '#eab308', gradient: 'from-yellow-400 to-amber-500',               glowColor: 'rgba(234,179,8,0.75)',  discount: 20, animationIntensity: 3, nameColor: '#eab308' },
-  { level: 7, minScore: 10000, label: 'Champion',   emoji: '👑', color: '#f59e0b', gradient: 'from-amber-400 to-orange-400',               glowColor: 'rgba(245,158,11,0.8)',  discount: 20, animationIntensity: 3, nameColor: '#f59e0b' },
-  { level: 8, minScore: 20000, label: 'Legend',     emoji: '🏆', color: '#10b981', gradient: 'from-emerald-400 via-cyan-400 to-violet-500', glowColor: 'rgba(16,185,129,0.9)', discount: 20, animationIntensity: 4, nameColor: '#10b981' },
+  { level: 7, minScore: 10000, label: 'Champion',   emoji: '👑', color: '#f59e0b', gradient: 'from-amber-400 to-orange-400',               glowColor: 'rgba(245,158,11,0.8)',  discount: 25, animationIntensity: 3, nameColor: '#f59e0b' },
+  { level: 8, minScore: 20000, label: 'Legend',     emoji: '🏆', color: '#10b981', gradient: 'from-emerald-400 via-cyan-400 to-violet-500', glowColor: 'rgba(16,185,129,0.9)', discount: 30, animationIntensity: 4, nameColor: '#10b981' },
 ];
 
 export const MAX_LEVEL = 8;

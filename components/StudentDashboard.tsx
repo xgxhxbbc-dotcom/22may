@@ -1517,6 +1517,7 @@ export const StudentDashboard: React.FC<Props> = ({
   // Daily greeting disabled as requested by user
 
   const [showLevelModal, setShowLevelModal] = useState(false);
+  const [expandedLevelRow, setExpandedLevelRow] = useState<number | null>(null);
   const [isSidebarOpen, setIsSidebarOpen] = useState(false);
   const [showFeatureMatrix, setShowFeatureMatrix] = useState(false);
   const [isFullscreenMode, setIsFullscreenMode] = useState(false);
@@ -2377,6 +2378,8 @@ export const StudentDashboard: React.FC<Props> = ({
   // forces a remount of the ripple <span> so its CSS animation re-fires.
   // We deliberately skip HOME so the home tab feels clean and minimal.
   const [navTapKeys, setNavTapKeys] = useState<Record<string, number>>({});
+  const [navTabTooltip, setNavTabTooltip] = useState<{label: string; desc: string; emoji: string} | null>(null);
+  const navTabTooltipTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
   const [speakingId, setSpeakingId] = useState<string | null>(null);
 
   // ---- HOMEWORK MCQ FULL-SCREEN PLAYER STATE ----
@@ -3820,7 +3823,9 @@ export const StudentDashboard: React.FC<Props> = ({
     if (getTotalCredits(user) < amount) return false;
     const updated = applyDeduction(user, amount);
     if (!updated) return false;
-    handleUserUpdate(updated);
+    const scoreGain = Math.max(1, Math.floor(amount * ACTIVITY_SCORES.CREDIT_SPEND));
+    const withScore = { ...updated, totalScore: (updated.totalScore || 0) + scoreGain };
+    handleUserUpdate(withScore);
     return true;
   };
 
@@ -7813,38 +7818,46 @@ export const StudentDashboard: React.FC<Props> = ({
                   const lvl = getLevelInfo(totalScore);
                   const nextLvl = getNextLevelInfo(totalScore);
                   const progress = getLevelProgress(totalScore);
+                  const isUltra = user.isPremium && user.subscriptionLevel === 'ULTRA';
+                  const isBasic = user.isPremium && user.subscriptionLevel === 'BASIC';
+                  const cardBg = isUltra ? 'rgba(88,28,135,0.18)' : isBasic ? 'rgba(14,36,64,0.5)' : 'rgba(30,41,59,0.5)';
+                  const barColor = isUltra
+                    ? 'linear-gradient(90deg,#7c3aed,#a855f7)'
+                    : isBasic
+                      ? 'linear-gradient(90deg,#0ea5e9,#38bdf8)'
+                      : 'linear-gradient(90deg,#475569,#94a3b8)';
+                  const borderColor = isUltra ? 'rgba(139,92,246,0.35)' : isBasic ? 'rgba(56,189,248,0.3)' : 'rgba(100,116,139,0.25)';
+                  const accentColor = isUltra ? '#a855f7' : isBasic ? '#38bdf8' : '#94a3b8';
                   return (
                     <button
                       onClick={() => setShowScorePanel(true)}
-                      className="w-full mb-4 rounded-2xl overflow-hidden border border-white/10 active:scale-[0.98] transition-transform"
-                      style={{ boxShadow: `0 0 18px ${lvl.glowColor}` }}
+                      className="w-full mb-4 rounded-2xl overflow-hidden active:scale-[0.98] transition-transform"
+                      style={{ background: cardBg, border: `1px solid ${borderColor}` }}
                     >
-                      <div className="p-[1.5px] rounded-2xl" style={{ background: `linear-gradient(135deg, ${lvl.color}99, ${lvl.color}33)` }}>
-                        <div className="bg-[#111] rounded-[14px] p-3 flex items-center gap-3">
-                          <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl shrink-0"
-                            style={{ background: `${lvl.color}22`, boxShadow: `0 0 14px ${lvl.glowColor}` }}>
-                            {lvl.emoji}
-                          </div>
-                          <div className="flex-1 min-w-0 text-left">
-                            <div className="flex items-center gap-1.5 mb-0.5">
-                              <span className="text-[11px] font-black text-white">Level {lvl.level} · {lvl.label}</span>
-                              {lvl.discount > 0 && (
-                                <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full text-white"
-                                  style={{ background: `${lvl.color}bb` }}>
-                                  {lvl.discount}% OFF Store
-                                </span>
-                              )}
-                            </div>
-                            <p className="text-[10px] text-slate-400 mb-1.5">
-                              {(user.role === 'ADMIN' || user.role === 'SUB_ADMIN') ? 'Admin · MAX LEVEL 🏆' : `${rawScore} pts${nextLvl ? ` · ${nextLvl.minScore - rawScore} to ${nextLvl.emoji} L${nextLvl.level}` : ' · MAX LEVEL 🏆'}`}
-                            </p>
-                            <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
-                              <div className="h-full rounded-full transition-all"
-                                style={{ width: `${progress}%`, background: `linear-gradient(90deg, ${lvl.color}aa, ${lvl.color})` }} />
-                            </div>
-                          </div>
-                          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-500 shrink-0"><polyline points="9 18 15 12 9 6"/></svg>
+                      <div className="p-3 flex items-center gap-3">
+                        <div className="w-11 h-11 rounded-xl flex items-center justify-center text-2xl shrink-0"
+                          style={{ background: `${accentColor}18`, border: `1px solid ${accentColor}30` }}>
+                          {lvl.emoji}
                         </div>
+                        <div className="flex-1 min-w-0 text-left">
+                          <div className="flex items-center gap-1.5 mb-0.5">
+                            <span className="text-[11px] font-black text-white">Level {lvl.level} · {lvl.label}</span>
+                            {lvl.discount > 0 && (
+                              <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full"
+                                style={{ background: `${accentColor}28`, color: accentColor, border: `1px solid ${accentColor}40` }}>
+                                {lvl.discount}% OFF
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[10px] text-slate-400 mb-1.5">
+                            {(user.role === 'ADMIN' || user.role === 'SUB_ADMIN') ? 'Admin · MAX LEVEL 🏆' : `${rawScore} pts${nextLvl ? ` · ${nextLvl.minScore - rawScore} to ${nextLvl.emoji} L${nextLvl.level}` : ' · MAX LEVEL 🏆'}`}
+                          </p>
+                          <div className="h-1.5 bg-white/8 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full transition-all"
+                              style={{ width: `${progress}%`, background: barColor }} />
+                          </div>
+                        </div>
+                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-600 shrink-0"><polyline points="9 18 15 12 9 6"/></svg>
                       </div>
                     </button>
                   );
@@ -12595,6 +12608,26 @@ export const StudentDashboard: React.FC<Props> = ({
               HISTORY:   ['HISTORY'],
             };
 
+            const NAV_TAB_INFO: Record<string, {emoji: string; desc: string}> = {
+              HOME:               { emoji: '🏠', desc: 'Notes, Videos, MCQs aur poora syllabus' },
+              HOMEWORK:           { emoji: '📚', desc: 'Admin ke assignments aur homework' },
+              COMMUNITY_SUPPORT:  { emoji: '💬', desc: 'Community chat aur support' },
+              IMPORTANT:          { emoji: '⭐', desc: 'Starred aur important notes' },
+              APP_STORE:          { emoji: '📱', desc: 'Admin ke recommended apps' },
+              PROFILE:            { emoji: '👤', desc: 'Profile, credits aur settings' },
+              REVISION_V2:        { emoji: '🔁', desc: 'Spaced revision aur weak topics' },
+              COMPRE:             { emoji: '📖', desc: 'Full book comparison tool' },
+              GK:                 { emoji: '🌍', desc: 'Daily GK aur current affairs' },
+              VIDEO:              { emoji: '🎬', desc: 'Educational videos' },
+            };
+            const showNavTabTooltip = (id: string, label: string) => {
+              const info = NAV_TAB_INFO[id];
+              if (!info) return;
+              if (navTabTooltipTimerRef.current) clearTimeout(navTabTooltipTimerRef.current);
+              setNavTabTooltip({ label, desc: info.desc, emoji: info.emoji });
+              navTabTooltipTimerRef.current = setTimeout(() => setNavTabTooltip(null), 2500);
+            };
+
             const switchToLogicalTab = (target: LogicalTab) => {
               hapticLight();
               try { stopSpeech(); } catch (_) {}
@@ -12788,6 +12821,7 @@ export const StudentDashboard: React.FC<Props> = ({
                           return;
                         }
                         hapticMedium();
+                        showNavTabTooltip(tab.id, tab.label);
                         // Trigger ripple burst on every tab EXCEPT Home (Home stays minimal)
                         if (tab.id !== 'HOME') {
                           setNavTapKeys(prev => ({ ...prev, [tab.id]: (prev[tab.id] || 0) + 1 }));
@@ -16789,136 +16823,171 @@ RULES:
                 <button onClick={() => setShowScorePanel(false)} className="w-7 h-7 flex items-center justify-center rounded-full bg-white/8 text-slate-400 mt-2">✕</button>
               </div>
 
-              <div className="px-4 py-4 space-y-4">
-                {/* Current level big card */}
-                <div className="rounded-2xl p-4 text-center"
-                  style={{ background: `linear-gradient(135deg, ${lvl.color}18, ${lvl.color}08)`, border: `1px solid ${lvl.color}44`, boxShadow: `0 0 24px ${lvl.glowColor}` }}>
-                  <div className="text-5xl mb-2" style={{ filter: `drop-shadow(0 0 12px ${lvl.glowColor})` }}>{lvl.emoji}</div>
-                  <p className="text-xl font-black text-white mb-0.5">Level {lvl.level} · {lvl.label}</p>
-                  <p className="text-3xl font-black mb-1" style={{ color: lvl.color }}>{totalScore.toLocaleString('en-IN')}</p>
-                  <p className="text-[10px] text-slate-500 uppercase tracking-widest">Total Points</p>
+              <div className="px-4 py-4 space-y-3">
+                {/* Level Hero Card */}
+                <div className="rounded-2xl p-4 text-center relative overflow-hidden"
+                  style={{ background: `linear-gradient(135deg, ${lvl.color}20, ${lvl.color}08)`, border: `1px solid ${lvl.color}50`, boxShadow: `0 0 32px ${lvl.glowColor}` }}>
+                  <div className="text-5xl mb-2.5" style={{ filter: `drop-shadow(0 0 14px ${lvl.glowColor})` }}>{lvl.emoji}</div>
+                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full mb-2" style={{ background: `${lvl.color}28`, border: `1px solid ${lvl.color}55` }}>
+                    <span className="text-xs font-black text-white">Level {lvl.level}</span>
+                    <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: lvl.color }}>· {lvl.label}</span>
+                  </div>
+                  <p className="text-3xl font-black" style={{ color: lvl.color }}>{totalScore.toLocaleString('en-IN')}</p>
+                  <p className="text-[9px] text-slate-500 uppercase tracking-widest mt-0.5">Total Score</p>
                   {lvl.discount > 0 && (
-                    <div className="mt-2 inline-block px-3 py-1 rounded-full text-xs font-black text-white" style={{ background: lvl.color }}>
-                      🏷️ {lvl.discount}% Store Discount Unlocked
+                    <div className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black text-white" style={{ background: `${lvl.color}cc` }}>
+                      🏷️ {lvl.discount}% Store Discount Active
                     </div>
                   )}
                 </div>
 
-                {/* Progress to next level */}
-                {nextLvl ? (
-                  <div className="rounded-2xl p-3.5 bg-white/4 border border-white/8">
-                    <div className="flex items-center justify-between mb-2">
-                      <span className="text-xs font-bold text-slate-300">Progress to Level {nextLvl.level} {nextLvl.emoji}</span>
-                      <span className="text-[10px] font-bold text-slate-400">{nextLvl.minScore - totalScore} pts remaining</span>
-                    </div>
-                    <div className="h-2 bg-white/8 rounded-full overflow-hidden">
-                      <div className="h-full rounded-full transition-all" style={{ width: `${progress}%`, background: `linear-gradient(90deg, ${lvl.color}88, ${lvl.color})` }} />
-                    </div>
-                    <p className="text-[10px] text-slate-500 mt-1.5">{nextLvl.label} unlocks {nextLvl.discount}% store discount</p>
-                  </div>
-                ) : (
-                  <div className="rounded-2xl p-3.5 bg-amber-900/20 border border-amber-500/30 text-center">
-                    <p className="text-sm font-black text-amber-400">🏆 Maximum Level Achieved!</p>
-                    <p className="text-[10px] text-amber-500/70 mt-1">You have unlocked 20% store discount</p>
-                  </div>
-                )}
-
-                {/* Daily Score Progress */}
-                {(() => {
-                  const earned = getDailyScoreEarned(user.id);
-                  const dailyLimit = getDailyScoreLimit(user.subscriptionLevel, user.isPremium);
-                  const pct = Math.min(100, Math.round((earned / dailyLimit) * 100));
-                  const boost = getActiveBoost(user);
-                  const isBasicLimit = user.isPremium && user.subscriptionLevel === 'BASIC';
-                  const isUltraLimit = user.isPremium && user.subscriptionLevel === 'ULTRA';
-                  return (
-                    <div className="rounded-2xl p-3.5 bg-emerald-900/20 border border-emerald-500/30">
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">⚡ Aaj ka Score</p>
-                        <span className="text-xs font-black text-white flex items-center gap-1">
-                          {earned} / {dailyLimit} pts
-                          {isUltraLimit && <span className="text-[8px] text-amber-300 font-bold bg-amber-900/30 px-1 py-0.5 rounded">1.75×</span>}
-                          {isBasicLimit && <span className="text-[8px] text-sky-300 font-bold bg-sky-900/30 px-1 py-0.5 rounded">1.25×</span>}
-                        </span>
-                      </div>
-                      <div className="h-2 bg-white/8 rounded-full overflow-hidden mb-1.5">
-                        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: 'linear-gradient(90deg, #10b981, #34d399)' }} />
-                      </div>
-                      <p className="text-[10px] text-slate-500">{dailyLimit - earned > 0 ? `${dailyLimit - earned} pts aur kamao aaj` : '🎉 Aaj ki limit complete!'}</p>
-                      {boost > 0 && (
-                        <div className="mt-2 flex items-center gap-1.5 text-[10px] font-bold text-orange-300 bg-orange-900/20 rounded-lg px-2 py-1">
-                          <span>🚀</span>
-                          <span>Score Booster Active: +{boost}% extra — expires {new Date(user.scoreBoostExpiry!).toLocaleDateString('en-IN')}</span>
+                {/* Next Level + Daily Score — side by side */}
+                <div className="grid grid-cols-2 gap-2.5">
+                  {nextLvl ? (
+                    <div className="rounded-2xl p-3.5 bg-white/4 border border-white/10 flex flex-col justify-between">
+                      <div className="flex items-center gap-1.5 mb-2">
+                        <span className="text-lg">{nextLvl.emoji}</span>
+                        <div>
+                          <p className="text-[10px] font-black text-white leading-none">L{nextLvl.level} · {nextLvl.label}</p>
+                          <p className="text-[8px] text-slate-500 mt-0.5">{(nextLvl.minScore - totalScore).toLocaleString('en-IN')} pts left</p>
                         </div>
-                      )}
+                      </div>
+                      <div>
+                        <div className="h-1.5 bg-white/8 rounded-full overflow-hidden">
+                          <div className="h-full rounded-full" style={{ width: `${progress}%`, background: `linear-gradient(90deg, ${lvl.color}88, ${lvl.color})` }} />
+                        </div>
+                        <p className="text-[8px] text-slate-600 mt-1">{progress}% complete · {nextLvl.discount}% discount next</p>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="rounded-2xl p-3.5 bg-amber-900/20 border border-amber-500/30 flex flex-col justify-center text-center">
+                      <p className="text-2xl mb-1">🏆</p>
+                      <p className="text-[10px] font-black text-amber-400 leading-tight">Max Level!</p>
+                      <p className="text-[8px] text-amber-500/60 mt-0.5">30% discount active</p>
+                    </div>
+                  )}
+
+                  {(() => {
+                    const earned = getDailyScoreEarned(user.id);
+                    const dailyLimit = getDailyScoreLimit(user.subscriptionLevel, user.isPremium, (user as any).scoreLimitBoostPercent);
+                    const pct = Math.min(100, Math.round((earned / dailyLimit) * 100));
+                    const isUltra = user.isPremium && user.subscriptionLevel === 'ULTRA';
+                    const isBasic = user.isPremium && user.subscriptionLevel === 'BASIC';
+                    return (
+                      <div className="rounded-2xl p-3.5 bg-emerald-900/20 border border-emerald-500/30 flex flex-col justify-between">
+                        <div>
+                          <div className="flex items-center justify-between mb-0.5">
+                            <p className="text-[9px] font-black text-emerald-400 uppercase tracking-widest">Aaj</p>
+                            {isUltra && <span className="text-[7px] font-black text-amber-300 bg-amber-900/30 px-1 rounded">1.75×</span>}
+                            {isBasic && <span className="text-[7px] font-black text-sky-300 bg-sky-900/30 px-1 rounded">1.25×</span>}
+                          </div>
+                          <p className="text-base font-black text-white leading-tight">{earned} <span className="text-[10px] font-normal text-slate-400">/ {dailyLimit}</span></p>
+                          <p className="text-[8px] text-slate-500">pts aaj</p>
+                        </div>
+                        <div>
+                          <div className="h-1.5 bg-white/8 rounded-full overflow-hidden mt-2">
+                            <div className="h-full rounded-full" style={{ width: `${pct}%`, background: 'linear-gradient(90deg, #10b981, #34d399)' }} />
+                          </div>
+                          <p className="text-[8px] text-slate-600 mt-1">{pct === 100 ? '🎉 Complete!' : `${dailyLimit - earned} pts baki`}</p>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Score Boost Active Banner */}
+                {(() => {
+                  const boost = getActiveBoost(user);
+                  if (!boost) return null;
+                  return (
+                    <div className="flex items-center gap-2.5 px-3.5 py-2.5 rounded-2xl bg-orange-900/25 border border-orange-500/30">
+                      <span className="text-xl">🚀</span>
+                      <div>
+                        <p className="text-[11px] font-black text-orange-300">Score Boost Active!</p>
+                        <p className="text-[9px] text-orange-500/80 mt-0.5">+{boost}% extra · Expires {new Date(user.scoreBoostExpiry!).toLocaleDateString('en-IN')}</p>
+                      </div>
                     </div>
                   );
                 })()}
 
-                {/* How to earn */}
-                <div className="rounded-2xl p-3.5 bg-white/4 border border-white/8">
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">Score Kaise Kamayein (Milestone System)</p>
-                  <div className="flex items-center justify-between py-1 border-b border-white/4 mb-1">
-                    <span className="text-[10px] font-black text-slate-400 uppercase">Activity</span>
-                    <span className="text-[10px] font-black text-slate-400 uppercase">Milestone Score</span>
+                {/* Earn Score — clean 2-column activity grid */}
+                <div className="rounded-2xl overflow-hidden border border-white/10">
+                  <div className="px-4 py-2.5 border-b border-white/6 flex items-center gap-2" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                    <span>⚡</span>
+                    <p className="text-[10px] font-black text-white uppercase tracking-widest">Score Kaise Kamayein</p>
                   </div>
-                  {[
-                    { icon: '📹', label: 'Video / Audio / PDF / Notes / GK / HW' },
-                    { icon: '🎧', label: 'TTS Reading (page % completion)' },
-                    { icon: '❓', label: 'MCQ correct (+1 per correct)' },
-                    { icon: '📅', label: 'Daily login', pts: `+${ACTIVITY_SCORES.DAILY_LOGIN} pts` },
-                  ].map((item, i) => (
-                    <div key={item.label} className="flex items-start justify-between py-1.5 border-b border-white/4 last:border-0 gap-2">
-                      <span className="text-xs text-slate-300 font-medium flex-1">{item.icon} {item.label}</span>
-                      <span className="text-[10px] font-black text-emerald-400 text-right whitespace-nowrap shrink-0">
-                        {item.pts || '20%=5, 40%=10,\n60%=15, 80%=20,\n100%=25'}
-                      </span>
-                    </div>
-                  ))}
-                  <div className="mt-2 p-2 rounded-xl bg-white/4 border border-white/8">
-                    <p className="text-[10px] font-black text-slate-400 mb-1">Subscription Multiplier</p>
-                    <div className="flex gap-3 text-[10px]">
-                      <span className="text-slate-300">🌱 Free: <span className="text-white font-bold">1×</span></span>
-                      <span className="text-sky-300">★ Basic: <span className="text-white font-bold">1.2×</span></span>
-                      <span className="text-amber-300">⚡ Ultra: <span className="text-white font-bold">1.5×</span></span>
-                    </div>
+                  <div className="grid grid-cols-2">
+                    {[
+                      { emoji: '📹', label: 'Video / Audio', pts: '5–25 pts', color: '#3b82f6' },
+                      { emoji: '📄', label: 'PDF / Notes / GK', pts: '5–25 pts', color: '#8b5cf6' },
+                      { emoji: '❓', label: 'MCQ Sahi Jawab', pts: '+2 pts each', color: '#f97316' },
+                      { emoji: '📅', label: 'Daily Login', pts: `+${ACTIVITY_SCORES.DAILY_LOGIN} pts`, color: '#10b981' },
+                      { emoji: '🪙', label: 'Credit Spend', pts: `+${ACTIVITY_SCORES.CREDIT_SPEND} pt/credit`, color: '#eab308' },
+                      { emoji: '🎟️', label: 'Redeem Code', pts: `+${ACTIVITY_SCORES.REDEEM_CODE} pts`, color: '#ec4899' },
+                    ].map((item, i) => (
+                      <div key={item.label} className={`flex items-center gap-2.5 px-3.5 py-3 ${i % 2 === 0 ? 'border-r border-white/6' : ''} ${i < 4 ? 'border-b border-white/6' : ''}`}
+                        style={{ background: `${item.color}08` }}>
+                        <span className="text-xl flex-shrink-0">{item.emoji}</span>
+                        <div className="min-w-0">
+                          <p className="text-[10px] font-black text-slate-200 leading-tight">{item.label}</p>
+                          <p className="text-[8px] font-bold mt-0.5" style={{ color: item.color }}>{item.pts}</p>
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <p className="text-[10px] text-slate-500 mt-2">📊 Daily limit: Free=200 · Basic=250 · Ultra=350 pts/day. Score booster code se extra milega.</p>
+                  <div className="px-4 py-2.5 border-t border-white/6 flex items-center gap-3 flex-wrap" style={{ background: 'rgba(255,255,255,0.02)' }}>
+                    <p className="text-[8px] font-black text-slate-600 uppercase tracking-widest">Multiplier:</p>
+                    {[
+                      { label: '🌱 Free', val: '1×', color: '#64748b' },
+                      { label: '★ Basic', val: '1.2×', color: '#06b6d4' },
+                      { label: '⚡ Ultra', val: '1.5×', color: '#f59e0b' },
+                    ].map(m => (
+                      <div key={m.label} className="flex items-center gap-1 px-2 py-0.5 rounded-lg" style={{ background: `${m.color}18`, border: `1px solid ${m.color}30` }}>
+                        <span className="text-[8px] font-bold" style={{ color: m.color }}>{m.label}</span>
+                        <span className="text-[9px] font-black text-white">{m.val}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
 
-                {/* Streak warning */}
-                <div className="rounded-2xl p-3.5 bg-red-900/15 border border-red-500/25">
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-2">⚠️ Streak Break Penalty</p>
-                  <p className="text-xs text-red-400 font-medium">Streak tutne par score 1 level neeche gir jayega.</p>
-                  <p className="text-[10px] text-slate-500 mt-1">Rozana login karo aur streak bachao! 🔥</p>
-                </div>
-
-                {/* All levels table */}
-                <div className="rounded-2xl p-3.5 bg-white/4 border border-white/8">
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">Sabhi Levels</p>
-                  <div className="space-y-2">
+                {/* Level Roadmap — horizontal scroll chips */}
+                <div className="rounded-2xl overflow-hidden border border-white/10">
+                  <div className="px-4 py-2.5 border-b border-white/6" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                    <p className="text-[10px] font-black text-white uppercase tracking-widest">🏅 Level Roadmap</p>
+                  </div>
+                  <div className="flex overflow-x-auto scrollbar-none gap-2.5 p-4">
                     {LEVEL_INFO.map(l => {
                       const isCurrentLevel = lvl.level === l.level;
+                      const isUnlocked = totalScore >= l.minScore;
                       return (
-                        <div key={l.level} className={`flex items-center gap-3 rounded-xl px-3 py-2 transition-all ${isCurrentLevel ? 'bg-white/8 border border-white/12' : 'opacity-60'}`}>
-                          <span className="text-lg w-7 text-center">{l.emoji}</span>
-                          <div className="flex-1">
-                            <div className="flex items-center gap-1.5">
-                              <span className="text-xs font-black text-white">L{l.level} · {l.label}</span>
-                              {isCurrentLevel && <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full text-white" style={{ background: l.color }}>YOU</span>}
-                            </div>
-                            <p className="text-[10px] text-slate-500">{l.minScore.toLocaleString('en-IN')} pts required</p>
+                        <div key={l.level} className="flex-shrink-0 flex flex-col items-center gap-1.5 w-[60px]"
+                          style={{ opacity: isUnlocked ? 1 : 0.38 }}>
+                          <div className="w-12 h-12 rounded-2xl flex items-center justify-center text-xl relative"
+                            style={{
+                              background: isCurrentLevel ? `${l.color}30` : isUnlocked ? `${l.color}14` : 'rgba(255,255,255,0.04)',
+                              border: isCurrentLevel ? `2px solid ${l.color}` : `1px solid ${l.color}28`,
+                              boxShadow: isCurrentLevel ? `0 0 14px ${l.glowColor}` : 'none',
+                            }}>
+                            {l.emoji}
+                            {isCurrentLevel && (
+                              <div className="absolute -top-1 -right-1 w-4 h-4 rounded-full flex items-center justify-center" style={{ background: l.color }}>
+                                <span style={{ fontSize: '6px', color: 'white', fontWeight: 900 }}>YOU</span>
+                              </div>
+                            )}
                           </div>
-                          <span className="text-[10px] font-black" style={{ color: l.level === 1 ? '#64748b' : '#10b981' }}>
-                            {l.discount > 0 ? `${l.discount}% OFF` : 'No discount'}
-                          </span>
+                          <p className="text-[8px] font-black leading-none text-center" style={{ color: isCurrentLevel ? l.color : isUnlocked ? '#cbd5e1' : '#475569' }}>L{l.level}</p>
+                          <p className="text-[7px] text-center leading-tight" style={{ color: l.discount > 0 ? '#10b981' : '#475569' }}>{l.discount > 0 ? `${l.discount}%` : '—'}</p>
                         </div>
                       );
                     })}
                   </div>
+                  <div className="px-4 pb-3 flex items-center justify-between">
+                    <p className="text-[8px] text-slate-600">← Swipe to see all levels</p>
+                    <p className="text-[8px] text-emerald-600 font-bold">Green % = store discount</p>
+                  </div>
                 </div>
 
-                <div className="h-6" />
+                <div className="h-4" />
               </div>
             </div>
           </div>
@@ -17809,6 +17878,19 @@ RULES:
         </div>
         );
       })()}
+
+      {/* NAV TAB TOOLTIP POPUP */}
+      {navTabTooltip && (
+        <div className="fixed bottom-[72px] left-1/2 -translate-x-1/2 z-[9990] animate-in fade-in slide-in-from-bottom-2 duration-200 pointer-events-none">
+          <div className="bg-[#111] border border-white/12 rounded-2xl px-4 py-2.5 shadow-2xl flex items-center gap-2.5 min-w-[180px] max-w-[260px]">
+            <span className="text-xl flex-shrink-0">{navTabTooltip.emoji}</span>
+            <div>
+              <p className="text-white font-black text-xs leading-tight">{navTabTooltip.label}</p>
+              <p className="text-slate-400 text-[10px] leading-tight mt-0.5">{navTabTooltip.desc}</p>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* CREDIT DEDUCTION TOAST */}
       {creditDeductToast?.visible && (

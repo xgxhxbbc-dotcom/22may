@@ -186,6 +186,7 @@ export interface User {
   lastScoreDate?: string; // ISO Date string of last score update
   scoreBoostPercent?: number; // Active score boost % from SCORE_BOOST redeem code
   scoreBoostExpiry?: string; // ISO Date when score boost expires
+  scoreLimitBoostPercent?: number; // Permanent daily score limit boost % from SCORE_LIMIT_BOOST redeem code
   bonusCredits?: number; // Temporary credits that came with subscription (cleared on expiry)
   giftedCredits?: number; // Admin-gifted credits (separate from earned/bonus)
   giftedCreditsExpiry?: string; // ISO date when gifted credits expire
@@ -413,9 +414,10 @@ export interface LoginBonusConfig {
 export interface BroadcastRedeemCode {
     id: string;
     code: string;
-    type: 'CREDITS' | 'SUBSCRIPTION' | 'DISCOUNT' | 'CONTENT_UNLOCK' | 'TOPBAR_EFFECT_COLOR' | 'TOPBAR_EFFECT_ID' | 'SCORE' | 'SCORE_BOOST';
+    type: 'CREDITS' | 'SUBSCRIPTION' | 'DISCOUNT' | 'CONTENT_UNLOCK' | 'TOPBAR_EFFECT_COLOR' | 'TOPBAR_EFFECT_ID' | 'SCORE' | 'SCORE_BOOST' | 'SCORE_LIMIT_BOOST';
     scoreBoostPercent?: number; // For SCORE_BOOST type — how much % to boost score by
     scoreBoostDurationHours?: number; // How long the boost lasts
+    scoreLimitBoostPercent?: number; // For SCORE_LIMIT_BOOST type — permanent daily limit increase %
     message: string;
     title?: string;
     amount?: number;
@@ -1054,9 +1056,10 @@ export interface MCQRewardRule {
 export interface GiftCode {
   id: string;
   code: string;
-  type: 'CREDITS' | 'SUBSCRIPTION' | 'DISCOUNT' | 'CONTENT_UNLOCK' | 'TOPBAR_EFFECT_COLOR' | 'TOPBAR_EFFECT_ID' | 'SCORE' | 'SCORE_BOOST'; // New: Type of code
+  type: 'CREDITS' | 'SUBSCRIPTION' | 'DISCOUNT' | 'CONTENT_UNLOCK' | 'TOPBAR_EFFECT_COLOR' | 'TOPBAR_EFFECT_ID' | 'SCORE' | 'SCORE_BOOST' | 'SCORE_LIMIT_BOOST'; // New: Type of code
   scoreBoostPercent?: number; // For SCORE_BOOST type
   scoreBoostDurationHours?: number; // Hours the boost lasts
+  scoreLimitBoostPercent?: number; // For SCORE_LIMIT_BOOST type — permanent daily limit increase %
   amount?: number; // For Credits
   discountPercent?: number; // For Discount
   effectColor?: string; // For TOPBAR_EFFECT_COLOR — hex color

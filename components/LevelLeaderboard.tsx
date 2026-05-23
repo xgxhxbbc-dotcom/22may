@@ -226,7 +226,7 @@ export const LevelLeaderboard: React.FC<Props> = ({ user, settings, onBack }) =>
           </div>
         ) : (
           <div className="space-y-2">
-            {sortedUsers.slice(0, 50).map((u, idx) => {
+            {sortedUsers.slice(0, 100).map((u, idx) => {
               const lvl = getLevelInfo(u.totalScore);
               const isMe = u.id === user.id;
               const isTop3 = idx < 3;

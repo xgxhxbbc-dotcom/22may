@@ -14,14 +14,18 @@ const DAILY_LIMIT_MULTIPLIERS: Record<string, number> = {
   ULTRA: 1.75,
 };
 
-/** Dynamic daily score limit based on subscription */
+/** Dynamic daily score limit based on subscription + optional permanent limit boost */
 export const getDailyScoreLimit = (
   subscriptionLevel?: string,
   isPremium?: boolean,
+  scoreLimitBoostPercent?: number,
 ): number => {
-  if (!isPremium) return DAILY_SCORE_LIMIT;
-  const mult = DAILY_LIMIT_MULTIPLIERS[subscriptionLevel ?? 'FREE'] ?? 1.0;
-  return Math.round(DAILY_SCORE_LIMIT * mult);
+  const mult = isPremium ? (DAILY_LIMIT_MULTIPLIERS[subscriptionLevel ?? 'FREE'] ?? 1.0) : 1.0;
+  const base = Math.round(DAILY_SCORE_LIMIT * mult);
+  if (scoreLimitBoostPercent && scoreLimitBoostPercent > 0) {
+    return Math.round(base * (1 + scoreLimitBoostPercent / 100));
+  }
+  return base;
 };
 
 export const SCORE_MULTIPLIERS: Record<string, number> = {
@@ -51,8 +55,9 @@ export const getRemainingDailyScore = (
   userId: string,
   subscriptionLevel?: string,
   isPremium?: boolean,
+  scoreLimitBoostPercent?: number,
 ): number =>
-  Math.max(0, getDailyScoreLimit(subscriptionLevel, isPremium) - getDailyScoreEarned(userId));
+  Math.max(0, getDailyScoreLimit(subscriptionLevel, isPremium, scoreLimitBoostPercent) - getDailyScoreEarned(userId));
 
 /** Get active score boost % for a user (returns 0 if expired or not set) */
 export const getActiveBoost = (user: { scoreBoostPercent?: number; scoreBoostExpiry?: string }): number => {
