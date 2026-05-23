@@ -7,17 +7,19 @@ export interface LevelInfo {
   gradient: string;
   glowColor: string;
   discount: number;
+  animationIntensity: 0 | 1 | 2 | 3 | 4; // 0=none, 1=subtle, 2=medium, 3=strong, 4=legendary
+  nameColor?: string; // color for username display (levels 4+)
 }
 
 export const LEVEL_INFO: LevelInfo[] = [
-  { level: 1, minScore: 0,     label: 'Beginner',   emoji: '🌱', color: '#64748b', gradient: 'from-slate-500 to-slate-600',               glowColor: 'rgba(100,116,139,0.6)', discount: 0  },
-  { level: 2, minScore: 100,   label: 'Apprentice', emoji: '✨', color: '#06b6d4', gradient: 'from-cyan-400 to-sky-500',                   glowColor: 'rgba(6,182,212,0.7)',   discount: 5  },
-  { level: 3, minScore: 300,   label: 'Scholar',    emoji: '⚡', color: '#3b82f6', gradient: 'from-blue-400 to-indigo-500',                glowColor: 'rgba(59,130,246,0.7)',  discount: 10 },
-  { level: 4, minScore: 700,   label: 'Expert',     emoji: '🔥', color: '#f97316', gradient: 'from-orange-400 to-red-500',                 glowColor: 'rgba(249,115,22,0.7)',  discount: 15 },
-  { level: 5, minScore: 2000,  label: 'Master',     emoji: '💎', color: '#a855f7', gradient: 'from-violet-400 to-purple-600',              glowColor: 'rgba(168,85,247,0.7)',  discount: 20 },
-  { level: 6, minScore: 5000,  label: 'Elite',      emoji: '🌟', color: '#eab308', gradient: 'from-yellow-400 to-amber-500',               glowColor: 'rgba(234,179,8,0.7)',   discount: 25 },
-  { level: 7, minScore: 10000, label: 'Champion',   emoji: '👑', color: '#f59e0b', gradient: 'from-amber-400 to-orange-400',               glowColor: 'rgba(245,158,11,0.7)',  discount: 27 },
-  { level: 8, minScore: 20000, label: 'Legend',     emoji: '🏆', color: '#10b981', gradient: 'from-emerald-400 via-cyan-400 to-violet-500', glowColor: 'rgba(16,185,129,0.7)',  discount: 30 },
+  { level: 1, minScore: 0,     label: 'Beginner',   emoji: '🌱', color: '#64748b', gradient: 'from-slate-500 to-slate-600',               glowColor: 'rgba(100,116,139,0.4)', discount: 0,  animationIntensity: 0 },
+  { level: 2, minScore: 100,   label: 'Apprentice', emoji: '✨', color: '#06b6d4', gradient: 'from-cyan-400 to-sky-500',                   glowColor: 'rgba(6,182,212,0.45)',  discount: 0,  animationIntensity: 1 },
+  { level: 3, minScore: 300,   label: 'Scholar',    emoji: '⚡', color: '#3b82f6', gradient: 'from-blue-400 to-indigo-500',                glowColor: 'rgba(59,130,246,0.5)',  discount: 5,  animationIntensity: 2 },
+  { level: 4, minScore: 700,   label: 'Expert',     emoji: '🔥', color: '#f97316', gradient: 'from-orange-400 to-red-500',                 glowColor: 'rgba(249,115,22,0.65)', discount: 10, animationIntensity: 2, nameColor: '#f97316' },
+  { level: 5, minScore: 2000,  label: 'Master',     emoji: '💎', color: '#a855f7', gradient: 'from-violet-400 to-purple-600',              glowColor: 'rgba(168,85,247,0.7)',  discount: 15, animationIntensity: 3, nameColor: '#a855f7' },
+  { level: 6, minScore: 5000,  label: 'Elite',      emoji: '🌟', color: '#eab308', gradient: 'from-yellow-400 to-amber-500',               glowColor: 'rgba(234,179,8,0.75)',  discount: 20, animationIntensity: 3, nameColor: '#eab308' },
+  { level: 7, minScore: 10000, label: 'Champion',   emoji: '👑', color: '#f59e0b', gradient: 'from-amber-400 to-orange-400',               glowColor: 'rgba(245,158,11,0.8)',  discount: 20, animationIntensity: 3, nameColor: '#f59e0b' },
+  { level: 8, minScore: 20000, label: 'Legend',     emoji: '🏆', color: '#10b981', gradient: 'from-emerald-400 via-cyan-400 to-violet-500', glowColor: 'rgba(16,185,129,0.9)', discount: 20, animationIntensity: 4, nameColor: '#10b981' },
 ];
 
 export const MAX_LEVEL = 8;
@@ -88,4 +90,38 @@ export const SUBSCRIPTION_BONUS: Record<string, { score: number; bonusCredits: n
   'YEARLY_ULTRA':    { score: 100, bonusCredits: 3500 },
   'LIFETIME_BASIC':  { score: 100, bonusCredits: 0 },
   'LIFETIME_ULTRA':  { score: 100, bonusCredits: 0 },
+};
+
+// Returns TopBarEffects config array based on level animation intensity
+export const getLevelTopBarEffects = (lvl: LevelInfo): Array<{id:string;enabled:boolean;color:string;speed?:number;opacity?:number}> => {
+  const c = lvl.color;
+  const g = lvl.glowColor;
+  switch (lvl.animationIntensity) {
+    case 0: return []; // Level 1 — no effects
+    case 1: // Level 2 — very subtle shimmer only
+      return [
+        { id: 'shimmer-forward', enabled: true, color: c, speed: 3, opacity: 0.3 },
+      ];
+    case 2: // Level 3-4 — shimmer + glow
+      return [
+        { id: 'shimmer-forward', enabled: true, color: c, speed: 2, opacity: 0.5 },
+        { id: 'glow-bottom',     enabled: true, color: g, speed: 1.5, opacity: 0.6 },
+      ];
+    case 3: // Level 5-7 — shimmer + glow + sparkles
+      return [
+        { id: 'shimmer-forward', enabled: true, color: c, speed: 1.5 },
+        { id: 'shimmer-reverse', enabled: true, color: c, speed: 2 },
+        { id: 'glow-both',       enabled: true, color: g, speed: 1 },
+        { id: 'sparkle-top',     enabled: true, color: c, speed: 1 },
+      ];
+    case 4: // Level 8 — LEGENDARY — all effects max
+      return [
+        { id: 'shimmer-forward', enabled: true, color: c, speed: 1 },
+        { id: 'shimmer-reverse', enabled: true, color: c, speed: 1.2 },
+        { id: 'glow-both',       enabled: true, color: g, speed: 0.8 },
+        { id: 'sparkle-full',    enabled: true, color: c, speed: 0.8 },
+        { id: 'sparkle-top',     enabled: true, color: '#fbbf24', speed: 1.2 },
+      ];
+    default: return [];
+  }
 };

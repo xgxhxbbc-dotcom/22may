@@ -37,13 +37,18 @@
         "lastRedeemedAt": { ".validate": "!newData.exists() || newData.isString()" },
         "updatedAt":      { ".validate": "!newData.exists() || newData.isString()" },
 
-        "discountPercent": { ".validate": "!newData.exists() || newData.isNumber()" },
-        "contentId":       { ".validate": "!newData.exists() || newData.isString()" },
-        "effectColor":     { ".validate": "!newData.exists() || newData.isString()" },
-        "forUserId":       { ".validate": "!newData.exists() || newData.isString()" },
-        "generatedBy":     { ".validate": "!newData.exists() || newData.isString()" },
-        "createdAt":       { ".validate": "!newData.exists() || newData.isString()" },
-        "expiresAt":       { ".validate": "!newData.exists() || newData.isString()" }
+        "discountPercent":         { ".validate": "!newData.exists() || newData.isNumber()" },
+        "contentId":               { ".validate": "!newData.exists() || newData.isString()" },
+        "effectColor":             { ".validate": "!newData.exists() || newData.isString()" },
+        "forUserId":               { ".validate": "!newData.exists() || newData.isString()" },
+        "generatedBy":             { ".validate": "!newData.exists() || newData.isString()" },
+        "createdAt":               { ".validate": "!newData.exists() || newData.isString()" },
+        "expiresAt":               { ".validate": "!newData.exists() || newData.isString()" },
+        "scoreBoostPercent":       { ".validate": "!newData.exists() || newData.isNumber()" },
+        "scoreBoostDurationHours": { ".validate": "!newData.exists() || newData.isNumber()" },
+        "subDurationDays":         { ".validate": "!newData.exists() || newData.isNumber()" },
+        "creditsAmount":           { ".validate": "!newData.exists() || newData.isNumber()" },
+        "topBarEffectColor":       { ".validate": "!newData.exists() || newData.isString()" }
       }
     },
 

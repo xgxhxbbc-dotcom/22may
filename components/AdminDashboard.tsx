@@ -962,9 +962,10 @@ const AdminDashboardInner: React.FC<Props> = ({ onNavigate, settings, onUpdateSe
   const [editUserPass, setEditUserPass] = useState('');
   const [dmText, setDmText] = useState('');
   const [dmUser, setDmUser] = useState<User | null>(null);
-  const [giftType, setGiftType] = useState<'NONE' | 'CREDITS' | 'SUBSCRIPTION' | 'ANIMATION'>('NONE');
+  const [giftType, setGiftType] = useState<'NONE' | 'CREDITS' | 'SUBSCRIPTION' | 'ANIMATION' | 'SCORE'>('NONE');
   const [giftValue, setGiftValue] = useState<string | number>('');
   const [giftDuration, setGiftDuration] = useState(24); // Hours
+  const [giftCreditsExpiry, setGiftCreditsExpiry] = useState(30); // Days until gifted credits expire
   const [editSubscriptionTier, setEditSubscriptionTier] = useState<'FREE' | 'WEEKLY' | 'MONTHLY' | '3_MONTHLY' | 'YEARLY' | 'LIFETIME' | 'CUSTOM'>('FREE');
   const [editSubscriptionLevel, setEditSubscriptionLevel] = useState<'BASIC' | 'ULTRA'>('BASIC');
   const [editSubscriptionYears, setEditSubscriptionYears] = useState(0);
@@ -1350,7 +1351,11 @@ const AdminDashboardInner: React.FC<Props> = ({ onNavigate, settings, onUpdateSe
   };
 
   // --- GIFT CODE STATE ---
-  const [newCodeType, setNewCodeType] = useState<'CREDITS' | 'SUBSCRIPTION' | 'DISCOUNT' | 'CONTENT_UNLOCK' | 'TOPBAR_EFFECT_COLOR' | 'TOPBAR_EFFECT_ID'>('CREDITS');
+  const [newCodeType, setNewCodeType] = useState<'CREDITS' | 'SUBSCRIPTION' | 'DISCOUNT' | 'CONTENT_UNLOCK' | 'TOPBAR_EFFECT_COLOR' | 'TOPBAR_EFFECT_ID' | 'SCORE' | 'SCORE_BOOST'>('CREDITS');
+  const [newCodeScoreAmount, setNewCodeScoreAmount] = useState(100);
+  const [newCodeScoreBoostPercent, setNewCodeScoreBoostPercent] = useState(20);
+  const [newCodeScoreBoostHours, setNewCodeScoreBoostHours] = useState(24);
+  const [newCodeIsMultiUse, setNewCodeIsMultiUse] = useState(false);
   const [newCodeEffectColor, setNewCodeEffectColor] = useState('#fbbf24');
   const [newCodeEffectId, setNewCodeEffectId] = useState<string>('border-runner-cw');
   const [newCodeAmount, setNewCodeAmount] = useState(10);
@@ -1371,6 +1376,10 @@ const AdminDashboardInner: React.FC<Props> = ({ onNavigate, settings, onUpdateSe
 
   // --- BROADCAST REDEEM CODE STATE ---
   const [broadcastType, setBroadcastType] = useState<BroadcastRedeemCode['type']>('CREDITS');
+  const [broadcastScoreAmount, setBroadcastScoreAmount] = useState(50);
+  const [broadcastScoreBoostPercent, setBroadcastScoreBoostPercent] = useState(20);
+  const [broadcastScoreBoostHours, setBroadcastScoreBoostHours] = useState(24);
+  const [broadcastIsMultiUse, setBroadcastIsMultiUse] = useState(false);
   const [broadcastCode, setBroadcastCode] = useState('');
   const [broadcastMessage, setBroadcastMessage] = useState('');
   const [broadcastTitle, setBroadcastTitle] = useState('');
@@ -2090,13 +2099,37 @@ const AdminDashboardInner: React.FC<Props> = ({ onNavigate, settings, onUpdateSe
   const sendDirectMessage = async () => {
       if (!dmUser || !dmText) return;
       
-      let giftPayload = undefined;
+      let giftPayload: any = undefined;
+      let userUpdates: Partial<User> = {};
+
       if (giftType !== 'NONE') {
-          giftPayload = {
-              type: giftType,
-              value: giftValue,
-              durationHours: giftDuration
-          };
+          if (giftType === 'SCORE') {
+              // Gift score directly to user (no inbox claim needed)
+              const scoreToAdd = Number(giftValue) || 50;
+              userUpdates = {
+                  totalScore: (dmUser.totalScore || 0) + scoreToAdd,
+              };
+          } else if (giftType === 'CREDITS') {
+              // Gift credits with expiry
+              const creditsToAdd = Number(giftValue) || 10;
+              const expiryDate = new Date();
+              expiryDate.setDate(expiryDate.getDate() + giftCreditsExpiry);
+              userUpdates = {
+                  giftedCredits: (dmUser.giftedCredits || 0) + creditsToAdd,
+                  giftedCreditsExpiry: expiryDate.toISOString(),
+              };
+              giftPayload = {
+                  type: giftType,
+                  value: giftValue,
+                  durationHours: giftDuration
+              };
+          } else {
+              giftPayload = {
+                  type: giftType,
+                  value: giftValue,
+                  durationHours: giftDuration
+              };
+          }
       }
 
       const newMsg = { 
@@ -2106,10 +2139,10 @@ const AdminDashboardInner: React.FC<Props> = ({ onNavigate, settings, onUpdateSe
           read: false,
           type: giftType !== 'NONE' ? 'GIFT' : 'TEXT',
           gift: giftPayload,
-          isClaimed: false
+          isClaimed: giftType === 'SCORE', // Score gifts are auto-applied
       };
 
-      const updatedUser = { ...dmUser, inbox: [newMsg, ...(dmUser.inbox || [])] };
+      const updatedUser = { ...dmUser, ...userUpdates, inbox: [newMsg, ...(dmUser.inbox || [])] };
       const updatedList = users.map(u => u.id === dmUser.id ? updatedUser : u);
       setUsers(updatedList);
       localStorage.setItem('nst_users', JSON.stringify(updatedList));
@@ -2122,7 +2155,8 @@ const AdminDashboardInner: React.FC<Props> = ({ onNavigate, settings, onUpdateSe
       setDmUser(null);
       setDmText('');
       setGiftType('NONE');
-      alert("Message & Gift Sent!");
+      const giftLabel = giftType === 'SCORE' ? ` + ${giftValue} Score Points added directly` : giftType !== 'NONE' ? ' + Gift sent' : '';
+      alert(`Message Sent!${giftLabel}`);
   };
 
   // --- GIFT CODE MANAGER (New) ---
@@ -2159,6 +2193,8 @@ const AdminDashboardInner: React.FC<Props> = ({ onNavigate, settings, onUpdateSe
                   code: code.toUpperCase(),
                   type: newCodeType || 'CREDITS',
                   ...(newCodeType === 'CREDITS' ? { amount: newCodeAmount || 10 } : {}),
+                  ...(newCodeType === 'SCORE' ? { scoreAmount: newCodeScoreAmount || 100 } : {}),
+                  ...(newCodeType === 'SCORE_BOOST' ? { scoreBoostPercent: newCodeScoreBoostPercent || 20, scoreBoostDurationHours: newCodeScoreBoostHours || 24 } : {}),
                   ...(newCodeType === 'DISCOUNT' ? { discountPercent: newCodeDiscount || 10 } : {}),
                   ...(newCodeType === 'SUBSCRIPTION' ? { subTier: newCodeSubTier || 'WEEKLY', subLevel: newCodeSubLevel || 'BASIC' } : {}),
                   ...(newCodeType === 'CONTENT_UNLOCK' ? { contentId: newCodeContentChapter, contentType: newCodeContentType } : {}),
@@ -2167,7 +2203,8 @@ const AdminDashboardInner: React.FC<Props> = ({ onNavigate, settings, onUpdateSe
                   createdAt: new Date().toISOString(),
                   isRedeemed: false,
                   generatedBy: 'ADMIN',
-                  maxUses: newCodeMaxUses || 1,
+                  maxUses: newCodeIsMultiUse ? 999999 : (newCodeMaxUses || 1),
+                  isMultiUse: newCodeIsMultiUse,
                   usedCount: 0,
                   redeemedBy: []
               };
@@ -2233,6 +2270,11 @@ const AdminDashboardInner: React.FC<Props> = ({ onNavigate, settings, onUpdateSe
               message: broadcastMessage.trim(),
               title: broadcastTitle.trim() || `🎁 Admin ka Special Gift!`,
               amount: broadcastType === 'CREDITS' ? broadcastAmount : undefined,
+              scoreAmount: broadcastType === 'SCORE' ? broadcastScoreAmount : undefined,
+              scoreBoostPercent: broadcastType === 'SCORE_BOOST' ? broadcastScoreBoostPercent : undefined,
+              scoreBoostDurationHours: broadcastType === 'SCORE_BOOST' ? broadcastScoreBoostHours : undefined,
+              isMultiUse: broadcastIsMultiUse,
+              maxUses: broadcastIsMultiUse ? 999999 : undefined,
               discountPercent: broadcastType === 'DISCOUNT' ? broadcastDiscount : undefined,
               subTier: broadcastType === 'SUBSCRIPTION' ? broadcastSubTier : undefined,
               subLevel: broadcastType === 'SUBSCRIPTION' ? broadcastSubLevel : undefined,
@@ -14681,12 +14723,19 @@ Statement 2"
                           <label className="text-[10px] font-bold text-indigo-700 uppercase block mb-1">Code Type</label>
                           <select value={broadcastType} onChange={e => setBroadcastType(e.target.value as any)} className="w-full p-2.5 rounded-xl border border-indigo-200 font-bold bg-white text-sm">
                               <option value="CREDITS">💰 Credits (Coins)</option>
-                              <option value="SUBSCRIPTION">⭐ Subscription</option>
+                              <option value="SCORE">⭐ Score Points</option>
+                              <option value="SCORE_BOOST">🚀 Score Booster</option>
+                              <option value="SUBSCRIPTION">📋 Subscription</option>
                               <option value="DISCOUNT">🏷️ Discount Coupon</option>
                               <option value="CONTENT_UNLOCK">🔓 Content Unlock</option>
                               <option value="TOPBAR_EFFECT_COLOR">🎨 Top Bar Color</option>
                               <option value="TOPBAR_EFFECT_ID">✨ Animation Effect</option>
                           </select>
+                          {/* Multi-use toggle for broadcast */}
+                          <div className="flex items-center gap-2 mt-2 p-2 bg-indigo-50 rounded-lg border border-indigo-200">
+                              <input type="checkbox" id="broadcastMultiUse" checked={broadcastIsMultiUse} onChange={e => setBroadcastIsMultiUse(e.target.checked)} className="w-4 h-4 accent-indigo-500" />
+                              <label htmlFor="broadcastMultiUse" className="text-xs font-bold text-indigo-700 cursor-pointer">Multi-Use (every user can redeem once)</label>
+                          </div>
                       </div>
 
                       {/* Target */}
@@ -14711,6 +14760,26 @@ Statement 2"
                           <div>
                               <label className="text-[10px] font-bold text-indigo-700 uppercase block mb-1">Credits Amount</label>
                               <input type="number" value={broadcastAmount} onChange={e => setBroadcastAmount(Number(e.target.value))} className="w-full p-2.5 rounded-xl border border-indigo-200 font-bold bg-white text-sm" />
+                          </div>
+                      )}
+                      {broadcastType === 'SCORE' && (
+                          <div>
+                              <label className="text-[10px] font-bold text-indigo-700 uppercase block mb-1">⭐ Score Points Amount</label>
+                              <input type="number" min={1} value={broadcastScoreAmount} onChange={e => setBroadcastScoreAmount(Number(e.target.value))} className="w-full p-2.5 rounded-xl border border-indigo-200 font-bold bg-white text-sm" />
+                              <p className="text-[9px] text-amber-600 mt-1">Redeeming user ko yeh score points milenge — level system se connected.</p>
+                          </div>
+                      )}
+                      {broadcastType === 'SCORE_BOOST' && (
+                          <div className="flex flex-col gap-2">
+                              <div>
+                                  <label className="text-[10px] font-bold text-indigo-700 uppercase block mb-1">🚀 Boost %</label>
+                                  <input type="number" min={1} max={500} value={broadcastScoreBoostPercent} onChange={e => setBroadcastScoreBoostPercent(Number(e.target.value))} className="w-full p-2.5 rounded-xl border border-indigo-200 font-bold bg-white text-sm" />
+                              </div>
+                              <div>
+                                  <label className="text-[10px] font-bold text-indigo-700 uppercase block mb-1">⏱️ Duration (hours)</label>
+                                  <input type="number" min={1} value={broadcastScoreBoostHours} onChange={e => setBroadcastScoreBoostHours(Number(e.target.value))} className="w-full p-2.5 rounded-xl border border-indigo-200 font-bold bg-white text-sm" />
+                              </div>
+                              <p className="text-[9px] text-orange-600">🚀 All users who redeem ko {broadcastScoreBoostPercent}% extra score milega — {broadcastScoreBoostHours}h tak.</p>
                           </div>
                       )}
                       {broadcastType === 'DISCOUNT' && (
@@ -14813,12 +14882,19 @@ Statement 2"
                               className="p-3 rounded-xl border border-pink-200 font-bold bg-white"
                           >
                               <option value="CREDITS">Credits (Coins)</option>
+                              <option value="SCORE">⭐ Score Points</option>
+                              <option value="SCORE_BOOST">🚀 Score Booster</option>
                               <option value="SUBSCRIPTION">Subscription</option>
                               <option value="DISCOUNT">Discount Coupon</option>
                               <option value="CONTENT_UNLOCK">Content Unlock</option>
                               <option value="TOPBAR_EFFECT_COLOR">🎨 Top Bar Color Gift</option>
                               <option value="TOPBAR_EFFECT_ID">✨ Animation Effect Gift</option>
                           </select>
+                          {/* Multi-use toggle */}
+                          <div className="flex items-center gap-2 mt-2 p-2 bg-amber-50 rounded-lg border border-amber-200">
+                              <input type="checkbox" id="multiUseToggle" checked={newCodeIsMultiUse} onChange={e => setNewCodeIsMultiUse(e.target.checked)} className="w-4 h-4 accent-amber-500" />
+                              <label htmlFor="multiUseToggle" className="text-xs font-bold text-amber-700 cursor-pointer">Multi-Use Code (∞ users can redeem once each)</label>
+                          </div>
                       </div>
 
                       {newCodeType === 'TOPBAR_EFFECT_COLOR' ? (
@@ -14864,6 +14940,24 @@ Statement 2"
                           <div>
                               <label className="text-xs font-bold text-pink-700 uppercase block mb-1">Amount</label>
                               <input type="number" value={newCodeAmount} onChange={e => setNewCodeAmount(Number(e.target.value))} className="p-3 rounded-xl border border-pink-200 w-32 font-bold" />
+                          </div>
+                      ) : newCodeType === 'SCORE' ? (
+                          <div>
+                              <label className="text-xs font-bold text-pink-700 uppercase block mb-1">Score Points</label>
+                              <input type="number" value={newCodeScoreAmount} onChange={e => setNewCodeScoreAmount(Number(e.target.value))} className="p-3 rounded-xl border border-pink-200 w-32 font-bold" min="1" />
+                              <p className="text-[10px] text-amber-600 mt-1">⭐ Redeemer ko yeh score points milenge. Level system se connected hai.</p>
+                          </div>
+                      ) : newCodeType === 'SCORE_BOOST' ? (
+                          <div className="flex flex-col gap-2">
+                              <div>
+                                  <label className="text-xs font-bold text-pink-700 uppercase block mb-1">🚀 Boost % (e.g. 20 = +20% extra score)</label>
+                                  <input type="number" value={newCodeScoreBoostPercent} onChange={e => setNewCodeScoreBoostPercent(Number(e.target.value))} className="p-3 rounded-xl border border-pink-200 w-32 font-bold" min="1" max="500" />
+                              </div>
+                              <div>
+                                  <label className="text-xs font-bold text-pink-700 uppercase block mb-1">⏱️ Duration (hours)</label>
+                                  <input type="number" value={newCodeScoreBoostHours} onChange={e => setNewCodeScoreBoostHours(Number(e.target.value))} className="p-3 rounded-xl border border-pink-200 w-32 font-bold" min="1" />
+                              </div>
+                              <p className="text-[10px] text-orange-600 mt-1">🚀 Student ke saare score earning par {newCodeScoreBoostPercent}% extra milega — {newCodeScoreBoostHours} hours ke liye.</p>
                           </div>
                       ) : newCodeType === 'DISCOUNT' ? (
                           <div>
@@ -15752,19 +15846,45 @@ Statement 2"
                           className="w-full p-2 border rounded-lg text-sm mb-2"
                       >
                           <option value="NONE">None</option>
-                          <option value="CREDITS">Credits (Coins)</option>
-                          <option value="SUBSCRIPTION">Subscription</option>
-                          {/* <option value="ANIMATION">Unlock Animation</option> */}
+                          <option value="CREDITS">💰 Credits (Coins) — with expiry</option>
+                          <option value="SCORE">⭐ Score Points — directly add</option>
+                          <option value="SUBSCRIPTION">📋 Subscription</option>
                       </select>
 
                       {giftType === 'CREDITS' && (
-                          <input 
-                              type="number" 
-                              placeholder="Amount (e.g. 100)" 
-                              value={giftValue} 
-                              onChange={e => setGiftValue(Number(e.target.value))} 
-                              className="w-full p-2 border rounded-lg text-sm"
-                          />
+                          <div className="space-y-2">
+                              <input 
+                                  type="number" 
+                                  placeholder="Credits amount (e.g. 100)" 
+                                  value={giftValue} 
+                                  onChange={e => setGiftValue(Number(e.target.value))} 
+                                  className="w-full p-2 border rounded-lg text-sm"
+                              />
+                              <div className="flex items-center gap-2">
+                                  <label className="text-xs text-slate-600 whitespace-nowrap">Expire in (days):</label>
+                                  <input 
+                                      type="number" 
+                                      min={1} max={365}
+                                      value={giftCreditsExpiry} 
+                                      onChange={e => setGiftCreditsExpiry(Number(e.target.value))} 
+                                      className="w-20 p-2 border rounded-lg text-sm font-bold"
+                                  />
+                                  <span className="text-xs text-slate-500">days after gifting</span>
+                              </div>
+                          </div>
+                      )}
+
+                      {giftType === 'SCORE' && (
+                          <div className="space-y-1">
+                              <input 
+                                  type="number" 
+                                  placeholder="Score points to add (e.g. 500)" 
+                                  value={giftValue} 
+                                  onChange={e => setGiftValue(Number(e.target.value))} 
+                                  className="w-full p-2 border border-amber-300 rounded-lg text-sm font-bold"
+                              />
+                              <p className="text-[10px] text-amber-600">⚡ Score points are added instantly — no inbox claim needed.</p>
+                          </div>
                       )}
 
                       {giftType === 'SUBSCRIPTION' && (

@@ -184,7 +184,12 @@ export interface User {
   storeDiscount?: number; // NEW: Personal Store Discount %
   totalScore?: number; // Cumulative activity score for score-based store discounts
   lastScoreDate?: string; // ISO Date string of last score update
+  scoreBoostPercent?: number; // Active score boost % from SCORE_BOOST redeem code
+  scoreBoostExpiry?: string; // ISO Date when score boost expires
   bonusCredits?: number; // Temporary credits that came with subscription (cleared on expiry)
+  giftedCredits?: number; // Admin-gifted credits (separate from earned/bonus)
+  giftedCreditsExpiry?: string; // ISO date when gifted credits expire
+  lastLevelNotified?: number; // Last level the user was shown a level-up celebration for
   dailyMcqDate?: string; // YYYY-MM-DD for daily MCQ tracking
   dailyMcqCount?: number; // MCQs attempted today
   dailyMcqCorrect?: number; // Correct MCQs today
@@ -408,17 +413,21 @@ export interface LoginBonusConfig {
 export interface BroadcastRedeemCode {
     id: string;
     code: string;
-    type: 'CREDITS' | 'SUBSCRIPTION' | 'DISCOUNT' | 'CONTENT_UNLOCK' | 'TOPBAR_EFFECT_COLOR' | 'TOPBAR_EFFECT_ID';
+    type: 'CREDITS' | 'SUBSCRIPTION' | 'DISCOUNT' | 'CONTENT_UNLOCK' | 'TOPBAR_EFFECT_COLOR' | 'TOPBAR_EFFECT_ID' | 'SCORE' | 'SCORE_BOOST';
+    scoreBoostPercent?: number; // For SCORE_BOOST type — how much % to boost score by
+    scoreBoostDurationHours?: number; // How long the boost lasts
     message: string;
     title?: string;
     amount?: number;
+    scoreAmount?: number; // For SCORE type — how many score points to add
     discountPercent?: number;
     subTier?: string;
     subLevel?: string;
     effectColor?: string;
     effectId?: string;
     contentId?: string;
-    maxUses?: number;
+    maxUses?: number; // undefined = single use; set to large number for multi-use
+    isMultiUse?: boolean; // if true, can be used by multiple accounts
     durationHours?: number; // how long the code is valid after delivery
     sentAt: string;
     expiresAt?: string; // when this broadcast itself expires
@@ -1045,7 +1054,9 @@ export interface MCQRewardRule {
 export interface GiftCode {
   id: string;
   code: string;
-  type: 'CREDITS' | 'SUBSCRIPTION' | 'DISCOUNT' | 'CONTENT_UNLOCK' | 'TOPBAR_EFFECT_COLOR' | 'TOPBAR_EFFECT_ID'; // New: Type of code
+  type: 'CREDITS' | 'SUBSCRIPTION' | 'DISCOUNT' | 'CONTENT_UNLOCK' | 'TOPBAR_EFFECT_COLOR' | 'TOPBAR_EFFECT_ID' | 'SCORE' | 'SCORE_BOOST'; // New: Type of code
+  scoreBoostPercent?: number; // For SCORE_BOOST type
+  scoreBoostDurationHours?: number; // Hours the boost lasts
   amount?: number; // For Credits
   discountPercent?: number; // For Discount
   effectColor?: string; // For TOPBAR_EFFECT_COLOR — hex color

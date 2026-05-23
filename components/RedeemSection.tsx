@@ -258,6 +258,14 @@ export const RedeemSection: React.FC<Props> = ({ user, onSuccess }) => {
             const color = targetCode.effectColor || '#fbbf24';
             (updatedUser as any).topBarEffectColor = color;
             successMessage = `🎨 Top Bar Effect Color applied! Your app now glows with a custom shimmer.`;
+        } else if (targetCode.type === 'SCORE_BOOST') {
+            // Handle Score Booster code
+            const boostPct = (targetCode as any).scoreBoostPercent || 10;
+            const durationHrs = (targetCode as any).scoreBoostDurationHours || 24;
+            const expiry = new Date(Date.now() + durationHrs * 60 * 60 * 1000).toISOString();
+            (updatedUser as any).scoreBoostPercent = boostPct;
+            (updatedUser as any).scoreBoostExpiry = expiry;
+            successMessage = `🚀 Score Boost Activated! +${boostPct}% extra score for the next ${durationHrs} hour${durationHrs === 1 ? '' : 's'}!`;
         } else {
             // Handle Credits (Default)
             const amount = targetCode.amount || 0;

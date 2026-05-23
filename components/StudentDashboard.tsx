@@ -1,6 +1,9 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { TopBarEffectsLayer } from "../utils/topBarEffects";
-import { getLevelInfo, getNextLevelInfo, getLevelProgress, LEVEL_INFO, ACTIVITY_SCORES } from "../utils/levelSystem";
+import { getLevelInfo, getNextLevelInfo, getLevelProgress, LEVEL_INFO, ACTIVITY_SCORES, getLevelTopBarEffects } from "../utils/levelSystem";
+import { tryEarnScore, awardMilestone, getDailyScoreEarned, DAILY_SCORE_LIMIT, getDailyScoreLimit, getActiveBoost } from "../utils/scoreSystem";
+import { applyDeduction, getTotalCredits } from "../utils/creditSystem";
+import { LevelLeaderboard } from "./LevelLeaderboard";
 import {
   User,
   Subject,
@@ -842,6 +845,15 @@ export const StudentDashboard: React.FC<Props> = ({
       const correct = (parseInt(localStorage.getItem(correctKey) || '0')) + (isCorrect ? 1 : 0);
       localStorage.setItem(countKey, total.toString());
       localStorage.setItem(correctKey, correct.toString());
+      // ── Score earning per correct MCQ (daily limit 200 pts) ──────────────
+      if (isCorrect) {
+        const boost = getActiveBoost(freshUser);
+        const earned = tryEarnScore(freshUser.id, 1, freshUser.subscriptionLevel, freshUser.isPremium, boost);
+        if (earned > 0) {
+          const updatedScore = (freshUser.totalScore || 0) + earned;
+          handleUserUpdate({ ...freshUser, totalScore: updatedScore });
+        }
+      }
       // Check if prize should be triggered
       const minMcq = settings?.mcqDailyMinimum ?? 50;
       const mcqRules = (settings?.mcqRewardRules || []).filter((r: any) => r.enabled);
@@ -904,6 +916,8 @@ export const StudentDashboard: React.FC<Props> = ({
       else if (bc.type === 'CONTENT_UNLOCK') typeLabel = `🔓 Content Unlock`;
       else if (bc.type === 'TOPBAR_EFFECT_COLOR') typeLabel = `🎨 Special Color Effect`;
       else if (bc.type === 'TOPBAR_EFFECT_ID') typeLabel = `✨ Animation Effect`;
+      else if (bc.type === 'SCORE') typeLabel = `⭐ ${(bc as any).scoreAmount || 0} Score Points`;
+      else if (bc.type === 'SCORE_BOOST') typeLabel = `🚀 Score Booster +${(bc as any).scoreBoostPercent || 10}% (${(bc as any).scoreBoostDurationHours || 24}h)`;
 
       const expiryHours = bc.durationHours || 72;
       const expiresAt = new Date(now + expiryHours * 60 * 60 * 1000).toISOString();
@@ -1393,7 +1407,12 @@ export const StudentDashboard: React.FC<Props> = ({
   };
   const [showDotsMenu, setShowDotsMenu] = useState(false);
   const [showScorePanel, setShowScorePanel] = useState(false);
+  const [ttsProgressPercent, setTtsProgressPercent] = useState(0);
+  const [ttsSessionKey, setTtsSessionKey] = useState<string | null>(null);
+  const [ttsScoreSessionKey, setTtsScoreSessionKey] = useState<string | null>(null);
   const [showFeatureLimitsModal, setShowFeatureLimitsModal] = useState(false);
+  const [showLevelLeaderboard, setShowLevelLeaderboard] = useState(false);
+  const [levelUpCelebration, setLevelUpCelebration] = useState<{level: number; emoji: string; label: string} | null>(null);
   const [limitsViewPlan, setLimitsViewPlan] = useState<'FREE' | 'BASIC' | 'ULTRA'>('FREE');
   const [showRulesPage, setShowRulesPage] = useState(false);
   const [showLoginHistory, setShowLoginHistory] = useState(false);
@@ -1478,6 +1497,22 @@ export const StudentDashboard: React.FC<Props> = ({
     user.stream,
     settings?.hiddenSubjects,
   ]);
+
+  // Level-up detection — triggers celebration overlay when score crosses a level threshold
+  useEffect(() => {
+    if (user.role === 'ADMIN' || user.role === 'SUB_ADMIN') return;
+    const score = user.totalScore || 0;
+    const lvl = getLevelInfo(score);
+    const storedNotified = Number(localStorage.getItem(`nst_last_notified_level_${user.id}`) || '0');
+    if (lvl.level > storedNotified) {
+      localStorage.setItem(`nst_last_notified_level_${user.id}`, String(lvl.level));
+      if (storedNotified > 0) {
+        // Only celebrate if the user was already at some level before (not first login)
+        setLevelUpCelebration({ level: lvl.level, emoji: lvl.emoji, label: lvl.label });
+        setTimeout(() => setLevelUpCelebration(null), 4000);
+      }
+    }
+  }, [user.totalScore, user.id, user.role]);
 
   // Daily greeting disabled as requested by user
 
@@ -1668,6 +1703,8 @@ export const StudentDashboard: React.FC<Props> = ({
   // the very top, mirroring Sar Sangrah / Speedy. Reset on page change.
   const [lucentScrollProgress, setLucentScrollProgress] = useState(0);
   const lucentScrollContainerRef = useRef<HTMLDivElement>(null);
+  const lucentMilestoneSessionRef = useRef<string | null>(null);
+  const lucentMilestonePrevPctRef = useRef(0);
 
   // Subscribe to real-time content_index stats from Firebase for each class
   useEffect(() => {
@@ -1702,7 +1739,11 @@ export const StudentDashboard: React.FC<Props> = ({
 
   // Reset scroll % whenever the user moves to a different Lucent page or
   // closes the viewer entirely.
-  useEffect(() => { setLucentScrollProgress(0); }, [lucentPageIndex, lucentNoteViewer?.id]);
+  useEffect(() => {
+    setLucentScrollProgress(0);
+    lucentMilestoneSessionRef.current = `lucent_${lucentNoteViewer?.id || 'x'}_pg${lucentPageIndex}_${Date.now()}`;
+    lucentMilestonePrevPctRef.current = 0;
+  }, [lucentPageIndex, lucentNoteViewer?.id]);
   // Local Auto-Read & Sync state for the Lucent viewer (mirrors LessonView pattern).
   // Initialised from settings.isAutoTtsEnabled but stays local to this view.
   const [lucentAutoSync, setLucentAutoSync] = useState<boolean>(!!settings?.isAutoTtsEnabled);
@@ -1930,6 +1971,8 @@ export const StudentDashboard: React.FC<Props> = ({
   const hwScrollContainerRef = useRef<HTMLDivElement>(null);
   const hwScrollSaveTimerRef = useRef<number | null>(null);
   const hwScrollRestoredRef = useRef(false);
+  const hwMilestoneSessionRef = useRef<string | null>(null);
+  const hwMilestonePrevPctRef = useRef(0);
   // Resume reading lists
   const [recentChapters, setRecentChapters] = useState<RecentChapterEntry[]>([]);
   const [recentHw, setRecentHw] = useState<RecentHwEntry[]>([]);
@@ -2616,6 +2659,8 @@ export const StudentDashboard: React.FC<Props> = ({
   React.useEffect(() => {
     if (!hwActiveHwId || hwViewMode !== 'notes') return;
     hwScrollRestoredRef.current = false;
+    hwMilestoneSessionRef.current = `hw_${hwActiveHwId}_${Date.now()}`;
+    hwMilestonePrevPctRef.current = 0;
     let saved = 0;
     try {
       saved = parseInt(localStorage.getItem(`nst_hw_scroll_${hwActiveHwId}`) || '0', 10) || 0;
@@ -3772,17 +3817,17 @@ export const StudentDashboard: React.FC<Props> = ({
 
   const handleSpendCoins = (amount: number): boolean => {
     if (user.role === 'ADMIN' || user.role === 'SUB_ADMIN') return true;
-    const current = user.credits ?? 0;
-    if (current < amount) return false;
-    const updatedUser = { ...user, credits: current - amount };
-    handleUserUpdate(updatedUser);
+    if (getTotalCredits(user) < amount) return false;
+    const updated = applyDeduction(user, amount);
+    if (!updated) return false;
+    handleUserUpdate(updated);
     return true;
   };
 
   const handleUserUpdate = (updatedUser: User) => {
-    // Detect credit deduction and show toast
-    const prevCredits = user.credits ?? 0;
-    const newCredits = updatedUser.credits ?? 0;
+    // Detect credit deduction and show toast (compare total credits including bonus/gifted)
+    const prevCredits = getTotalCredits(user);
+    const newCredits = getTotalCredits(updatedUser);
     if (
       newCredits < prevCredits &&
       !localStorage.getItem('nst_credit_toast_disabled')
@@ -3960,11 +4005,13 @@ export const StudentDashboard: React.FC<Props> = ({
     }
 
     if (app.creditCost > 0) {
-      if (user.credits < app.creditCost) {
+      if (getTotalCredits(user) < app.creditCost) {
         showAlert(`Insufficient Credits! Need ${app.creditCost}.`, "ERROR");
         return;
       }
-      const u = { ...user, credits: user.credits - app.creditCost, totalScore: (user.totalScore || 0) + app.creditCost };
+      const _uDeducted = applyDeduction(user, app.creditCost);
+      if (!_uDeducted) return;
+      const u = { ..._uDeducted, totalScore: (user.totalScore || 0) + app.creditCost };
       handleUserUpdate(u);
       setActiveExternalApp(app.url);
     } else {
@@ -4476,6 +4523,12 @@ export const StudentDashboard: React.FC<Props> = ({
                           hw: activeHw,
                         });
                         markReadToday(activeHw.id!);
+                        // Award milestone score for homework reading progress
+                        if (hwMilestoneSessionRef.current) {
+                          const result = awardMilestone(user.id, hwMilestoneSessionRef.current, hwMilestonePrevPctRef.current, pctNow, user.subscriptionLevel, user.isPremium, getActiveBoost(user));
+                          hwMilestonePrevPctRef.current = pctNow;
+                          if (result && result.earned > 0) triggerRewardEffect(result.earned, `+${result.earned} pts 📖`);
+                        }
                       } else {
                         localStorage.removeItem(key);
                       }
@@ -4553,7 +4606,7 @@ export const StudentDashboard: React.FC<Props> = ({
                         htmlUnlockCost={settings?.htmlUnlockCost ?? 5}
                         onHtmlOpen={_trackHtmlOpen}
                         onUpgradeClick={() => onTabChange('STORE')}
-                        onSpendCredits={(amt) => handleUserUpdate({ ...user, credits: Math.max(0, (user.credits || 0) - amt) })}
+                        onSpendCredits={(amt) => { const _u = applyDeduction(user, amt); if (_u) handleUserUpdate(_u); }}
                         htmlContent={(() => {
                           const chunkSrc = (activeHw as any).chunkNotes;
                           const htmlSrc = (activeHw as any).htmlNotes;
@@ -5811,6 +5864,27 @@ export const StudentDashboard: React.FC<Props> = ({
       {
         category: "Fun & Utilities",
         items: [
+          {
+            id: "TEACHER_STORE_MENU",
+            label: user.role === 'TEACHER' ? "Teacher Store" : "Become a Teacher",
+            icon: Layout,
+            color: "violet",
+            action: () => {
+              onTabChange('TEACHER_STORE' as any);
+              setShowSidebar(false);
+            },
+            featureId: "TEACHER_STORE",
+          },
+          {
+            id: "LEADERBOARD_MENU",
+            label: "Leaderboard",
+            icon: Trophy,
+            color: "amber",
+            action: () => {
+              setShowLevelLeaderboard(true);
+              setShowSidebar(false);
+            },
+          },
           {
             id: "REQUEST",
             label: "Content Demand",
@@ -7652,31 +7726,45 @@ export const StudentDashboard: React.FC<Props> = ({
                     : 'linear-gradient(105deg,transparent 30%,rgba(56,189,248,0.07) 50%,transparent 70%)',
                     backgroundSize: '200% 100%', animation: 'shimmer-sweep 3s linear infinite' }} />
               )}
-              {user.topBarEffectColor && (
-                <TopBarEffectsLayer effects={[
-                  { id: 'shimmer-forward', enabled: true, color: user.topBarEffectColor, speed: 1.5 },
-                  { id: 'glow-both', enabled: true, color: user.topBarEffectColor, speed: 1 },
-                ]} />
-              )}
+              {(() => {
+                const _pScore = (user.role === 'ADMIN' || user.role === 'SUB_ADMIN') ? 20000 : (user.totalScore || 0);
+                const _pLvl = getLevelInfo(_pScore);
+                const _pEffects = getLevelTopBarEffects(_pLvl);
+                return _pEffects.length > 0 ? (
+                  <TopBarEffectsLayer effects={_pEffects} />
+                ) : user.topBarEffectColor ? (
+                  <TopBarEffectsLayer effects={[
+                    { id: 'shimmer-forward', enabled: true, color: user.topBarEffectColor, speed: 1.5 },
+                    { id: 'glow-both', enabled: true, color: user.topBarEffectColor, speed: 1 },
+                  ]} />
+                ) : null;
+              })()}
 
               <div className="p-5 relative z-[2]">
                 {/* Avatar row */}
+                {(() => {
+                  const _aScore = (user.role === 'ADMIN' || user.role === 'SUB_ADMIN') ? 20000 : (user.totalScore || 0);
+                  const _aLvl = getLevelInfo(_aScore);
+                  const nameColor = _aLvl.level >= 4 ? _aLvl.nameColor || _aLvl.color : undefined;
+                  return (
                 <div className="flex items-center gap-4 mb-4">
-                  <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-black shrink-0 overflow-hidden shadow-lg ${
-                    user.subscriptionLevel === 'ULTRA' && user.isPremium
-                      ? 'bg-purple-900/60 ring-2 ring-purple-500/50 text-purple-200'
-                      : user.subscriptionLevel === 'BASIC' && user.isPremium
-                        ? 'bg-sky-900/50 ring-2 ring-sky-500/40 text-sky-200'
-                        : 'bg-slate-800 ring-2 ring-slate-600/40 text-slate-300'
-                  }`}>
+                  <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-black shrink-0 overflow-hidden shadow-lg"
+                    style={{
+                      background: _aLvl.level >= 4 ? `${_aLvl.color}22` : user.subscriptionLevel === 'ULTRA' && user.isPremium ? 'rgba(88,28,135,0.6)' : user.subscriptionLevel === 'BASIC' && user.isPremium ? 'rgba(7,17,31,1)' : '#1e293b',
+                      border: `2px solid ${_aLvl.level >= 4 ? _aLvl.color + '60' : '#334155'}`,
+                      boxShadow: _aLvl.level >= 4 ? `0 0 18px ${_aLvl.glowColor}` : 'none',
+                    }}>
                     {settings?.appLogo
                       ? <img src={settings.appLogo} alt="logo" className="w-full h-full object-cover" />
-                      : (user.name || 'S').charAt(0)
+                      : <span style={{ color: _aLvl.level >= 4 ? _aLvl.color : undefined }}>{(user.name || 'S').charAt(0)}</span>
                     }
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1">
-                      <h2 className="text-lg font-black text-white truncate leading-tight">{user.name}</h2>
+                      <h2 className="text-lg font-black truncate leading-tight"
+                        style={{ color: nameColor || 'white' }}>
+                        {user.name}
+                      </h2>
                       <button
                         onClick={() => { setNewNameInput(user.name); setShowNameChangeModal(true); }}
                         className="shrink-0 w-6 h-6 rounded-lg bg-white/8 hover:bg-white/15 flex items-center justify-center transition-colors"
@@ -7715,10 +7803,13 @@ export const StudentDashboard: React.FC<Props> = ({
                     <span className="text-2xl shrink-0">👑</span>
                   )}
                 </div>
+                  );
+                })()}
 
                 {/* LEVEL BADGE */}
                 {(() => {
-                  const totalScore = user.totalScore || 0;
+                  const rawScore = user.totalScore || 0;
+                  const totalScore = (user.role === 'ADMIN' || user.role === 'SUB_ADMIN') ? 20000 : rawScore;
                   const lvl = getLevelInfo(totalScore);
                   const nextLvl = getNextLevelInfo(totalScore);
                   const progress = getLevelProgress(totalScore);
@@ -7745,7 +7836,7 @@ export const StudentDashboard: React.FC<Props> = ({
                               )}
                             </div>
                             <p className="text-[10px] text-slate-400 mb-1.5">
-                              {totalScore} pts{nextLvl ? ` · ${nextLvl.minScore - totalScore} to ${nextLvl.emoji} L${nextLvl.level}` : ' · MAX LEVEL 🏆'}
+                              {(user.role === 'ADMIN' || user.role === 'SUB_ADMIN') ? 'Admin · MAX LEVEL 🏆' : `${rawScore} pts${nextLvl ? ` · ${nextLvl.minScore - rawScore} to ${nextLvl.emoji} L${nextLvl.level}` : ' · MAX LEVEL 🏆'}`}
                             </p>
                             <div className="h-1.5 bg-white/10 rounded-full overflow-hidden">
                               <div className="h-full rounded-full transition-all"
@@ -7902,41 +7993,33 @@ export const StudentDashboard: React.FC<Props> = ({
                 <ChevronRight size={14} className="text-slate-600 shrink-0" />
               </button>
 
-              {/* Store / Manage Subscription */}
-              <button onClick={() => onTabChange('STORE')}
+              {/* Leaderboard */}
+              <button onClick={() => setShowLevelLeaderboard(true)}
                 className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-white/4 active:bg-white/6 transition-colors border-b border-slate-800/80">
-                <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
-                  _isUltraUser ? 'bg-purple-500/15' : _isBasicUser ? 'bg-sky-500/15' : 'bg-indigo-500/15'
-                }`}>
-                  <Crown size={16} className={_isUltraUser ? 'text-purple-400' : _isBasicUser ? 'text-sky-400' : 'text-indigo-400'} />
+                <div className="w-9 h-9 rounded-xl bg-yellow-500/15 flex items-center justify-center shrink-0">
+                  <Trophy size={16} className="text-yellow-400" />
                 </div>
                 <div className="flex-1 text-left min-w-0">
-                  <p className="text-sm font-bold text-white">
-                    {user.isPremium ? (user.subscriptionTier === 'LIFETIME' ? 'View Plan' : 'Manage Subscription') : 'Upgrade to Premium'}
-                  </p>
-                  <p className="text-[11px] text-slate-500">
-                    {user.isPremium ? 'Plans, billing & renewal' : 'Unlock all features'}
-                  </p>
+                  <p className="text-sm font-bold text-white">Leaderboard</p>
+                  <p className="text-[11px] text-slate-500">Top students by level & score</p>
                 </div>
                 <ChevronRight size={14} className="text-slate-600 shrink-0" />
               </button>
 
-              {/* Teacher Store */}
-              <button onClick={() => onTabChange('TEACHER_STORE' as any)}
-                className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-white/4 active:bg-white/6 transition-colors border-b border-slate-800/80">
-                <div className="w-9 h-9 rounded-xl bg-violet-500/15 flex items-center justify-center shrink-0">
-                  <Layout size={16} className="text-violet-400" />
-                </div>
-                <div className="flex-1 text-left min-w-0">
-                  <p className="text-sm font-bold text-white">
-                    {user.role === 'TEACHER' ? 'Teacher Store' : 'Become a Teacher'}
-                  </p>
-                  <p className="text-[11px] text-slate-500">
-                    {user.role === 'TEACHER' ? 'Manage your store & content' : 'Unlock creator tools'}
-                  </p>
-                </div>
-                <ChevronRight size={14} className="text-slate-600 shrink-0" />
-              </button>
+              {/* Teacher Store — only visible for actual teachers */}
+              {user.role === 'TEACHER' && (
+                <button onClick={() => onTabChange('TEACHER_STORE' as any)}
+                  className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-white/4 active:bg-white/6 transition-colors border-b border-slate-800/80">
+                  <div className="w-9 h-9 rounded-xl bg-violet-500/15 flex items-center justify-center shrink-0">
+                    <Layout size={16} className="text-violet-400" />
+                  </div>
+                  <div className="flex-1 text-left min-w-0">
+                    <p className="text-sm font-bold text-white">Teacher Store</p>
+                    <p className="text-[11px] text-slate-500">Manage your store & content</p>
+                  </div>
+                  <ChevronRight size={14} className="text-slate-600 shrink-0" />
+                </button>
+              )}
 
               {/* Logout */}
               {(settings?.isLogoutEnabled !== false || user.role === 'ADMIN' || isImpersonating) && (
@@ -8175,49 +8258,45 @@ export const StudentDashboard: React.FC<Props> = ({
             : "bg-gradient-to-r from-sky-400 via-cyan-400 to-sky-500 text-white border-b border-sky-500/30"
         } ${isFullscreenMode ? "hidden" : ""} transition-all duration-300 ease-in-out ${(isTopBarHidden || isLandscapeUiHidden || activeTab === 'PROFILE' || activeTab === 'STORE' || activeTab === 'CUSTOM_PAGE') ? "-translate-y-full !h-0 overflow-hidden opacity-0 pointer-events-none" : "translate-y-0 opacity-100"}`}
       >
-        {/* Animation effects — wrapped in overflow-hidden so shimmer/sparkle stays clipped to top bar */}
-        <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
-          {/* User custom effect color (gifted via redeem code) — always rendered on top */}
-          {user.topBarEffectColor && (
-            <TopBarEffectsLayer effects={[
-              { id: 'shimmer-forward', enabled: true, color: user.topBarEffectColor, speed: 1.5 },
-              { id: 'glow-bottom',     enabled: true, color: user.topBarEffectColor, speed: 1 },
-              { id: 'sparkle-top',     enabled: true, color: user.topBarEffectColor, speed: 1 },
-            ]} />
-          )}
-          {/* Admin-configured top bar effects (if set), else tier defaults */}
-          {settings?.topBarEffects && settings.topBarEffects.length > 0 ? (
-            <TopBarEffectsLayer effects={settings.topBarEffects} />
-          ) : (<>
-            {/* ULTRA default — golden */}
-            {user.isPremium && user.subscriptionLevel === 'ULTRA' && (
-              <TopBarEffectsLayer effects={[
-                { id: 'shimmer-forward', enabled: true, color: '#fbbf24' },
-                { id: 'shimmer-reverse', enabled: true, color: '#fbbf24' },
-                { id: 'glow-both',       enabled: true, color: '#fbbf24' },
-                { id: 'sparkle-full',    enabled: true, color: '#fcd34d' },
-              ]} />
-            )}
-            {/* BASIC default — white */}
-            {user.isPremium && user.subscriptionLevel === 'BASIC' && (
-              <TopBarEffectsLayer effects={[
-                { id: 'shimmer-forward', enabled: true, color: '#ffffff' },
-                { id: 'shimmer-reverse', enabled: true, color: '#ffffff' },
-                { id: 'glow-both',       enabled: true, color: '#93c5fd' },
-                { id: 'sparkle-full',    enabled: true, color: '#ffffff' },
-              ]} />
-            )}
-            {/* FREE default — subtle dark */}
-            {!user.isPremium && (
-              <TopBarEffectsLayer effects={[
-                { id: 'shimmer-forward', enabled: true, color: '#000000' },
-                { id: 'shimmer-reverse', enabled: true, color: '#000000' },
-                { id: 'glow-bottom',     enabled: true, color: '#bae6fd' },
-                { id: 'sparkle-top',     enabled: true, color: '#ffffff' },
-              ]} />
-            )}
-          </>)}
-        </div>
+        {/* Animation effects — level-based + subscription overlay */}
+        {(() => {
+          const _effScore = user.role === 'ADMIN' || user.role === 'SUB_ADMIN' ? 20000 : (user.totalScore || 0);
+          const _effLvl = getLevelInfo(_effScore);
+          const _levelEffects = getLevelTopBarEffects(_effLvl);
+          return (
+            <div className="absolute inset-0 overflow-hidden pointer-events-none z-0">
+              {/* User custom effect color (gifted via redeem code) — always rendered on top */}
+              {user.topBarEffectColor && (
+                <TopBarEffectsLayer effects={[
+                  { id: 'shimmer-forward', enabled: true, color: user.topBarEffectColor, speed: 1.5 },
+                  { id: 'glow-bottom',     enabled: true, color: user.topBarEffectColor, speed: 1 },
+                  { id: 'sparkle-top',     enabled: true, color: user.topBarEffectColor, speed: 1 },
+                ]} />
+              )}
+              {/* Admin-configured top bar effects (if set) */}
+              {settings?.topBarEffects && settings.topBarEffects.length > 0 ? (
+                <TopBarEffectsLayer effects={settings.topBarEffects} />
+              ) : _levelEffects.length > 0 ? (
+                /* Level-based effects — intensity grows with level */
+                <TopBarEffectsLayer effects={_levelEffects} />
+              ) : (<>
+                {/* Level 1 — subscription defaults only */}
+                {user.isPremium && user.subscriptionLevel === 'ULTRA' && (
+                  <TopBarEffectsLayer effects={[
+                    { id: 'shimmer-forward', enabled: true, color: '#fbbf24' },
+                    { id: 'glow-both',       enabled: true, color: '#fbbf24' },
+                  ]} />
+                )}
+                {user.isPremium && user.subscriptionLevel === 'BASIC' && (
+                  <TopBarEffectsLayer effects={[
+                    { id: 'shimmer-forward', enabled: true, color: '#ffffff' },
+                    { id: 'glow-bottom',     enabled: true, color: '#93c5fd' },
+                  ]} />
+                )}
+              </>)}
+            </div>
+          );
+        })()}
         {/* Main Header Row */}
         <div className="flex items-center justify-between w-full relative">
           <div
@@ -8247,6 +8326,15 @@ export const StudentDashboard: React.FC<Props> = ({
 
           {/* RIGHT SIDE: Fixed action icons + Credits (no scroll) */}
           <div className="flex items-center gap-1 flex-1 min-w-0 ml-1 z-10 justify-end">
+
+              {/* Streak indicator — LINE 1, fire icon + day count, not a button */}
+              <span
+                className={`inline-flex items-center gap-0.5 text-[11px] font-black shrink-0 select-none ${user.streak > 0 ? 'text-amber-300' : 'text-white/60'}`}
+                title={`Login streak: ${user.streak} day${user.streak === 1 ? '' : 's'}`}
+              >
+                <span className="text-[13px] leading-none">🔥</span>
+                <span>{user.streak}d</span>
+              </span>
 
               {/* Search icon — opens home search from top bar */}
               {isHomeSectionVisible('home_search_button', settings) && (
@@ -8417,34 +8505,36 @@ export const StudentDashboard: React.FC<Props> = ({
           </div>
         </div>
 
-        {/* SECOND LINE: Streak + Credits + greeting + subscription badge */}
+        {/* SECOND LINE: Level btn + Credits + greeting + subscription badge */}
         <div className="flex items-center justify-between w-full mt-0.5 pt-0.5 border-t border-white/10">
-          {/* Left: Streak + greeting */}
+          {/* Left: greeting */}
           <div className="flex items-center gap-1.5 shrink-0">
             <span className="text-[12px] font-bold text-white/90 truncate max-w-[62px]">
               Hey, {(user.name || "Student").split(" ")[0]} 👋
             </span>
           </div>
 
-          {/* Right: Streak + Credits + subscription badge + expiry */}
+          {/* Right: Level btn + Credits + subscription badge */}
           <div className="flex items-center gap-1.5 shrink-0 max-w-[78%] overflow-hidden">
-            {/* Streak 🔥 */}
-            <button
-              onClick={() => { setShowStreakPopup(v => !v); setStreakHistoryView(false); }}
-              className={`relative overflow-hidden inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full shadow-sm text-[8px] font-black border backdrop-blur-sm whitespace-nowrap shrink-0 active:scale-95 transition-all w-[84px] justify-center ${
-                user.streak > 0
-                  ? 'bg-amber-500/25 text-amber-50 border-amber-400/50'
-                  : 'bg-white/15 text-white/80 border-white/25'
-              }`}
-              title={`Login streak: ${user.streak} day${user.streak === 1 ? '' : 's'}`}
-            >
-              <div className="absolute inset-0 pointer-events-none rounded-full" style={{ boxShadow: user.streak > 0 ? 'inset 0 0 0 1px rgba(251,191,36,0.6)' : 'inset 0 0 0 1px rgba(251,191,36,0.2)', animation: 'topbar-glow-pulse 2s ease-in-out infinite' }} />
-              <span className="relative z-10 text-[12px] leading-none">🔥</span>
-              <span className="relative z-10">{user.streak}</span>
-            </button>
+            {/* Level button — goes to Score/Level panel */}
+            {(() => {
+              const _ls = user.role === 'ADMIN' || user.role === 'SUB_ADMIN' ? 20000 : (user.totalScore || 0);
+              const _li = getLevelInfo(_ls);
+              return (
+                <button
+                  onClick={() => setShowScorePanel(true)}
+                  className={`relative overflow-hidden inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full shadow-sm text-[8px] font-black border backdrop-blur-sm whitespace-nowrap shrink-0 active:scale-95 transition-all w-[64px] justify-center bg-white/15 text-white border-white/30`}
+                  title="View my level"
+                  style={{ boxShadow: `0 0 8px ${_li.glowColor}` }}
+                >
+                  <span className="text-[11px] leading-none">{_li.emoji}</span>
+                  <span>L{_li.level}</span>
+                </button>
+              );
+            })()}
             {/* Credits button */}
             {!(settings?.hiddenTopBarButtons || []).includes('CREDITS') && (
-              <div className="shrink-0 w-[84px]">
+              <div className="shrink-0 w-[60px]">
                 {((settings?.specialDiscountEvent?.enabled && isDiscountCooldown) ? topBarCreditFlip : false) ? (
                   <button
                     onClick={() => { const todayStr = new Date().toISOString().split('T')[0]; const k = `nst_store_visits_${user.id}_${todayStr}`; try { localStorage.setItem(k, String(parseInt(localStorage.getItem(k) || '0', 10) + 1)); } catch {} onTabChange("STORE"); }}
@@ -8526,7 +8616,7 @@ export const StudentDashboard: React.FC<Props> = ({
                 <span
                   key={_topBarInfoPhase}
                   onClick={() => onTabChange('STORE')}
-                  className={`w-[84px] text-center text-[7px] font-black py-0.5 rounded-full border whitespace-nowrap shrink-0 transition-all duration-300 cursor-pointer active:scale-95 ${tierColor}`}
+                  className={`w-[60px] text-center text-[7px] font-black py-0.5 rounded-full border whitespace-nowrap shrink-0 transition-all duration-300 cursor-pointer active:scale-95 ${tierColor}`}
                   style={{ animation: 'fade-in-up 0.35s ease-out both' }}
                   title="Subscription"
                 >
@@ -8780,6 +8870,28 @@ export const StudentDashboard: React.FC<Props> = ({
         );
       })()}
 
+      {/* TTS PROGRESS BAR — thin overlay at top of screen when TTS is reading */}
+      {ttsSessionKey && ttsProgressPercent > 0 && (
+        <div className="fixed top-0 left-0 right-0 z-[9997] pointer-events-none">
+          <div className="h-[3px] w-full bg-black/20">
+            <div
+              className="h-full rounded-r-full transition-all duration-300"
+              style={{
+                width: `${ttsProgressPercent}%`,
+                background: 'linear-gradient(90deg, #06b6d4, #6366f1, #a855f7)',
+                boxShadow: '0 0 8px rgba(99,102,241,0.8)',
+              }}
+            />
+          </div>
+          <div
+            className="absolute right-2 top-[5px] text-[9px] font-black text-white/80 bg-black/50 px-1.5 py-0.5 rounded-full backdrop-blur-sm"
+            style={{ pointerEvents: 'none' }}
+          >
+            🎧 {ttsProgressPercent}%
+          </div>
+        </div>
+      )}
+
       {/* STREAK DETAIL POPUP — full bottom-sheet modal */}
       {showStreakPopup && !isFullscreenMode && !isTopBarHidden && (() => {
         // ── helpers ──────────────────────────────────────────────
@@ -8851,6 +8963,40 @@ export const StudentDashboard: React.FC<Props> = ({
                     animation: `${i % 2 === 0 ? 'confettiFall' : 'confettiWave'} ${1.1 + (i % 5) * 0.25}s ease-in forwards ${i * 0.07}s`,
                   }} />
                 ))}
+              </div>
+            )}
+
+            {/* ── LEVEL UP CELEBRATION OVERLAY ── */}
+            {levelUpCelebration && (
+              <div className="fixed inset-0 z-[9995] pointer-events-none flex items-center justify-center overflow-hidden">
+                <style>{`
+                  @keyframes levelUpPop{0%{transform:scale(0.3) translateY(60px) rotate(-10deg);opacity:0}40%{transform:scale(1.2) translateY(-10px) rotate(2deg);opacity:1}65%{transform:scale(0.95) translateY(0) rotate(0);opacity:1}85%{transform:scale(1) translateY(0);opacity:1}100%{transform:scale(0.9) translateY(-30px);opacity:0}}
+                  @keyframes confettiShower{0%{transform:translateY(-20px) rotate(0deg);opacity:1}100%{transform:translateY(120vh) rotate(720deg);opacity:0}}
+                `}</style>
+                {/* Confetti shower */}
+                {Array.from({length: 30}, (_, i) => (
+                  <div key={i} style={{
+                    position: 'absolute',
+                    top: '-20px',
+                    left: `${(i / 30) * 100}%`,
+                    width: i % 3 === 0 ? 10 : 7,
+                    height: i % 3 === 0 ? 14 : 10,
+                    background: ['#f59e0b','#ef4444','#22c55e','#3b82f6','#a855f7','#ec4899','#fbbf24'][i % 7],
+                    borderRadius: i % 2 === 0 ? '50%' : '2px',
+                    animation: `confettiShower ${1.5 + (i % 4) * 0.3}s ease-in forwards ${i * 0.06}s`,
+                  }} />
+                ))}
+                {/* Level up badge */}
+                <div style={{ animation: 'levelUpPop 3s ease forwards', textAlign: 'center', zIndex: 1 }} className="pointer-events-auto" onClick={() => setLevelUpCelebration(null)}>
+                  <div className="rounded-3xl px-8 py-6 shadow-2xl border-2 border-white/30 text-center" style={{ background: 'linear-gradient(135deg, #7c3aed, #db2777)', boxShadow: '0 0 60px rgba(168,85,247,0.6)' }}>
+                    <div className="text-5xl mb-2">🎉</div>
+                    <p className="text-white/80 text-sm font-bold uppercase tracking-widest mb-1">Level Up!</p>
+                    <p className="text-5xl mb-1">{levelUpCelebration.emoji}</p>
+                    <p className="text-white text-2xl font-black">Level {levelUpCelebration.level}</p>
+                    <p className="text-white/70 text-sm font-bold">{levelUpCelebration.label}</p>
+                    <p className="text-white/50 text-[10px] mt-2">Tap to dismiss</p>
+                  </div>
+                </div>
               </div>
             )}
 
@@ -11237,7 +11383,17 @@ export const StudentDashboard: React.FC<Props> = ({
                       setSpeakingId(null);
                     } else if (gksToRead.length > 0) {
                       const fullText = gksToRead.map((gk, i) => `Question ${i + 1}: ${gk.question}. Answer: ${gk.answer}`).join('. ');
-                      speakText(fullText, null, 1.0, 'hi-IN', () => setSpeakingId('gk_readall'), () => setSpeakingId(null));
+                      const gkSessionKey = `gk_tts_${Date.now()}`;
+                      setTtsSessionKey(gkSessionKey);
+                      setTtsProgressPercent(0);
+                      setTtsScoreSessionKey(gkSessionKey);
+                      let prevTtsPct = 0;
+                      speakText(fullText, null, 1.0, 'hi-IN', () => setSpeakingId('gk_readall'), () => { setSpeakingId(null); setTtsProgressPercent(0); setTtsSessionKey(null); }, (pct) => {
+                        setTtsProgressPercent(pct);
+                        const result = awardMilestone(user.id, gkSessionKey, prevTtsPct, pct, user.subscriptionLevel, user.isPremium, getActiveBoost(user));
+                        prevTtsPct = pct;
+                        if (result && result.earned > 0) triggerRewardEffect(result.earned, `+${result.earned} pts 🎧`);
+                      });
                     }
                   }}
                   className={`shrink-0 inline-flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-black uppercase tracking-wider shadow-sm active:scale-95 transition ${speakingId === 'gk_readall' ? 'bg-red-600 text-white' : 'bg-teal-600 text-white hover:bg-teal-700'}`}
@@ -11930,7 +12086,7 @@ export const StudentDashboard: React.FC<Props> = ({
                           htmlUnlockCost={settings?.htmlUnlockCost ?? 5}
                           onHtmlOpen={_trackHtmlOpen}
                           onUpgradeClick={() => onTabChange('STORE')}
-                          onSpendCredits={(amt) => handleUserUpdate({ ...user, credits: Math.max(0, (user.credits || 0) - amt) })}
+                          onSpendCredits={(amt) => { const _u = applyDeduction(user, amt); if (_u) handleUserUpdate(_u); }}
                           content={fullLessonText}
                           topBarLabel={lce.lessonTitle}
                           hideTopBar={isLandscapeUiHidden}
@@ -12031,14 +12187,15 @@ export const StudentDashboard: React.FC<Props> = ({
                 onClick={() => {
                   const cost = settings?.nameChangeCost || 10;
                   if (newNameInput && newNameInput !== user.name) {
-                    if (user.credits < cost) {
+                    if (getTotalCredits(user) < cost) {
                       showAlert(`Insufficient Coins! Need ${cost}.`, "ERROR");
                       return;
                     }
+                    const _deducted = applyDeduction(user, cost);
+                    if (!_deducted) return;
                     const u = {
-                      ...user,
+                      ..._deducted,
                       name: newNameInput,
-                      credits: user.credits - cost,
                       totalScore: (user.totalScore || 0) + cost,
                     };
                     handleUserUpdate(u);
@@ -14171,6 +14328,12 @@ export const StudentDashboard: React.FC<Props> = ({
                 // scrolled past 5% so we don't spam writes on tiny movements.
                 if (pct > 5) {
                   persistLucentProgress(pct);
+                  // Award milestone score for lucent/notes reading progress
+                  if (lucentMilestoneSessionRef.current) {
+                    const result = awardMilestone(user.id, lucentMilestoneSessionRef.current, lucentMilestonePrevPctRef.current, pct, user.subscriptionLevel, user.isPremium, getActiveBoost(user));
+                    lucentMilestonePrevPctRef.current = pct;
+                    if (result && result.earned > 0) triggerRewardEffect(result.earned, `+${result.earned} pts 📚`);
+                  }
                 }
               }}
             >
@@ -14211,7 +14374,7 @@ export const StudentDashboard: React.FC<Props> = ({
                     onHtmlOpen={_trackHtmlOpen}
                     onUpgradeClick={() => onTabChange('STORE')}
                     onHtmlViewChange={(mode) => setLucentChunkHtmlMode(mode)}
-                    onSpendCredits={(amt) => handleUserUpdate({ ...user, credits: Math.max(0, (user.credits || 0) - amt) })}
+                    onSpendCredits={(amt) => { const _u = applyDeduction(user, amt); if (_u) handleUserUpdate(_u); }}
                     htmlContent={(() => {
                       const chunkSrc = (currentPage as any).chunkNotes;
                       const htmlSrc = (currentPage as any).htmlNotes;
@@ -16362,6 +16525,16 @@ RULES:
         );
       })()}
 
+      {/* ===================== LEVEL LEADERBOARD OVERLAY ===================== */}
+      {showLevelLeaderboard && (
+        <div className="fixed inset-0 z-[9000] bg-[#0a0a1a]">
+          <LevelLeaderboard
+            user={user}
+            onBack={() => setShowLevelLeaderboard(false)}
+          />
+        </div>
+      )}
+
       {/* ===================== COMMUNITY "MOST SAVED" / TRENDING NOTES PAGE ===================== */}
       {showCommunityStarsPage && (() => {
         const now = Date.now();
@@ -16646,25 +16819,71 @@ RULES:
                 ) : (
                   <div className="rounded-2xl p-3.5 bg-amber-900/20 border border-amber-500/30 text-center">
                     <p className="text-sm font-black text-amber-400">🏆 Maximum Level Achieved!</p>
-                    <p className="text-[10px] text-amber-500/70 mt-1">You have unlocked 30% store discount</p>
+                    <p className="text-[10px] text-amber-500/70 mt-1">You have unlocked 20% store discount</p>
                   </div>
                 )}
 
+                {/* Daily Score Progress */}
+                {(() => {
+                  const earned = getDailyScoreEarned(user.id);
+                  const dailyLimit = getDailyScoreLimit(user.subscriptionLevel, user.isPremium);
+                  const pct = Math.min(100, Math.round((earned / dailyLimit) * 100));
+                  const boost = getActiveBoost(user);
+                  const isBasicLimit = user.isPremium && user.subscriptionLevel === 'BASIC';
+                  const isUltraLimit = user.isPremium && user.subscriptionLevel === 'ULTRA';
+                  return (
+                    <div className="rounded-2xl p-3.5 bg-emerald-900/20 border border-emerald-500/30">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-[10px] font-black text-emerald-400 uppercase tracking-widest">⚡ Aaj ka Score</p>
+                        <span className="text-xs font-black text-white flex items-center gap-1">
+                          {earned} / {dailyLimit} pts
+                          {isUltraLimit && <span className="text-[8px] text-amber-300 font-bold bg-amber-900/30 px-1 py-0.5 rounded">1.75×</span>}
+                          {isBasicLimit && <span className="text-[8px] text-sky-300 font-bold bg-sky-900/30 px-1 py-0.5 rounded">1.25×</span>}
+                        </span>
+                      </div>
+                      <div className="h-2 bg-white/8 rounded-full overflow-hidden mb-1.5">
+                        <div className="h-full rounded-full transition-all" style={{ width: `${pct}%`, background: 'linear-gradient(90deg, #10b981, #34d399)' }} />
+                      </div>
+                      <p className="text-[10px] text-slate-500">{dailyLimit - earned > 0 ? `${dailyLimit - earned} pts aur kamao aaj` : '🎉 Aaj ki limit complete!'}</p>
+                      {boost > 0 && (
+                        <div className="mt-2 flex items-center gap-1.5 text-[10px] font-bold text-orange-300 bg-orange-900/20 rounded-lg px-2 py-1">
+                          <span>🚀</span>
+                          <span>Score Booster Active: +{boost}% extra — expires {new Date(user.scoreBoostExpiry!).toLocaleDateString('en-IN')}</span>
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
+
                 {/* How to earn */}
                 <div className="rounded-2xl p-3.5 bg-white/4 border border-white/8">
-                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">Score Kaise Kamayein</p>
+                  <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">Score Kaise Kamayein (Milestone System)</p>
+                  <div className="flex items-center justify-between py-1 border-b border-white/4 mb-1">
+                    <span className="text-[10px] font-black text-slate-400 uppercase">Activity</span>
+                    <span className="text-[10px] font-black text-slate-400 uppercase">Milestone Score</span>
+                  </div>
                   {[
-                    { icon: '📹', label: 'Video dekhna', pts: `+${ACTIVITY_SCORES.VIDEO} pts` },
-                    { icon: '📄', label: 'PDF/Notes padhna', pts: `+${ACTIVITY_SCORES.PDF} pts` },
-                    { icon: '🎧', label: 'Audio sunna', pts: `+${ACTIVITY_SCORES.AUDIO} pts` },
-                    { icon: '❓', label: 'MCQ attempt (max 20)', pts: `+${ACTIVITY_SCORES.MCQ_PER_ANSWER}×attempt` },
+                    { icon: '📹', label: 'Video / Audio / PDF / Notes / GK / HW' },
+                    { icon: '🎧', label: 'TTS Reading (page % completion)' },
+                    { icon: '❓', label: 'MCQ correct (+1 per correct)' },
                     { icon: '📅', label: 'Daily login', pts: `+${ACTIVITY_SCORES.DAILY_LOGIN} pts` },
-                  ].map(item => (
-                    <div key={item.label} className="flex items-center justify-between py-1.5 border-b border-white/4 last:border-0">
-                      <span className="text-sm">{item.icon} <span className="text-slate-300 text-xs font-medium">{item.label}</span></span>
-                      <span className="text-xs font-black text-emerald-400">{item.pts}</span>
+                  ].map((item, i) => (
+                    <div key={item.label} className="flex items-start justify-between py-1.5 border-b border-white/4 last:border-0 gap-2">
+                      <span className="text-xs text-slate-300 font-medium flex-1">{item.icon} {item.label}</span>
+                      <span className="text-[10px] font-black text-emerald-400 text-right whitespace-nowrap shrink-0">
+                        {item.pts || '20%=5, 40%=10,\n60%=15, 80%=20,\n100%=25'}
+                      </span>
                     </div>
                   ))}
+                  <div className="mt-2 p-2 rounded-xl bg-white/4 border border-white/8">
+                    <p className="text-[10px] font-black text-slate-400 mb-1">Subscription Multiplier</p>
+                    <div className="flex gap-3 text-[10px]">
+                      <span className="text-slate-300">🌱 Free: <span className="text-white font-bold">1×</span></span>
+                      <span className="text-sky-300">★ Basic: <span className="text-white font-bold">1.2×</span></span>
+                      <span className="text-amber-300">⚡ Ultra: <span className="text-white font-bold">1.5×</span></span>
+                    </div>
+                  </div>
+                  <p className="text-[10px] text-slate-500 mt-2">📊 Daily limit: Free=200 · Basic=250 · Ultra=350 pts/day. Score booster code se extra milega.</p>
                 </div>
 
                 {/* Streak warning */}
@@ -16999,24 +17218,31 @@ RULES:
               </div>
 
               {/* Footer */}
-              {canUpgradeTo && (
+              {/* Renew / Upgrade button — hidden for Lifetime users */}
+              {user.subscriptionTier !== 'LIFETIME' && (
                 <div className="px-5 py-4 border-t border-slate-100">
-                  <button
-                    onClick={() => { setShowFeatureLimitsModal(false); onTabChange('STORE'); }}
-                    className={`w-full py-3 rounded-2xl bg-gradient-to-r ${vpCfg.color} text-white font-black text-sm active:scale-95 transition shadow-lg`}
-                  >
-                    {viewingUltra ? '⚡ Ultra pe Upgrade Karo — Sab Unlock' : '🔵 Basic pe Upgrade Karo — Zyada Access'}
-                  </button>
-                </div>
-              )}
-              {!canUpgradeTo && !userIsUltra && (
-                <div className="px-5 py-4 border-t border-slate-100">
-                  <button
-                    onClick={() => { setShowFeatureLimitsModal(false); onTabChange('STORE'); }}
-                    className="w-full py-3 rounded-2xl bg-gradient-to-r from-violet-500 to-purple-600 text-white font-black text-sm active:scale-95 transition shadow-lg shadow-violet-200"
-                  >
-                    ⚡ Ultra plan dekho — Sab Unlock
-                  </button>
+                  {canUpgradeTo ? (
+                    <button
+                      onClick={() => { setShowFeatureLimitsModal(false); onTabChange('STORE'); }}
+                      className={`w-full py-3 rounded-2xl bg-gradient-to-r ${vpCfg.color} text-white font-black text-sm active:scale-95 transition shadow-lg`}
+                    >
+                      {viewingUltra ? '⚡ Ultra pe Upgrade Karo — Sab Unlock' : '🔵 Basic pe Upgrade Karo — Zyada Access'}
+                    </button>
+                  ) : user.isPremium ? (
+                    <button
+                      onClick={() => { setShowFeatureLimitsModal(false); onTabChange('STORE'); }}
+                      className={`w-full py-3 rounded-2xl bg-gradient-to-r ${_isUltraUser ? 'from-purple-500 to-violet-600' : 'from-sky-500 to-blue-600'} text-white font-black text-sm active:scale-95 transition shadow-lg flex items-center justify-center gap-2`}
+                    >
+                      🔄 Renew {_isUltraUser ? 'Ultra' : 'Basic'} Plan
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => { setShowFeatureLimitsModal(false); onTabChange('STORE'); }}
+                      className="w-full py-3 rounded-2xl bg-gradient-to-r from-violet-500 to-purple-600 text-white font-black text-sm active:scale-95 transition shadow-lg shadow-violet-200"
+                    >
+                      ⚡ Ultra plan dekho — Sab Unlock
+                    </button>
+                  )}
                 </div>
               )}
             </div>
@@ -17428,7 +17654,7 @@ RULES:
       {/* ── Write Mode Unlock Prompt ── */}
       {showWMUnlockPrompt && (() => {
         const isHardBlocked = _paidWriteCount >= WM_PAID_DAILY_MAX;
-        const canAfford = (user.credits || 0) >= _currentWmCost;
+        const canAfford = getTotalCredits(user) >= _currentWmCost;
         const nextThreshold = (Math.floor(_paidWriteCount / 10) + 1) * 10;
         const nextCost = Math.min(20, _wmBaseCost + (Math.floor(_paidWriteCount / 10) + 1) * 5);
         return (
@@ -17537,7 +17763,8 @@ RULES:
                   canAfford ? (
                     <button
                       onClick={() => {
-                        handleUserUpdate({ ...user, credits: Math.max(0, (user.credits || 0) - _currentWmCost) });
+                        const _wmUpdated = applyDeduction(user, _currentWmCost);
+                        if (_wmUpdated) handleUserUpdate(_wmUpdated);
                         try { localStorage.setItem(_paidWriteKey, String(_paidWriteCount + 1)); } catch {}
                         setShowWMUnlockPrompt(false);
                         pendingWMCallback?.();

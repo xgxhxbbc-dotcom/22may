@@ -388,7 +388,8 @@ export const speakText = async (
     rate: number = 1.0,
     lang: string = 'en-US',
     onStart?: () => void,
-    onEnd?: () => void
+    onEnd?: () => void,
+    onProgress?: (percent: number) => void
 ): Promise<SpeechSynthesisUtterance | null> => {
     if (!('speechSynthesis' in window)) {
         console.warn('Text-to-speech not supported.');
@@ -502,6 +503,11 @@ export const speakText = async (
         u.onend = () => {
             if (mySessionId !== activeTtsSessionId) { clearWatchdog(); return; }
             clearWatchdog();
+            // Report progress after each chunk
+            if (onProgress) {
+                const pct = Math.round(((idx + 1) / chunks.length) * 100);
+                try { onProgress(pct); } catch (_) {}
+            }
             // Small gap (50ms) between chunks — enough for the engine to reset without losing state
             setTimeout(() => speakChunk(idx + 1), 50);
         };
