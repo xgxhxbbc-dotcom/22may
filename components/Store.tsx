@@ -148,13 +148,6 @@ export const Store: React.FC<Props> = ({ user, settings }) => {
     ? (settings?.storeFeatures?.basic?.filter(f => f.trim()) || defaultBasicFeatures)
     : (settings?.storeFeatures?.ultra?.filter(f => f.trim()) || defaultUltraFeatures);
 
-  const getDaysRemaining = () => {
-    if (!user.subscriptionEndDate) return null;
-    const diff = new Date(user.subscriptionEndDate).getTime() - new Date().getTime();
-    return diff <= 0 ? null : Math.ceil(diff / (1000 * 60 * 60 * 24));
-  };
-  const daysRemaining = getDaysRemaining();
-
   const getPerMonthPrice = (plan: any, price: number) => {
     if (plan.duration.toLowerCase().includes('year') || plan.duration.includes('365')) return Math.round(price / 12);
     return null;
@@ -215,37 +208,6 @@ export const Store: React.FC<Props> = ({ user, settings }) => {
         </div>
       )}
 
-      {/* ACTIVE SUBSCRIPTION BANNER */}
-      {user.isPremium && (
-        <div className="mx-4 mt-4 mb-2">
-          <div className={`relative overflow-hidden p-4 rounded-2xl border ${user.subscriptionLevel === 'ULTRA' ? 'bg-gradient-to-r from-purple-900/60 to-violet-900/60 border-purple-500/30' : 'bg-gradient-to-r from-sky-900/60 to-cyan-900/60 border-sky-500/30'}`}>
-            <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(105deg,transparent 40%,rgba(255,255,255,0.04) 50%,transparent 60%)', animation: 'shimmer-sweep 3s linear infinite' }} />
-            <div className="flex items-center justify-between relative z-10">
-              <div className="flex items-center gap-3">
-                <div className={`w-10 h-10 rounded-xl flex items-center justify-center ${user.subscriptionLevel === 'ULTRA' ? 'bg-purple-500/30' : 'bg-sky-500/30'}`}>
-                  <Crown size={20} className={user.subscriptionLevel === 'ULTRA' ? 'text-purple-300' : 'text-sky-300'} />
-                </div>
-                <div>
-                  <p className={`text-[10px] font-black uppercase tracking-widest ${user.subscriptionLevel === 'ULTRA' ? 'text-purple-400' : 'text-sky-400'}`}>Active Plan</p>
-                  <p className="text-white font-black text-sm">{user.subscriptionLevel === 'ULTRA' ? 'ULTRA MAX' : 'BASIC PRO'}</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-4 text-right">
-                <div>
-                  <p className="text-[10px] text-yellow-400 font-bold uppercase">Credits</p>
-                  <p className="text-yellow-300 font-black">{(user.credits ?? 0).toLocaleString('en-IN')}</p>
-                </div>
-                {daysRemaining && (
-                  <div className={`px-3 py-1.5 rounded-xl border text-center ${user.subscriptionLevel === 'ULTRA' ? 'bg-purple-500/20 border-purple-400/30' : 'bg-sky-500/20 border-sky-400/30'}`}>
-                    <p className="text-white font-black text-lg leading-none">{daysRemaining}</p>
-                    <p className="text-[9px] text-slate-400 font-bold mt-0.5">Days Left</p>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* MAIN CONTENT */}
       <div className="px-4 pt-6">

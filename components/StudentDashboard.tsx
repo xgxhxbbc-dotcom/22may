@@ -1109,6 +1109,15 @@ export const StudentDashboard: React.FC<Props> = ({
     settings?.specialDiscountEvent,
   ]);
 
+  // CREDIT DEDUCTION TOAST STATE
+  const [creditDeductToast, setCreditDeductToast] = useState<{
+    visible: boolean;
+    previous: number;
+    deducted: number;
+    current: number;
+  } | null>(null);
+  const creditToastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
+
   // CUSTOM ALERT STATE
   const [alertConfig, setAlertConfig] = useState<{
     isOpen: boolean;
@@ -3766,6 +3775,21 @@ export const StudentDashboard: React.FC<Props> = ({
   };
 
   const handleUserUpdate = (updatedUser: User) => {
+    // Detect credit deduction and show toast
+    const prevCredits = user.credits ?? 0;
+    const newCredits = updatedUser.credits ?? 0;
+    if (
+      newCredits < prevCredits &&
+      !localStorage.getItem('nst_credit_toast_disabled')
+    ) {
+      const deducted = prevCredits - newCredits;
+      if (creditToastTimerRef.current) clearTimeout(creditToastTimerRef.current);
+      setCreditDeductToast({ visible: true, previous: prevCredits, deducted, current: newCredits });
+      creditToastTimerRef.current = setTimeout(() => {
+        setCreditDeductToast(null);
+      }, 5000);
+    }
+
     // Ignore nst_users if empty, just save to live and current user directly
     // since the system has moved away from 'nst_users' dependency.
     if (!isImpersonating) {
@@ -7486,9 +7510,22 @@ export const StudentDashboard: React.FC<Props> = ({
                   <span className="text-amber-500 text-[9px] font-bold">CR</span>
                 </div>
                 {user.isPremium && (
-                  <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${user.subscriptionLevel === 'ULTRA' ? 'text-purple-300 border-purple-500/40 bg-purple-500/15' : 'text-sky-300 border-sky-500/40 bg-sky-500/15'}`}>
-                    {user.subscriptionLevel === 'ULTRA' ? '⚡ ULTRA' : '★ BASIC'} Active
-                  </span>
+                  <div className="flex flex-col items-end gap-1">
+                    <span className={`text-[9px] font-black px-2 py-0.5 rounded-full border ${user.subscriptionLevel === 'ULTRA' ? 'text-purple-300 border-purple-500/40 bg-purple-500/15' : 'text-sky-300 border-sky-500/40 bg-sky-500/15'}`}>
+                      {user.subscriptionLevel === 'ULTRA' ? '⚡ ULTRA' : '★ BASIC'} Active
+                    </span>
+                    {user.subscriptionEndDate && (() => {
+                      const end = new Date(user.subscriptionEndDate);
+                      const diff = end.getTime() - new Date().getTime();
+                      const days = diff > 0 ? Math.ceil(diff / (1000 * 60 * 60 * 24)) : null;
+                      const dateStr = end.toLocaleDateString('en-IN', { day: '2-digit', month: 'short', year: '2-digit' });
+                      return days ? (
+                        <span className="text-[9px] text-slate-400 font-bold">
+                          {days}d left · {dateStr}
+                        </span>
+                      ) : null;
+                    })()}
+                  </div>
                 )}
               </div>
             </div>
@@ -7582,642 +7619,298 @@ export const StudentDashboard: React.FC<Props> = ({
     if (activeTab === "PROFILE")
       return (
         <div className="animate-in fade-in zoom-in duration-300 pb-24">
-          {/* Profile mini top-bar */}
-          <div className={`sticky top-0 z-[50] px-4 py-3 flex items-center justify-between border-b backdrop-blur-md ${
-            user.subscriptionLevel === 'ULTRA' && user.isPremium
-              ? 'bg-slate-900/95 border-slate-700/60 text-white'
-              : user.subscriptionLevel === 'BASIC' && user.isPremium
-                ? 'bg-sky-500/95 border-sky-400/40 text-white'
-                : 'bg-slate-800/95 border-slate-700/60 text-white'
-          }`}>
-            <div className="flex items-center gap-2.5">
-              {settings?.appLogo ? (
-                <img src={settings.appLogo} alt="logo" className="w-7 h-7 rounded-lg object-cover" />
-              ) : (
-                <div className="w-7 h-7 rounded-lg flex items-center justify-center text-xs font-black bg-white/20">
-                  {(settings?.appName || 'IIC').charAt(0)}
-                </div>
-              )}
-              <span className="font-black text-sm tracking-tight">{settings?.appName || 'IIC'}</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <span className={`text-[10px] font-black px-2.5 py-1 rounded-full border ${
+          <div className="px-4 pt-5 space-y-4">
+
+            {/* ── CARD 1: Identity ── */}
+            <div className={`rounded-2xl overflow-hidden relative border ${
+              user.subscriptionLevel === 'ULTRA' && user.isPremium
+                ? 'bg-[#0d0d1a] border-purple-900/60'
+                : user.subscriptionLevel === 'BASIC' && user.isPremium
+                  ? 'bg-[#07111f] border-sky-900/50'
+                  : 'bg-[#0f0f0f] border-slate-800'
+            }`}>
+              {/* Accent top line */}
+              <div className={`h-[3px] w-full ${
                 user.subscriptionLevel === 'ULTRA' && user.isPremium
-                  ? 'bg-purple-500/30 border-purple-400/50 text-purple-200'
+                  ? 'bg-gradient-to-r from-purple-600 via-pink-500 to-purple-600'
                   : user.subscriptionLevel === 'BASIC' && user.isPremium
-                    ? 'bg-white/20 border-white/30 text-white'
-                    : 'bg-white/15 border-white/25 text-white/90'
-              }`}>
-                {user.isPremium ? (user.subscriptionLevel === 'ULTRA' ? '⚡ ULTRA' : '★ BASIC') : '🌱 FREE'}
-              </span>
-              <span className="text-[10px] font-bold text-white/70">👤 Profile</span>
-            </div>
-          </div>
+                    ? 'bg-gradient-to-r from-sky-500 via-cyan-400 to-sky-500'
+                    : 'bg-gradient-to-r from-slate-600 via-slate-500 to-slate-600'
+              }`} />
 
-          <div className="px-4 pt-4">
-          <div
-            className={`rounded-3xl p-8 text-center mb-6 shadow-sm relative overflow-hidden transition-all duration-500 ${
-              user.subscriptionLevel === "ULTRA" && user.isPremium
-                ? "bg-slate-900 border border-slate-700 shadow-purple-500/10 ring-2 ring-purple-900/50 text-white"
-                : user.subscriptionLevel === "BASIC" && user.isPremium
-                  ? "bg-gradient-to-br from-sky-50 via-sky-100 to-cyan-50 shadow-sky-500/10 ring-2 ring-sky-200/50 text-sky-900 border border-slate-200"
-                  : "bg-gradient-to-br from-gray-50 via-gray-100 to-gray-50 shadow-gray-500/10 text-slate-800 grayscale border border-slate-200"
-            }`}
-          >
-            {/* ANIMATED BACKGROUND FOR ULTRA */}
-            {user.subscriptionLevel === "ULTRA" && user.isPremium && (
-              <>
-                <div className="absolute inset-0 bg-[url('https://www.transparenttextures.com/patterns/stardust.png')] opacity-30 animate-spin-slow invert"></div>
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-900/80 to-transparent"></div>
-                <div className="absolute -top-20 -right-20 w-64 h-64 bg-purple-600/20 rounded-full blur-3xl animate-pulse"></div>
-              </>
-            )}
-
-            {/* ANIMATED BACKGROUND FOR BASIC */}
-            {user.subscriptionLevel === "BASIC" && user.isPremium && (<>
-              <div className="absolute inset-0 bg-gradient-to-tr from-white/10 to-transparent opacity-10"></div>
-              {/* White double shimmer */}
-              <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(105deg,transparent 30%,rgba(255,255,255,0.22) 50%,transparent 70%)', backgroundSize: '200% 100%', animation: 'shimmer-sweep 2.5s linear infinite' }} />
-              <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(75deg,transparent 30%,rgba(255,255,255,0.12) 50%,transparent 70%)', backgroundSize: '200% 100%', animation: 'shimmer-sweep-reverse 3.8s linear infinite' }} />
-              {/* Glow borders */}
-              <div className="absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none" style={{ background: 'linear-gradient(90deg,transparent,rgba(255,255,255,0.7),rgba(147,197,253,0.9),rgba(255,255,255,0.7),transparent)', animation: 'topbar-glow-pulse 2s ease-in-out infinite' }} />
-              <div className="absolute top-0 left-0 right-0 h-[1px] pointer-events-none" style={{ background: 'linear-gradient(90deg,transparent,rgba(255,255,255,0.5),transparent)', animation: 'topbar-glow-pulse 2.5s ease-in-out infinite' }} />
-              {/* Sparkle dots */}
-              <div className="absolute top-3 left-[12%] w-1.5 h-1.5 rounded-full bg-white pointer-events-none" style={{ animation: 'sparkle-blink 2.1s ease-in-out infinite' }} />
-              <div className="absolute top-5 left-[38%] w-1 h-1 rounded-full bg-white pointer-events-none" style={{ animation: 'sparkle-blink 1.7s ease-in-out infinite 0.4s' }} />
-              <div className="absolute top-4 left-[62%] w-1.5 h-1.5 rounded-full bg-white pointer-events-none" style={{ animation: 'sparkle-blink 2.4s ease-in-out infinite 0.9s' }} />
-              <div className="absolute top-3 left-[85%] w-1 h-1 rounded-full bg-white pointer-events-none" style={{ animation: 'sparkle-blink 1.9s ease-in-out infinite 0.2s' }} />
-              <div className="absolute bottom-4 left-[25%] w-1 h-1 rounded-full bg-sky-300 pointer-events-none" style={{ animation: 'sparkle-blink 2.6s ease-in-out infinite 0.6s' }} />
-              <div className="absolute bottom-3 left-[72%] w-1.5 h-1.5 rounded-full bg-sky-200 pointer-events-none" style={{ animation: 'sparkle-blink 2s ease-in-out infinite 1.1s' }} />
-            </>)}
-
-            {/* ADMIN EFFECTS — same as top bar (both apply simultaneously) */}
-            {settings?.topBarEffects && settings.topBarEffects.length > 0 && (
-              <TopBarEffectsLayer effects={settings.topBarEffects} />
-            )}
-            {/* USER CUSTOM EFFECT COLOR — gifted via redeem code */}
-            {user.topBarEffectColor && (
-              <TopBarEffectsLayer effects={[
-                { id: 'shimmer-forward', enabled: true, color: user.topBarEffectColor, speed: 1.5 },
-                { id: 'glow-both',       enabled: true, color: user.topBarEffectColor, speed: 1 },
-                { id: 'sparkle-full',    enabled: true, color: user.topBarEffectColor, speed: 1 },
-              ]} />
-            )}
-
-            {/* ANIMATED BACKGROUND FOR ULTRA — golden shimmer + sparkle on top of existing */}
-            {user.subscriptionLevel === "ULTRA" && user.isPremium && (<>
-              {/* Golden double shimmer */}
-              <div className="absolute inset-0 pointer-events-none z-[1]" style={{ background: 'linear-gradient(105deg,transparent 30%,rgba(168,85,247,0.16) 50%,transparent 70%)', backgroundSize: '200% 100%', animation: 'shimmer-sweep 2.5s linear infinite' }} />
-              <div className="absolute inset-0 pointer-events-none z-[1]" style={{ background: 'linear-gradient(75deg,transparent 30%,rgba(236,72,153,0.10) 50%,transparent 70%)', backgroundSize: '200% 100%', animation: 'shimmer-sweep-reverse 3.8s linear infinite' }} />
-              {/* Golden glow borders */}
-              <div className="absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none z-[1]" style={{ background: 'linear-gradient(90deg,transparent,rgba(168,85,247,0.8),rgba(236,72,153,1),rgba(168,85,247,0.8),transparent)', animation: 'topbar-glow-pulse 2s ease-in-out infinite' }} />
-              <div className="absolute top-0 left-0 right-0 h-[1px] pointer-events-none z-[1]" style={{ background: 'linear-gradient(90deg,transparent,rgba(168,85,247,0.5),transparent)', animation: 'topbar-glow-pulse 2.5s ease-in-out infinite' }} />
-              {/* Golden sparkle dots */}
-              <div className="absolute top-3 left-[10%] w-1.5 h-1.5 rounded-full pointer-events-none z-[1]" style={{ background: '#c084fc', animation: 'sparkle-blink 2.1s ease-in-out infinite' }} />
-              <div className="absolute top-5 left-[35%] w-1 h-1 rounded-full pointer-events-none z-[1]" style={{ background: '#f472b6', animation: 'sparkle-blink 1.7s ease-in-out infinite 0.4s' }} />
-              <div className="absolute top-4 left-[60%] w-1.5 h-1.5 rounded-full pointer-events-none z-[1]" style={{ background: '#c084fc', animation: 'sparkle-blink 2.4s ease-in-out infinite 0.9s' }} />
-              <div className="absolute top-3 left-[82%] w-1 h-1 rounded-full pointer-events-none z-[1]" style={{ background: '#f472b6', animation: 'sparkle-blink 1.9s ease-in-out infinite 0.2s' }} />
-              <div className="absolute bottom-4 left-[22%] w-1 h-1 rounded-full pointer-events-none z-[1]" style={{ background: '#e879f9', animation: 'sparkle-blink 2.6s ease-in-out infinite 0.6s' }} />
-              <div className="absolute bottom-3 left-[70%] w-1.5 h-1.5 rounded-full pointer-events-none z-[1]" style={{ background: '#f9a8d4', animation: 'sparkle-blink 2s ease-in-out infinite 1.1s' }} />
-            </>)}
-
-            {/* FREE — subtle dark shimmer + sparkle */}
-            {!user.isPremium && (<>
-              <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(105deg,transparent 30%,rgba(0,0,0,0.08) 50%,transparent 70%)', backgroundSize: '200% 100%', animation: 'shimmer-sweep 3s linear infinite' }} />
-              <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(75deg,transparent 30%,rgba(0,0,0,0.05) 50%,transparent 70%)', backgroundSize: '200% 100%', animation: 'shimmer-sweep-reverse 4s linear infinite' }} />
-              <div className="absolute bottom-0 left-0 right-0 h-[2px] pointer-events-none" style={{ background: 'linear-gradient(90deg,transparent,rgba(148,163,184,0.5),rgba(203,213,225,0.7),rgba(148,163,184,0.5),transparent)', animation: 'topbar-glow-pulse 2s ease-in-out infinite' }} />
-              <div className="absolute top-0 left-0 right-0 h-[1px] pointer-events-none" style={{ background: 'linear-gradient(90deg,transparent,rgba(148,163,184,0.3),transparent)', animation: 'topbar-glow-pulse 2.5s ease-in-out infinite' }} />
-              <div className="absolute top-3 left-[15%] w-1 h-1 rounded-full pointer-events-none" style={{ background: 'rgba(148,163,184,0.6)', animation: 'sparkle-blink 2.1s ease-in-out infinite' }} />
-              <div className="absolute top-5 left-[40%] w-1 h-1 rounded-full pointer-events-none" style={{ background: 'rgba(148,163,184,0.6)', animation: 'sparkle-blink 1.7s ease-in-out infinite 0.4s' }} />
-              <div className="absolute top-4 left-[65%] w-1 h-1 rounded-full pointer-events-none" style={{ background: 'rgba(148,163,184,0.6)', animation: 'sparkle-blink 2.4s ease-in-out infinite 0.9s' }} />
-              <div className="absolute top-3 left-[85%] w-1 h-1 rounded-full pointer-events-none" style={{ background: 'rgba(148,163,184,0.6)', animation: 'sparkle-blink 1.9s ease-in-out infinite 0.2s' }} />
-            </>)}
-
-            {/* SPECIAL BANNER ANIMATION (7/30/365) */}
-            {(user.subscriptionTier === "WEEKLY" ||
-              user.subscriptionTier === "MONTHLY" ||
-              user.subscriptionTier === "YEARLY" ||
-              user.subscriptionTier === "LIFETIME") &&
-              user.isPremium && (
-                <div className="absolute top-2 right-2 animate-bounce">
-                  <span className="bg-white/20 backdrop-blur-md px-3 py-1 rounded-full text-xs font-bold border border-white/30">
-                    {user.subscriptionTier === "WEEKLY"
-                      ? "7 DAYS"
-                      : user.subscriptionTier === "MONTHLY"
-                        ? "30 DAYS"
-                        : user.subscriptionTier === "LIFETIME"
-                          ? "∞"
-                          : "365 DAYS"}
-                  </span>
-                </div>
+              {/* Shimmer overlay */}
+              {user.isPremium && (
+                <div className="absolute inset-0 pointer-events-none z-[1]"
+                  style={{ background: user.subscriptionLevel === 'ULTRA'
+                    ? 'linear-gradient(105deg,transparent 30%,rgba(168,85,247,0.07) 50%,transparent 70%)'
+                    : 'linear-gradient(105deg,transparent 30%,rgba(56,189,248,0.07) 50%,transparent 70%)',
+                    backgroundSize: '200% 100%', animation: 'shimmer-sweep 3s linear infinite' }} />
+              )}
+              {user.topBarEffectColor && (
+                <TopBarEffectsLayer effects={[
+                  { id: 'shimmer-forward', enabled: true, color: user.topBarEffectColor, speed: 1.5 },
+                  { id: 'glow-both', enabled: true, color: user.topBarEffectColor, speed: 1 },
+                ]} />
               )}
 
-            <div
-              className={`w-20 h-20 bg-white rounded-full flex items-center justify-center mx-auto mb-3 text-3xl font-black shadow-2xl relative z-10 overflow-hidden ${
-                user.subscriptionLevel === "ULTRA" && user.isPremium
-                  ? "text-purple-700 ring-4 ring-purple-300 animate-bounce-slow"
-                  : user.subscriptionLevel === "BASIC" && user.isPremium
-                    ? "text-sky-600 ring-4 ring-sky-300"
-                    : "text-slate-600 ring-4 ring-slate-200"
-              }`}
-            >
-              {/* Show app logo if admin uploaded one, else fall back to first letter.
-                  object-cover + w-full h-full so the logo fully fills the circle
-                  (was previously object-contain p-2 which left a big white border). */}
-              {settings?.appLogo ? (
-                <img
-                  src={settings.appLogo}
-                  alt={settings.appName || 'App Logo'}
-                  className="w-full h-full object-cover"
-                />
-              ) : (
-                (user.name || "S").charAt(0)
-              )}
-              {user.subscriptionLevel === "ULTRA" && user.isPremium && (
-                <div className="absolute -top-2 -right-2 text-2xl">👑</div>
-              )}
-            </div>
-
-            <div className="flex items-center justify-center gap-2 relative z-10">
-              <h2
-                className={`text-2xl font-black tracking-tight ${user.subscriptionLevel === "ULTRA" && user.isPremium ? "text-white" : "text-slate-800"}`}
-              >
-                {user.name}
-              </h2>
-              <button
-                onClick={() => {
-                  setNewNameInput(user.name);
-                  setShowNameChangeModal(true);
-                }}
-                className="bg-black/10 p-1 rounded-full hover:bg-black/20 transition-colors"
-              >
-                <Edit
-                  size={12}
-                  className={
-                    user.subscriptionLevel === "ULTRA" && user.isPremium
-                      ? "text-white"
-                      : "text-slate-600"
-                  }
-                />
-              </button>
-            </div>
-            {/* Subscription Tier Badge */}
-            <div className="mt-2 relative z-10 flex flex-col items-center gap-1">
-              <span
-                className={`px-4 py-1.5 rounded-full text-[12px] font-black uppercase tracking-widest shadow-lg border ${
-                  user.subscriptionLevel === "ULTRA" && user.isPremium
-                    ? "bg-gradient-to-r from-purple-500 to-violet-600 text-white border-purple-300/60 shadow-purple-500/40"
-                    : user.subscriptionLevel === "BASIC" && user.isPremium
-                      ? "bg-gradient-to-r from-sky-500 to-blue-600 text-white border-sky-300/60 shadow-sky-500/30"
-                      : "bg-slate-600/70 text-white border-slate-500"
-                }`}
-                style={user.isPremium ? { boxShadow: user.subscriptionLevel === 'ULTRA' ? '0 4px 20px rgba(139,92,246,0.5)' : '0 4px 16px rgba(56,189,248,0.4)' } : {}}
-              >
-                {user.isPremium ? (() => {
-                  const t = user.subscriptionTier;
-                  const lvl = user.subscriptionLevel || '';
-                  const label = t === 'WEEKLY' ? 'Weekly' : t === 'MONTHLY' ? 'Monthly' : t === 'YEARLY' ? 'Yearly' : t === 'LIFETIME' ? '∞ Lifetime' : t === '3_MONTHLY' ? 'Quarterly' : t === 'CUSTOM' ? (user.customSubscriptionName || 'Custom') : 'Premium';
-                  return `${lvl} ${label}`;
-                })() : '🌱 Free User'}
-              </span>
-              {user.isPremium && user.subscriptionEndDate && user.subscriptionTier !== 'LIFETIME' && (() => {
-                const endDate = new Date(user.subscriptionEndDate);
-                const renewText = `Expires ${endDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}`;
-                return (
-                  <span className={`text-[10px] font-bold ${user.subscriptionLevel === 'ULTRA' ? 'text-purple-300' : 'text-sky-300'}`}>
-                    📅 {renewText}
-                  </span>
-                );
-              })()}
-            </div>
-
-            {/* Info pills row: ID + Class+Board */}
-            <div className="mt-3 relative z-10 flex flex-wrap justify-center gap-2">
-              <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border ${user.subscriptionLevel === 'ULTRA' && user.isPremium ? 'bg-white/10 border-white/20 text-slate-300' : 'bg-black/5 border-black/10 text-slate-500'}`}>
-                🆔 {user.displayId || (user.id || '').substring(0, 8)}
-              </span>
-              {(activeSessionClass || user.classLevel) && (
-                <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border ${user.subscriptionLevel === 'ULTRA' && user.isPremium ? 'bg-white/10 border-white/20 text-slate-300' : 'bg-black/5 border-black/10 text-slate-500'}`}>
-                  📚 Class {activeSessionClass || user.classLevel}
-                </span>
-              )}
-              <span className={`px-2.5 py-1 rounded-lg text-[10px] font-bold border ${user.subscriptionLevel === 'ULTRA' && user.isPremium ? 'bg-white/10 border-white/20 text-slate-300' : 'bg-black/5 border-black/10 text-slate-500'}`}>
-                🏫 {activeSessionBoard || user.board || 'CBSE'}
-              </span>
-            </div>
-
-            {/* Email pill */}
-            {user.email && (
-              <div className="mt-2 relative z-10 flex justify-center">
-                <span className={`px-3 py-1 rounded-lg text-[10px] font-medium truncate max-w-[220px] border ${user.subscriptionLevel === 'ULTRA' && user.isPremium ? 'bg-white/8 border-white/15 text-slate-400' : 'bg-black/5 border-black/10 text-slate-500'}`}>
-                  ✉️ {user.email}
-                </span>
-              </div>
-            )}
-
-            {/* Stats row: Credits · Streak · Joined */}
-            <div className="mt-4 relative z-10 flex items-center justify-center gap-4">
-              <div className="flex flex-col items-center">
-                <span className={`text-2xl font-black ${user.subscriptionLevel === 'ULTRA' && user.isPremium ? 'text-yellow-300' : 'text-amber-500'}`}>{(user.credits ?? 0).toLocaleString('en-IN')}</span>
-                <span className={`text-[9px] font-bold uppercase tracking-wider ${user.subscriptionLevel === 'ULTRA' && user.isPremium ? 'text-slate-400' : 'text-slate-500'}`}>Credits</span>
-              </div>
-              <div className={`w-px h-8 ${user.subscriptionLevel === 'ULTRA' && user.isPremium ? 'bg-white/15' : 'bg-slate-200'}`} />
-              <div className="flex flex-col items-center">
-                <span className={`text-lg font-black ${user.streak > 0 ? 'text-orange-400' : (user.subscriptionLevel === 'ULTRA' && user.isPremium ? 'text-slate-400' : 'text-slate-600')}`}>
-                  {user.streak > 0 ? `🔥 ${user.streak}` : '0'}
-                </span>
-                <span className={`text-[9px] font-bold uppercase tracking-wider ${user.subscriptionLevel === 'ULTRA' && user.isPremium ? 'text-slate-400' : 'text-slate-500'}`}>Day Streak</span>
-              </div>
-              <div className={`w-px h-8 ${user.subscriptionLevel === 'ULTRA' && user.isPremium ? 'bg-white/15' : 'bg-slate-200'}`} />
-              <div className="flex flex-col items-center">
-                <span className={`text-lg font-black ${user.subscriptionLevel === 'ULTRA' && user.isPremium ? 'text-slate-200' : 'text-slate-700'}`}>
-                  {user.createdAt && !isNaN(new Date(user.createdAt).getTime()) ? Math.floor((Date.now() - new Date(user.createdAt).getTime()) / (1000 * 60 * 60 * 24)) : 0}
-                </span>
-                <span className={`text-[9px] font-bold uppercase tracking-wider ${user.subscriptionLevel === 'ULTRA' && user.isPremium ? 'text-slate-400' : 'text-slate-500'}`}>Days Active</span>
-              </div>
-            </div>
-
-            {/* Subscription expiry bar with live countdown */}
-            {user.isPremium && user.subscriptionEndDate && user.subscriptionTier !== 'LIFETIME' && !isNaN(new Date(user.subscriptionEndDate).getTime()) && (() => {
-              const endMs = new Date(user.subscriptionEndDate).getTime();
-              const diff = Math.max(0, endMs - _profileNow);
-              const daysLeft = Math.floor(diff / (1000 * 60 * 60 * 24));
-              const hoursLeft = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
-              const minsLeft = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
-              const secsLeft = Math.floor((diff % (1000 * 60)) / 1000);
-              const tierDays = user.subscriptionTier === 'WEEKLY' ? 7 : user.subscriptionTier === 'MONTHLY' ? 30 : user.subscriptionTier === '3_MONTHLY' ? 90 : user.subscriptionTier === 'YEARLY' ? 365 : 30;
-              const pct = Math.min(100, Math.round((daysLeft / tierDays) * 100));
-              const barColor = daysLeft <= 3 ? '#ef4444' : daysLeft <= 7 ? '#f97316' : user.subscriptionLevel === 'ULTRA' ? '#a78bfa' : '#60a5fa';
-              const isUrgent = daysLeft <= 3;
-              const pad = (n: number) => String(n).padStart(2, '0');
-              const expiryDate = new Date(user.subscriptionEndDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-              return (
-                <div className="mt-4 relative z-10 w-full px-2">
-                  <div className="flex justify-between items-center mb-1">
-                    <span className={`text-[10px] font-bold ${user.subscriptionLevel === 'ULTRA' && user.isPremium ? 'text-slate-400' : 'text-slate-500'}`}>📅 Expires</span>
-                    <span className={`text-[10px] font-black ${isUrgent ? 'text-red-400' : daysLeft <= 7 ? 'text-orange-400' : (user.subscriptionLevel === 'ULTRA' ? 'text-purple-300' : 'text-sky-400')}`}>
-                      {expiryDate}
+              <div className="p-5 relative z-[2]">
+                {/* Avatar row */}
+                <div className="flex items-center gap-4 mb-4">
+                  <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-black shrink-0 overflow-hidden shadow-lg ${
+                    user.subscriptionLevel === 'ULTRA' && user.isPremium
+                      ? 'bg-purple-900/60 ring-2 ring-purple-500/50 text-purple-200'
+                      : user.subscriptionLevel === 'BASIC' && user.isPremium
+                        ? 'bg-sky-900/50 ring-2 ring-sky-500/40 text-sky-200'
+                        : 'bg-slate-800 ring-2 ring-slate-600/40 text-slate-300'
+                  }`}>
+                    {settings?.appLogo
+                      ? <img src={settings.appLogo} alt="logo" className="w-full h-full object-cover" />
+                      : (user.name || 'S').charAt(0)
+                    }
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <h2 className="text-lg font-black text-white truncate leading-tight">{user.name}</h2>
+                      <button
+                        onClick={() => { setNewNameInput(user.name); setShowNameChangeModal(true); }}
+                        className="shrink-0 w-6 h-6 rounded-lg bg-white/8 hover:bg-white/15 flex items-center justify-center transition-colors"
+                      >
+                        <Edit size={11} className="text-slate-400" />
+                      </button>
+                    </div>
+                    {/* Tier badge */}
+                    <span className={`inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-widest border ${
+                      user.subscriptionLevel === 'ULTRA' && user.isPremium
+                        ? 'bg-purple-500/20 border-purple-500/40 text-purple-300'
+                        : user.subscriptionLevel === 'BASIC' && user.isPremium
+                          ? 'bg-sky-500/20 border-sky-500/40 text-sky-300'
+                          : 'bg-slate-700/60 border-slate-600/50 text-slate-400'
+                    }`}>
+                      {user.isPremium ? (() => {
+                        const t = user.subscriptionTier;
+                        const lvl = user.subscriptionLevel || '';
+                        const label = t === 'WEEKLY' ? 'Weekly' : t === 'MONTHLY' ? 'Monthly' : t === 'YEARLY' ? 'Yearly' : t === 'LIFETIME' ? '∞ Lifetime' : t === '3_MONTHLY' ? 'Quarterly' : t === 'CUSTOM' ? (user.customSubscriptionName || 'Custom') : 'Premium';
+                        return <>{user.subscriptionLevel === 'ULTRA' ? '⚡' : '★'} {lvl} {label}</>;
+                      })() : <><span>🌱</span> Free</>}
                     </span>
+                    {/* Expiry compact */}
+                    {user.isPremium && user.subscriptionEndDate && user.subscriptionTier !== 'LIFETIME' && (() => {
+                      const endMs = new Date(user.subscriptionEndDate).getTime();
+                      const daysLeft = Math.max(0, Math.floor((endMs - _profileNow) / (1000 * 60 * 60 * 24)));
+                      const isUrgent = daysLeft <= 3;
+                      return (
+                        <p className={`text-[10px] font-bold mt-1 ${isUrgent ? 'text-red-400' : daysLeft <= 7 ? 'text-orange-400' : 'text-slate-500'}`}>
+                          📅 {new Date(user.subscriptionEndDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })}
+                        </p>
+                      );
+                    })()}
                   </div>
-                  <div className={`w-full h-1.5 rounded-full mb-2 ${user.subscriptionLevel === 'ULTRA' ? 'bg-white/10' : 'bg-black/10'}`}>
-                    <div className="h-1.5 rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: barColor, boxShadow: `0 0 6px ${barColor}88` }} />
-                  </div>
-                  {/* Live countdown */}
-                  <div className={`flex items-center justify-center gap-1.5 ${isUrgent ? 'text-red-400' : (user.subscriptionLevel === 'ULTRA' ? 'text-purple-300' : 'text-sky-400')}`}>
-                    {[{ val: daysLeft, label: 'Days' }, { val: hoursLeft, label: 'Hrs' }, { val: minsLeft, label: 'Min' }, { val: secsLeft, label: 'Sec' }].map((item, i, arr) => (
-                      <React.Fragment key={item.label}>
-                        <div className={`flex flex-col items-center px-3 py-1.5 rounded-xl ${isUrgent ? 'bg-red-500/15' : user.subscriptionLevel === 'ULTRA' ? 'bg-white/12' : 'bg-black/8'}`}>
-                          <span className="text-xl font-black leading-tight tabular-nums">{pad(item.val)}</span>
-                          <span className="text-[9px] font-bold opacity-70 uppercase tracking-wide">{item.label}</span>
-                        </div>
-                        {i < arr.length - 1 && <span className="text-base font-black opacity-40 -mt-3">:</span>}
-                      </React.Fragment>
-                    ))}
-                  </div>
-                  <p className={`text-center text-[9px] font-bold mt-2 ${user.subscriptionLevel === 'ULTRA' ? 'text-purple-400/70' : 'text-sky-400/70'}`}>
-                    Subscription Expires on {expiryDate}
-                  </p>
+                  {user.subscriptionLevel === 'ULTRA' && user.isPremium && (
+                    <span className="text-2xl shrink-0">👑</span>
+                  )}
                 </div>
-              );
-            })()}
 
-            {/* Streak badge (kept for high streaks) */}
-            {user.streak >= 3 && (() => {
-              const s = user.streak;
-              const badgeColor = s >= 30 ? { bg: 'rgba(239,68,68,0.22)', border: 'rgba(239,68,68,0.6)', text: '#f87171', glow: 'rgba(239,68,68,0.7)' }
-                               : s >= 14 ? { bg: 'rgba(249,115,22,0.22)', border: 'rgba(249,115,22,0.6)', text: '#fb923c', glow: 'rgba(249,115,22,0.65)' }
-                               : s >= 7  ? { bg: 'rgba(245,158,11,0.22)', border: 'rgba(245,158,11,0.6)', text: '#fbbf24', glow: 'rgba(245,158,11,0.6)' }
-                               :           { bg: 'rgba(251,191,36,0.16)', border: 'rgba(251,191,36,0.5)', text: '#fcd34d', glow: 'rgba(251,191,36,0.45)' };
-              const label = s >= 30 ? 'Legend 🏆' : s >= 14 ? 'Pro ⚡' : s >= 7 ? 'On Fire 🔥' : 'Streak 🔥';
-              return (
-                <div className="mt-3 relative z-10 flex justify-center">
-                  <div className="relative inline-flex items-center gap-2 px-5 py-2 rounded-full" style={{ background: badgeColor.bg, border: `1.5px solid ${badgeColor.border}`, boxShadow: `0 0 18px ${badgeColor.glow}, 0 0 6px ${badgeColor.glow}` }}>
-                    <span className="text-lg" style={{ filter: `drop-shadow(0 0 6px ${badgeColor.glow})` }}>🔥</span>
-                    <span className="font-black text-sm tracking-wide" style={{ color: badgeColor.text, textShadow: `0 0 10px ${badgeColor.glow}` }}>{s} Day {label}</span>
-                    {(user.longestStreak || 0) === s && s > 1 && <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.18)', color: badgeColor.text }}>BEST</span>}
-                  </div>
+                {/* Info pills */}
+                <div className="flex flex-wrap gap-1.5 mb-4">
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-white/5 border border-white/10 text-slate-400">
+                    🆔 {user.displayId || (user.id || '').substring(0, 8)}
+                  </span>
+                  {(activeSessionClass || user.classLevel) && (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-white/5 border border-white/10 text-slate-400">
+                      📚 Class {activeSessionClass || user.classLevel}
+                    </span>
+                  )}
+                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-white/5 border border-white/10 text-slate-400">
+                    🏫 {activeSessionBoard || user.board || 'CBSE'}
+                  </span>
+                  {user.email && (
+                    <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-white/5 border border-white/10 text-slate-500 truncate max-w-[180px]">
+                      ✉️ {user.email}
+                    </span>
+                  )}
                 </div>
-              );
-            })()}
 
-            {/* Manage Subscription Button */}
-            {user.isPremium && (
-              <div className="mt-3 relative z-10 flex justify-center">
-                <button
-                  onClick={() => onTabChange('STORE')}
-                  className={`inline-flex items-center gap-2 px-5 py-2 rounded-full text-[11px] font-black transition-all active:scale-95 ${
-                    user.subscriptionLevel === 'ULTRA'
-                      ? 'bg-white/12 border border-purple-300/40 text-purple-200 hover:bg-white/20'
-                      : 'bg-white/12 border border-sky-300/40 text-sky-200 hover:bg-white/20'
-                  }`}
-                >
-                  <Crown size={12} />
-                  {user.subscriptionTier === 'LIFETIME' ? 'View Plan' : 'Manage Subscription'}
-                </button>
+                {/* Stats row */}
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  {[
+                    { val: (user.credits ?? 0).toLocaleString('en-IN'), label: 'Credits', color: 'text-amber-400' },
+                    { val: user.streak > 0 ? `🔥 ${user.streak}` : '0', label: 'Streak', color: user.streak > 0 ? 'text-orange-400' : 'text-slate-500' },
+                    { val: user.createdAt && !isNaN(new Date(user.createdAt).getTime()) ? Math.floor((Date.now() - new Date(user.createdAt).getTime()) / (1000 * 60 * 60 * 24)) : 0, label: 'Days', color: 'text-slate-300' },
+                  ].map(s => (
+                    <div key={s.label} className="bg-white/4 rounded-xl py-2.5 px-2 text-center border border-white/6">
+                      <div className={`text-lg font-black leading-tight ${s.color}`}>{s.val}</div>
+                      <div className="text-[9px] font-bold text-slate-600 uppercase tracking-wide mt-0.5">{s.label}</div>
+                    </div>
+                  ))}
+                </div>
+
+                {/* Streak badge — shown if streak >= 3 */}
+                {user.streak >= 3 && (
+                  <div className={`mb-3 flex items-center gap-2.5 px-3.5 py-2.5 rounded-xl border ${
+                    user.streak >= 30 ? 'bg-red-500/10 border-red-500/30' : user.streak >= 7 ? 'bg-orange-500/10 border-orange-500/30' : 'bg-amber-500/10 border-amber-500/30'
+                  }`}>
+                    <span className="text-2xl">{user.streak >= 30 ? '🏆' : user.streak >= 7 ? '🔥' : '⚡'}</span>
+                    <div>
+                      <p className={`text-sm font-black leading-tight ${user.streak >= 30 ? 'text-red-400' : user.streak >= 7 ? 'text-orange-400' : 'text-amber-400'}`}>
+                        {user.streak} Day Streak!
+                      </p>
+                      <p className="text-[10px] text-slate-500 mt-0.5">
+                        {user.streak >= 30 ? 'Legendary — Keep going!' : user.streak >= 7 ? 'On fire — Don\'t break it!' : 'Great start — Keep it up!'}
+                      </p>
+                    </div>
+                  </div>
+                )}
+
+                {/* Live countdown timer — only if premium, non-lifetime */}
+                {user.isPremium && user.subscriptionEndDate && user.subscriptionTier !== 'LIFETIME' && !isNaN(new Date(user.subscriptionEndDate).getTime()) && (() => {
+                  const endMs = new Date(user.subscriptionEndDate).getTime();
+                  const diff = Math.max(0, endMs - _profileNow);
+                  const dDays = Math.floor(diff / (1000 * 60 * 60 * 24));
+                  const dHrs  = Math.floor((diff % (1000 * 60 * 60 * 24)) / (1000 * 60 * 60));
+                  const dMin  = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                  const dSec  = Math.floor((diff % (1000 * 60)) / 1000);
+                  const isUrgent = dDays <= 3;
+                  const accent = isUrgent ? '#ef4444' : user.subscriptionLevel === 'ULTRA' ? '#a78bfa' : '#60a5fa';
+                  const tierDays = user.subscriptionTier === 'WEEKLY' ? 7 : user.subscriptionTier === 'MONTHLY' ? 30 : user.subscriptionTier === '3_MONTHLY' ? 90 : user.subscriptionTier === 'YEARLY' ? 365 : 30;
+                  const pct = Math.min(100, Math.round((dDays / tierDays) * 100));
+                  return (
+                    <div className="mb-1">
+                      <div className="flex items-center justify-between mb-2">
+                        <p className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Subscription Expires In</p>
+                        {isUrgent && <span className="text-[9px] font-black text-red-400 animate-pulse">⚠ EXPIRING SOON</span>}
+                      </div>
+                      <div className="grid grid-cols-4 gap-1.5 mb-2">
+                        {[
+                          { val: String(dDays).padStart(2, '0'), label: 'Days' },
+                          { val: String(dHrs).padStart(2, '0'), label: 'Hrs' },
+                          { val: String(dMin).padStart(2, '0'), label: 'Min' },
+                          { val: String(dSec).padStart(2, '0'), label: 'Sec' },
+                        ].map(box => (
+                          <div key={box.label} className="bg-white/4 border border-white/8 rounded-lg py-1.5 text-center">
+                            <div className="text-base font-black tabular-nums leading-tight" style={{ color: accent }}>{box.val}</div>
+                            <div className="text-[8px] font-bold text-slate-600 uppercase tracking-widest mt-0.5">{box.label}</div>
+                          </div>
+                        ))}
+                      </div>
+                      <div className="w-full h-1.5 rounded-full bg-white/8 overflow-hidden">
+                        <div className="h-full rounded-full transition-all duration-500" style={{ width: `${pct}%`, background: accent }} />
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
-            )}
-
-            {/* Footer: version + developer */}
-            <div className="mt-4 relative z-10 flex items-center justify-center gap-3">
-              <span className={`text-[9px] ${user.subscriptionLevel === 'ULTRA' && user.isPremium ? 'text-slate-500' : 'text-slate-400'}`}>v{APP_VERSION}</span>
-              <span className={`text-[9px] ${user.subscriptionLevel === 'ULTRA' && user.isPremium ? 'text-slate-600' : 'text-slate-300'}`}>·</span>
-              <span className={`text-[9px] ${user.subscriptionLevel === 'ULTRA' && user.isPremium ? 'text-slate-500' : 'text-slate-400'}`}>By {settings?.developerName?.trim() || 'Nadim Anwar'}</span>
             </div>
-          </div>
 
-          <div className="space-y-4 mt-5">
-
-            {/* SECTION LABEL */}
-            <div className="flex items-center gap-2 px-1">
-              <span className="w-1 h-4 rounded-full bg-gradient-to-b from-emerald-400 to-teal-500 shrink-0" />
-              <p className="text-[10px] font-black text-slate-400 uppercase tracking-[0.15em]">Account & Settings</p>
-            </div>
-
-            {/* LIMITS BUTTON — prominent card */}
-            <button
-              onClick={() => { setLimitsViewPlan(_isUltraUser ? 'ULTRA' : _isBasicUser ? 'BASIC' : 'FREE'); setShowFeatureLimitsModal(true); }}
-              className={`w-full rounded-2xl p-4 flex items-center gap-3 active:scale-[0.98] transition-all relative overflow-hidden border ${
-                _isUltraUser
-                  ? 'bg-gradient-to-r from-purple-50 to-violet-50 border-purple-200 shadow-sm shadow-purple-100'
-                  : _isBasicUser
-                    ? 'bg-gradient-to-r from-sky-50 to-cyan-50 border-sky-200 shadow-sm shadow-sky-100'
-                    : 'bg-gradient-to-r from-emerald-50 to-teal-50 border-emerald-200 shadow-sm shadow-emerald-100'
-              }`}
-            >
-              <div className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 ${
-                _isUltraUser ? 'bg-purple-100 text-purple-600' : _isBasicUser ? 'bg-sky-100 text-sky-600' : 'bg-emerald-100 text-emerald-600'
-              }`}>
-                <BarChart2 size={20} />
-              </div>
-              <div className="flex-1 text-left min-w-0">
-                <p className={`text-[10px] font-black uppercase tracking-widest mb-0.5 ${
-                  _isUltraUser ? 'text-purple-500' : _isBasicUser ? 'text-sky-500' : 'text-emerald-600'
-                }`}>Daily Limits & Usage</p>
-                <p className="text-sm font-black text-slate-800">View All Limits</p>
-                <p className="text-[10px] text-slate-500 mt-0.5">MCQ · Notes · AI · Credits</p>
-              </div>
-              <div className={`w-8 h-8 rounded-xl flex items-center justify-center ${
-                _isUltraUser ? 'bg-purple-100' : _isBasicUser ? 'bg-sky-100' : 'bg-emerald-100'
-              }`}>
-                <ChevronRight size={14} className={_isUltraUser ? 'text-purple-500' : _isBasicUser ? 'text-sky-500' : 'text-emerald-500'} />
-              </div>
-            </button>
-
-            {/* ACTION LIST */}
-            <div className="bg-white rounded-2xl border border-slate-100 shadow-sm overflow-hidden">
-              {/* ADMIN PANEL — visible only to admin / sub-admin */}
-              {(user.role === "ADMIN" || user.role === "SUB_ADMIN" || isImpersonating) && (
-                <button
-                  onClick={handleSwitchToAdmin}
-                  className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-amber-50 transition-colors active:bg-amber-100 border-b border-slate-100"
-                >
-                  <div className="w-10 h-10 bg-amber-100 rounded-xl flex items-center justify-center text-amber-600 shrink-0">
-                    <Layout size={18} />
+            {/* ── CARD 2: Actions ── */}
+            <div className="bg-[#0f0f0f] rounded-2xl border border-slate-800 overflow-hidden">
+              {/* Admin Panel */}
+              {(user.role === 'ADMIN' || user.role === 'SUB_ADMIN' || isImpersonating) && (
+                <button onClick={handleSwitchToAdmin}
+                  className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-white/4 active:bg-white/6 transition-colors border-b border-slate-800/80">
+                  <div className="w-9 h-9 rounded-xl bg-amber-500/15 flex items-center justify-center shrink-0">
+                    <Layout size={16} className="text-amber-400" />
                   </div>
                   <div className="flex-1 text-left min-w-0">
-                    <p className="text-sm font-bold text-slate-800">Admin Panel</p>
-                    <p className="text-[11px] text-slate-400">Manage content, users & settings</p>
+                    <p className="text-sm font-bold text-white">Admin Panel</p>
+                    <p className="text-[11px] text-slate-500">Manage content, users & settings</p>
                   </div>
-                  <ChevronRight size={14} className="text-slate-300 shrink-0" />
+                  <ChevronRight size={14} className="text-slate-600 shrink-0" />
                 </button>
               )}
 
-              {/* HISTORY */}
+              {/* History */}
               {(() => {
-                const access = getFeatureAccess("HISTORY_PAGE");
+                const access = getFeatureAccess('HISTORY_PAGE');
                 if (access.isHidden) return null;
                 const isLocked = !access.hasAccess;
                 return (
-                  <button
-                    onClick={() => {
-                      if (isLocked) { showAlert("🔒 Locked by Admin.", "ERROR"); return; }
-                      onTabChange("HISTORY");
-                    }}
-                    className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-slate-50 transition-colors active:bg-slate-100 border-b border-slate-100"
-                  >
-                    <div className="w-10 h-10 bg-rose-100 rounded-xl flex items-center justify-center text-rose-500 shrink-0">
-                      <History size={18} />
+                  <button onClick={() => { if (isLocked) { showAlert('🔒 Locked by Admin.', 'ERROR'); return; } onTabChange('HISTORY'); }}
+                    className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-white/4 active:bg-white/6 transition-colors border-b border-slate-800/80">
+                    <div className="w-9 h-9 rounded-xl bg-rose-500/15 flex items-center justify-center shrink-0">
+                      <History size={16} className="text-rose-400" />
                     </div>
                     <div className="flex-1 text-left min-w-0">
-                      <p className="text-sm font-bold text-slate-800 flex items-center gap-2">
-                        Activity History
-                        {isLocked && <Lock size={11} className="text-red-400" />}
+                      <p className="text-sm font-bold text-white flex items-center gap-2">
+                        Activity History {isLocked && <Lock size={10} className="text-red-400" />}
                       </p>
-                      <p className="text-[11px] text-slate-400">Tests, sessions & past activity</p>
+                      <p className="text-[11px] text-slate-500">Tests, sessions & past activity</p>
                     </div>
-                    <ChevronRight size={14} className="text-slate-300 shrink-0" />
+                    <ChevronRight size={14} className="text-slate-600 shrink-0" />
                   </button>
                 );
               })()}
 
-              {/* TEACHER STORE */}
-              <button
-                onClick={() => onTabChange("TEACHER_STORE" as any)}
-                className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-slate-50 transition-colors active:bg-slate-100 border-b border-slate-100"
-              >
-                <div className="w-10 h-10 bg-violet-100 rounded-xl flex items-center justify-center text-violet-600 shrink-0">
-                  <Crown size={18} />
+              {/* Daily Limits */}
+              <button onClick={() => { setLimitsViewPlan(_isUltraUser ? 'ULTRA' : _isBasicUser ? 'BASIC' : 'FREE'); setShowFeatureLimitsModal(true); }}
+                className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-white/4 active:bg-white/6 transition-colors border-b border-slate-800/80">
+                <div className="w-9 h-9 rounded-xl bg-emerald-500/15 flex items-center justify-center shrink-0">
+                  <BarChart2 size={16} className="text-emerald-400" />
                 </div>
                 <div className="flex-1 text-left min-w-0">
-                  <p className="text-sm font-bold text-slate-800">
-                    {user.role === "TEACHER" ? "Teacher Store" : "Upgrade to Teacher"}
-                  </p>
-                  <p className="text-[11px] text-slate-400">
-                    {user.role === "TEACHER" ? "Manage your store & content" : "Unlock premium creator tools"}
-                  </p>
+                  <p className="text-sm font-bold text-white">Daily Limits & Usage</p>
+                  <p className="text-[11px] text-slate-500">MCQ · Notes · AI · Credits</p>
                 </div>
-                <ChevronRight size={14} className="text-slate-300 shrink-0" />
+                <ChevronRight size={14} className="text-slate-600 shrink-0" />
               </button>
 
-              {/* LOGOUT */}
-              {(settings?.isLogoutEnabled !== false || user.role === "ADMIN" || isImpersonating) && (
-                <button
-                  onClick={onLogout}
-                  className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-red-50 transition-colors active:bg-red-100"
-                >
-                  <div className="w-10 h-10 bg-red-100 rounded-xl flex items-center justify-center text-red-500 shrink-0">
-                    <LogOut size={18} />
+              {/* Store / Manage Subscription */}
+              <button onClick={() => onTabChange('STORE')}
+                className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-white/4 active:bg-white/6 transition-colors border-b border-slate-800/80">
+                <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${
+                  _isUltraUser ? 'bg-purple-500/15' : _isBasicUser ? 'bg-sky-500/15' : 'bg-indigo-500/15'
+                }`}>
+                  <Crown size={16} className={_isUltraUser ? 'text-purple-400' : _isBasicUser ? 'text-sky-400' : 'text-indigo-400'} />
+                </div>
+                <div className="flex-1 text-left min-w-0">
+                  <p className="text-sm font-bold text-white">
+                    {user.isPremium ? (user.subscriptionTier === 'LIFETIME' ? 'View Plan' : 'Manage Subscription') : 'Upgrade to Premium'}
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    {user.isPremium ? 'Plans, billing & renewal' : 'Unlock all features'}
+                  </p>
+                </div>
+                <ChevronRight size={14} className="text-slate-600 shrink-0" />
+              </button>
+
+              {/* Teacher Store */}
+              <button onClick={() => onTabChange('TEACHER_STORE' as any)}
+                className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-white/4 active:bg-white/6 transition-colors border-b border-slate-800/80">
+                <div className="w-9 h-9 rounded-xl bg-violet-500/15 flex items-center justify-center shrink-0">
+                  <Layout size={16} className="text-violet-400" />
+                </div>
+                <div className="flex-1 text-left min-w-0">
+                  <p className="text-sm font-bold text-white">
+                    {user.role === 'TEACHER' ? 'Teacher Store' : 'Become a Teacher'}
+                  </p>
+                  <p className="text-[11px] text-slate-500">
+                    {user.role === 'TEACHER' ? 'Manage your store & content' : 'Unlock creator tools'}
+                  </p>
+                </div>
+                <ChevronRight size={14} className="text-slate-600 shrink-0" />
+              </button>
+
+              {/* Logout */}
+              {(settings?.isLogoutEnabled !== false || user.role === 'ADMIN' || isImpersonating) && (
+                <button onClick={onLogout}
+                  className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-red-500/8 active:bg-red-500/12 transition-colors">
+                  <div className="w-9 h-9 rounded-xl bg-red-500/15 flex items-center justify-center shrink-0">
+                    <LogOut size={16} className="text-red-400" />
                   </div>
                   <div className="flex-1 text-left min-w-0">
-                    <p className="text-sm font-bold text-red-600">Logout</p>
-                    <p className="text-[11px] text-red-400">Sign out of your account</p>
+                    <p className="text-sm font-bold text-red-400">Logout</p>
+                    <p className="text-[11px] text-slate-600">Sign out of your account</p>
                   </div>
-                  <ChevronRight size={14} className="text-red-300 shrink-0" />
+                  <ChevronRight size={14} className="text-red-700 shrink-0" />
                 </button>
               )}
             </div>
 
-            {/* HIDDEN: MY DATA SECTION - kept for settings sheet reference */}
-            <div className="hidden bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-3">
-              <h4 className="font-black text-slate-800 flex items-center gap-2">
-                <Database size={18} className="text-slate-600" /> Data
-              </h4>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  onClick={() => setViewingUserHistory(user)}
-                  className="bg-white p-3 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-100 flex items-center justify-center gap-2"
-                >
-                  <Activity size={14} className="text-blue-500" /> View Full
-                  Activity
-                </button>
-                <button
-                  onClick={async () => {
-                    try {
-                      showAlert("Generating Report...", "INFO");
-
-                      // Create container
-                      const element = document.createElement("div");
-                      element.style.width = "210mm";
-                      element.style.minHeight = "297mm";
-                      element.style.padding = "40px";
-                      element.style.background = "#ffffff";
-                      element.style.fontFamily = "Helvetica, Arial, sans-serif";
-                      element.style.position = "fixed";
-                      element.style.top = "-9999px";
-                      element.style.left = "-9999px";
-
-                      // Calculate Stats
-                      const totalTests = user.mcqHistory?.length || 0;
-                      const avgScore =
-                        totalTests > 0
-                          ? Math.round(
-                              ((user.mcqHistory?.reduce(
-                                (a, b) => a + b.score / b.totalQuestions,
-                                0,
-                              ) || 0) /
-                                totalTests) *
-                                100,
-                            )
-                          : 0;
-                      const bestSubject = "General"; // simplified logic for now
-
-                      element.innerHTML = `
-                                                <div style="border: 4px solid #1e293b; padding: 40px; height: 100%; box-sizing: border-box; position: relative;">
-
-                                                    <!-- Header -->
-                                                    <div style="text-align: center; border-bottom: 2px solid #e2e8f0; padding-bottom: 20px; margin-bottom: 30px;">
-                                                        <h1 style="color: #1e293b; font-size: 32px; margin: 0; font-weight: 900; letter-spacing: -1px;">STUDENT PROGRESS REPORT</h1>
-                                                        <p style="color: #64748b; margin: 10px 0 0 0; font-size: 14px;">${settings?.appName || "NST AI"} Official Record</p>
-                                                    </div>
-
-                                                    <!-- Student Info Grid -->
-                                                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px; margin-bottom: 40px;">
-                                                        <div style="background: #f8fafc; padding: 20px; border-radius: 12px;">
-                                                            <p style="margin: 0; color: #64748b; font-size: 12px; text-transform: uppercase; font-weight: bold;">Student Name</p>
-                                                            <p style="margin: 5px 0 0 0; color: #0f172a; font-size: 18px; font-weight: bold;">${user.name}</p>
-                                                        </div>
-                                                        <div style="background: #f8fafc; padding: 20px; border-radius: 12px;">
-                                                            <p style="margin: 0; color: #64748b; font-size: 12px; text-transform: uppercase; font-weight: bold;">Student ID</p>
-                                                            <p style="margin: 5px 0 0 0; color: #0f172a; font-size: 18px; font-weight: bold;">${user.displayId || user.id.slice(0, 8)}</p>
-                                                        </div>
-                                                        <div style="background: #f8fafc; padding: 20px; border-radius: 12px;">
-                                                            <p style="margin: 0; color: #64748b; font-size: 12px; text-transform: uppercase; font-weight: bold;">Class & Stream</p>
-                                                            <p style="margin: 5px 0 0 0; color: #0f172a; font-size: 18px; font-weight: bold;">${user.classLevel} - ${user.stream || "General"}</p>
-                                                        </div>
-                                                        <div style="background: #f8fafc; padding: 20px; border-radius: 12px;">
-                                                            <p style="margin: 0; color: #64748b; font-size: 12px; text-transform: uppercase; font-weight: bold;">Date Generated</p>
-                                                            <p style="margin: 5px 0 0 0; color: #0f172a; font-size: 18px; font-weight: bold;">${new Date().toLocaleDateString()}</p>
-                                                        </div>
-                                                    </div>
-
-                                                    <!-- Performance Snapshot -->
-                                                    <h3 style="color: #334155; font-size: 16px; border-left: 4px solid #3b82f6; padding-left: 10px; margin-bottom: 20px;">PERFORMANCE SNAPSHOT</h3>
-                                                    <div style="display: flex; gap: 20px; margin-bottom: 40px;">
-                                                        <div style="flex: 1; text-align: center; border: 1px solid #e2e8f0; padding: 20px; border-radius: 12px;">
-                                                            <div style="font-size: 32px; font-weight: 900; color: #3b82f6;">${avgScore}%</div>
-                                                            <div style="font-size: 12px; color: #64748b; font-weight: bold;">AVERAGE SCORE</div>
-                                                        </div>
-                                                        <div style="flex: 1; text-align: center; border: 1px solid #e2e8f0; padding: 20px; border-radius: 12px;">
-                                                            <div style="font-size: 32px; font-weight: 900; color: #10b981;">${totalTests}</div>
-                                                            <div style="font-size: 12px; color: #64748b; font-weight: bold;">TESTS TAKEN</div>
-                                                        </div>
-                                                        <div style="flex: 1; text-align: center; border: 1px solid #e2e8f0; padding: 20px; border-radius: 12px;">
-                                                            <div style="font-size: 32px; font-weight: 900; color: #f59e0b;">${user.credits}</div>
-                                                            <div style="font-size: 12px; color: #64748b; font-weight: bold;">CREDITS EARNED</div>
-                                                        </div>
-                                                    </div>
-
-                                                    <!-- Recent Activity Table -->
-                                                    <h3 style="color: #334155; font-size: 16px; border-left: 4px solid #ec4899; padding-left: 10px; margin-bottom: 20px;">RECENT TEST ACTIVITY</h3>
-                                                    <table style="width: 100%; border-collapse: collapse; font-size: 12px;">
-                                                        <thead>
-                                                            <tr style="background: #f1f5f9; color: #475569;">
-                                                                <th style="padding: 12px; text-align: left; border-radius: 8px 0 0 8px;">DATE</th>
-                                                                <th style="padding: 12px; text-align: left;">TOPIC</th>
-                                                                <th style="padding: 12px; text-align: right; border-radius: 0 8px 8px 0;">SCORE</th>
-                                                            </tr>
-                                                        </thead>
-                                                        <tbody>
-                                                            ${(
-                                                              user.mcqHistory ||
-                                                              []
-                                                            )
-                                                              .slice(0, 15)
-                                                              .map(
-                                                                (h, i) => `
-                                                                <tr style="border-bottom: 1px solid #f1f5f9;">
-                                                                    <td style="padding: 12px; color: #64748b;">${h.date && !isNaN(new Date(h.date).getTime()) ? new Date(h.date).toLocaleDateString() : "N/A"}</td>
-                                                                    <td style="padding: 12px; font-weight: 600; color: #334155;">${h.chapterTitle.substring(0, 40)}</td>
-                                                                    <td style="padding: 12px; text-align: right;">
-                                                                        <span style="background: ${h.score / h.totalQuestions >= 0.8 ? "#dcfce7" : "#fee2e2"}; color: ${h.score / h.totalQuestions >= 0.8 ? "#166534" : "#991b1b"}; padding: 4px 8px; border-radius: 4px; font-weight: bold;">
-                                                                            ${h.score}/${h.totalQuestions}
-                                                                        </span>
-                                                                    </td>
-                                                                </tr>
-                                                            `,
-                                                              )
-                                                              .join("")}
-                                                        </tbody>
-                                                    </table>
-
-                                                    <!-- Footer -->
-                                                    <div style="position: absolute; bottom: 40px; left: 40px; right: 40px; text-align: center; color: #94a3b8; font-size: 10px; border-top: 1px solid #e2e8f0; padding-top: 20px;">
-                                                        This report is system generated by ${settings?.appName || "NST AI"}. Verified & Valid.
-                                                    </div>
-                                                </div>
-                                            `;
-
-                      document.body.appendChild(element);
-
-                      // Render
-                      const canvas = await html2canvas(element, {
-                        scale: 2,
-                        useCORS: true,
-                      });
-                      const imgData = canvas.toDataURL("image/jpeg", 0.9);
-
-                      const pdf = new jsPDF("p", "mm", "a4");
-                      const pdfWidth = pdf.internal.pageSize.getWidth();
-                      const pdfHeight =
-                        (canvas.height * pdfWidth) / canvas.width;
-
-                      pdf.addImage(imgData, "JPEG", 0, 0, pdfWidth, pdfHeight);
-                      const safeName = user.name
-                        ? user.name.replace(/\s+/g, "_")
-                        : "Student";
-                      pdf.save(`Report_${safeName}_${Date.now()}.pdf`);
-
-                      document.body.removeChild(element);
-                      showAlert("✅ Report Downloaded!", "SUCCESS");
-                    } catch (e) {
-                      console.error("PDF Error", e);
-                      showAlert(
-                        "Failed to generate PDF. Please try again.",
-                        "ERROR",
-                      );
-                    }
-                  }}
-                  className="bg-white p-3 rounded-lg border border-slate-200 text-xs font-bold text-slate-700 hover:bg-slate-100 flex items-center justify-center gap-2"
-                >
-                  <Download size={14} className="text-red-500" /> Download
-                  Optimized Report
-                </button>
-              </div>
-            </div>
+            {/* Footer */}
+            <p className="text-center text-[10px] text-slate-700 pb-2">
+              v{APP_VERSION} · By {settings?.developerName?.trim() || 'Nadim Anwar'}
+            </p>
 
           </div>
-
-          </div>{/* end px-4 wrapper */}
         </div>
       );
 
@@ -17732,6 +17425,53 @@ RULES:
         </div>
         );
       })()}
+
+      {/* CREDIT DEDUCTION TOAST */}
+      {creditDeductToast?.visible && (
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[9999] w-[92vw] max-w-sm animate-in slide-in-from-bottom-4 fade-in duration-300">
+          <div className="bg-[#0f0f0f] border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
+            {/* Top accent bar */}
+            <div className="h-1 w-full bg-gradient-to-r from-amber-500 via-orange-400 to-amber-500" />
+            <div className="px-4 pt-3 pb-3">
+              <div className="flex items-center gap-2 mb-3">
+                <div className="w-7 h-7 rounded-xl bg-amber-500/20 flex items-center justify-center">
+                  <span className="text-base">🪙</span>
+                </div>
+                <p className="text-white font-black text-sm">Credits Kate</p>
+                <button
+                  onClick={() => setCreditDeductToast(null)}
+                  className="ml-auto text-slate-600 hover:text-white transition-colors text-lg leading-none"
+                >×</button>
+              </div>
+              {/* Credit stats row */}
+              <div className="grid grid-cols-3 gap-2 mb-3">
+                <div className="bg-white/5 rounded-xl p-2.5 text-center">
+                  <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wide mb-0.5">Pehle tha</p>
+                  <p className="text-white font-black text-sm">{creditDeductToast.previous.toLocaleString('en-IN')}</p>
+                </div>
+                <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-2.5 text-center">
+                  <p className="text-[9px] text-rose-400 font-bold uppercase tracking-wide mb-0.5">Kata</p>
+                  <p className="text-rose-400 font-black text-sm">−{creditDeductToast.deducted.toLocaleString('en-IN')}</p>
+                </div>
+                <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-2.5 text-center">
+                  <p className="text-[9px] text-emerald-400 font-bold uppercase tracking-wide mb-0.5">Bacha</p>
+                  <p className="text-emerald-400 font-black text-sm">{creditDeductToast.current.toLocaleString('en-IN')}</p>
+                </div>
+              </div>
+              {/* Don't show again */}
+              <button
+                onClick={() => {
+                  localStorage.setItem('nst_credit_toast_disabled', '1');
+                  setCreditDeductToast(null);
+                }}
+                className="w-full text-[11px] text-slate-600 hover:text-slate-400 font-bold transition-colors py-1"
+              >
+                Dobara mat dikhana
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

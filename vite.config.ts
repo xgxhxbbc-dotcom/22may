@@ -118,7 +118,7 @@ export default defineConfig(({ mode }) => {
         sourcemap: false,
       },
       optimizeDeps: {
-        include: ['pdfjs-dist'],
+        include: ['pdfjs-dist', 'clsx', 'eventemitter3'],
         esbuildOptions: {
           sourcemap: false,
         },
@@ -127,6 +127,8 @@ export default defineConfig(({ mode }) => {
         alias: {
           '@': path.resolve(__dirname, '.'),
           'pdfjs-dist': path.resolve(__dirname, 'node_modules/pdfjs-dist/build/pdf.js'),
+          'clsx': path.resolve(__dirname, 'node_modules/clsx/dist/clsx.js'),
+          'eventemitter3': path.resolve(__dirname, 'node_modules/eventemitter3/index.js'),
         }
       },
       define: {

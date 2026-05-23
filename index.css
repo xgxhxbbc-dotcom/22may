@@ -377,21 +377,21 @@
     scrollbar-width: none;
 }
 
-/* Dark Mode - Fully Black (AMOLED) */
+/* Dark Mode - Fully Black (AMOLED) — Professional */
 .dark-mode {
     background-color: #000000 !important;
-    color: #ffffff !important;
+    color: #f1f5f9 !important;
 }
 
 .dark-mode .bg-white {
-    background-color: #000000 !important;
-    border-color: #333333 !important;
+    background-color: #0f0f0f !important;
+    border-color: #1e1e1e !important;
 }
 
-.dark-mode .bg-slate-50, 
+.dark-mode .bg-slate-50,
 .dark-mode .bg-slate-100 {
     background-color: #111111 !important;
-    border-color: #333333 !important;
+    border-color: #222222 !important;
 }
 
 /* Board switch (CBSE/BSEB) — dark mode visibility fix */
@@ -497,15 +497,12 @@
     border: 1px solid #333333 !important;
 }
 
-/* Shadows */
-.dark-mode .shadow-sm,
-.dark-mode .shadow-md,
-.dark-mode .shadow-lg,
-.dark-mode .shadow-xl,
-.dark-mode .shadow-2xl {
-    box-shadow: none !important;
-    border: 1px solid #333333 !important;
-}
+/* Shadows — replace heavy light-mode shadows with subtle dark borders */
+.dark-mode .shadow-sm { box-shadow: 0 1px 2px rgba(0,0,0,0.6) !important; border: 1px solid #1e1e1e !important; }
+.dark-mode .shadow-md { box-shadow: 0 2px 8px rgba(0,0,0,0.7) !important; border: 1px solid #222222 !important; }
+.dark-mode .shadow-lg { box-shadow: 0 4px 16px rgba(0,0,0,0.8) !important; border: 1px solid #242424 !important; }
+.dark-mode .shadow-xl { box-shadow: 0 6px 24px rgba(0,0,0,0.85) !important; border: 1px solid #282828 !important; }
+.dark-mode .shadow-2xl { box-shadow: 0 8px 32px rgba(0,0,0,0.9) !important; border: 1px solid #2a2a2a !important; }
 
 /* GLOBAL UI STABILITY FIXES */
 button {
@@ -680,27 +677,98 @@ button {
   border: 1px dashed #e2e8f0;
 }
 
-/* Exception for Colored Note Cards in Dark/Blue Modes and Prose Invert Notes */
-.dark-mode .definition, .dark-mode-blue .definition, .prose-invert.student-extended-notes .definition { background-color: #eff6ff !important; color: #1e3a8a !important; }
-.dark-mode .definition *, .dark-mode-blue .definition *, .prose-invert.student-extended-notes .definition *, .dark-mode .definition h3, .dark-mode-blue .definition h3, .prose-invert.student-extended-notes .definition h3, .dark-mode .definition p, .dark-mode-blue .definition p, .prose-invert.student-extended-notes .definition p { color: #1e3a8a !important; }
+/* ═══════════════════════════════════════════════════════════════
+   NOTE CARDS — DARK & BLUE MODE (Professional, Eye-friendly)
+   No bright light-mode backgrounds. Muted deep tones only.
+   ═══════════════════════════════════════════════════════════════ */
 
-.dark-mode .example, .dark-mode-blue .example, .prose-invert.student-extended-notes .example { background-color: #dcfce7 !important; color: #166534 !important; }
-.dark-mode .example *, .dark-mode-blue .example *, .prose-invert.student-extended-notes .example *, .dark-mode .example h3, .dark-mode-blue .example h3, .prose-invert.student-extended-notes .example h3, .dark-mode .example p, .dark-mode-blue .example p, .prose-invert.student-extended-notes .example p { color: #166534 !important; }
+/* .definition — deep navy blue */
+.dark-mode .definition,
+.prose-invert.student-extended-notes .definition {
+  background-color: #0b1829 !important;
+  border-left-color: #3b82f6 !important;
+  color: #93c5fd !important;
+}
+.dark-mode-blue .definition {
+  background-color: #0d1e3a !important;
+  border-left-color: #60a5fa !important;
+  color: #93c5fd !important;
+}
+.dark-mode .definition *, .dark-mode .definition h3, .dark-mode .definition p,
+.prose-invert.student-extended-notes .definition *, .prose-invert.student-extended-notes .definition h3 { color: #93c5fd !important; }
+.dark-mode-blue .definition *, .dark-mode-blue .definition h3, .dark-mode-blue .definition p { color: #93c5fd !important; }
 
-.dark-mode .exam, .dark-mode-blue .exam, .prose-invert.student-extended-notes .exam { background-color: #eff6ff !important; color: #1e40af !important; }
-.dark-mode .exam *, .dark-mode-blue .exam *, .prose-invert.student-extended-notes .exam *, .dark-mode .exam h3, .dark-mode-blue .exam h3, .prose-invert.student-extended-notes .exam h3, .dark-mode .exam p, .dark-mode-blue .exam p, .prose-invert.student-extended-notes .exam p { color: #1e40af !important; }
+/* .example — deep dark green */
+.dark-mode .example,
+.prose-invert.student-extended-notes .example {
+  background-color: #071a0e !important;
+  border-left-color: #22c55e !important;
+  color: #86efac !important;
+}
+.dark-mode-blue .example {
+  background-color: #091b10 !important;
+  border-left-color: #16a34a !important;
+  color: #86efac !important;
+}
+.dark-mode .example *, .dark-mode .example h3, .dark-mode .example p,
+.prose-invert.student-extended-notes .example *, .prose-invert.student-extended-notes .example h3 { color: #86efac !important; }
+.dark-mode-blue .example *, .dark-mode-blue .example h3, .dark-mode-blue .example p { color: #86efac !important; }
 
-.dark-mode .mistake, .dark-mode-blue .mistake, .prose-invert.student-extended-notes .mistake { background-color: #fee2e2 !important; color: #991b1b !important; }
-.dark-mode .mistake *, .dark-mode-blue .mistake *, .prose-invert.student-extended-notes .mistake *, .dark-mode .mistake h3, .dark-mode-blue .mistake h3, .prose-invert.student-extended-notes .mistake h3, .dark-mode .mistake p, .dark-mode-blue .mistake p, .prose-invert.student-extended-notes .mistake p { color: #991b1b !important; }
+/* .exam — deep indigo blue */
+.dark-mode .exam,
+.prose-invert.student-extended-notes .exam {
+  background-color: #0c1535 !important;
+  border-left-color: #6366f1 !important;
+  color: #a5b4fc !important;
+}
+.dark-mode-blue .exam {
+  background-color: #0e1a42 !important;
+  border-left-color: #4f46e5 !important;
+  color: #a5b4fc !important;
+}
+.dark-mode .exam *, .dark-mode .exam h3, .dark-mode .exam p,
+.prose-invert.student-extended-notes .exam *, .prose-invert.student-extended-notes .exam h3 { color: #a5b4fc !important; }
+.dark-mode-blue .exam *, .dark-mode-blue .exam h3, .dark-mode-blue .exam p { color: #a5b4fc !important; }
 
-.dark-mode .memory, .dark-mode-blue .memory, .prose-invert.student-extended-notes .memory { background-color: #f0fdf4 !important; color: #166534 !important; }
-.dark-mode .memory *, .dark-mode-blue .memory *, .prose-invert.student-extended-notes .memory *, .dark-mode .memory h3, .dark-mode-blue .memory h3, .prose-invert.student-extended-notes .memory h3, .dark-mode .memory p, .dark-mode-blue .memory p, .prose-invert.student-extended-notes .memory p { color: #166534 !important; }
+/* .mistake — deep muted red */
+.dark-mode .mistake,
+.prose-invert.student-extended-notes .mistake {
+  background-color: #1c0808 !important;
+  border-left-color: #ef4444 !important;
+  color: #fca5a5 !important;
+}
+.dark-mode-blue .mistake {
+  background-color: #1e0a0a !important;
+  border-left-color: #dc2626 !important;
+  color: #fca5a5 !important;
+}
+.dark-mode .mistake *, .dark-mode .mistake h3, .dark-mode .mistake p,
+.prose-invert.student-extended-notes .mistake *, .prose-invert.student-extended-notes .mistake h3 { color: #fca5a5 !important; }
+.dark-mode-blue .mistake *, .dark-mode-blue .mistake h3, .dark-mode-blue .mistake p { color: #fca5a5 !important; }
 
-.dark-mode .explanation, .dark-mode-blue .explanation, .prose-invert.student-extended-notes .explanation { color: #f8fafc !important; }
-.dark-mode .explanation *, .dark-mode-blue .explanation *, .prose-invert.student-extended-notes .explanation *, .dark-mode .explanation h3, .dark-mode-blue .explanation h3, .prose-invert.student-extended-notes .explanation h3 { color: #f8fafc !important; }
+/* .memory — deep teal/emerald */
+.dark-mode .memory,
+.prose-invert.student-extended-notes .memory {
+  background-color: #071a12 !important;
+  border-left-color: #10b981 !important;
+  color: #6ee7b7 !important;
+}
+.dark-mode-blue .memory {
+  background-color: #091c14 !important;
+  border-left-color: #059669 !important;
+  color: #6ee7b7 !important;
+}
+.dark-mode .memory *, .dark-mode .memory h3, .dark-mode .memory p,
+.prose-invert.student-extended-notes .memory *, .prose-invert.student-extended-notes .memory h3 { color: #6ee7b7 !important; }
+.dark-mode-blue .memory *, .dark-mode-blue .memory h3, .dark-mode-blue .memory p { color: #6ee7b7 !important; }
 
-.dark-mode .recap, .dark-mode-blue .recap, .prose-invert.student-extended-notes .recap { color: #f8fafc !important; }
-.dark-mode .recap *, .dark-mode-blue .recap *, .prose-invert.student-extended-notes .recap *, .dark-mode .recap h3, .dark-mode-blue .recap h3, .prose-invert.student-extended-notes .recap h3 { color: #f8fafc !important; }
+/* .explanation & .recap — readable slate */
+.dark-mode .explanation, .dark-mode-blue .explanation, .prose-invert.student-extended-notes .explanation { color: #e2e8f0 !important; background-color: rgba(30,41,59,0.5) !important; }
+.dark-mode .explanation *, .dark-mode-blue .explanation *, .prose-invert.student-extended-notes .explanation *,
+.dark-mode .explanation h3, .dark-mode-blue .explanation h3, .prose-invert.student-extended-notes .explanation h3 { color: #f1f5f9 !important; }
+.dark-mode .recap, .dark-mode-blue .recap, .prose-invert.student-extended-notes .recap { color: #e2e8f0 !important; }
+.dark-mode .recap *, .dark-mode-blue .recap *, .prose-invert.student-extended-notes .recap *,
+.dark-mode .recap h3, .dark-mode-blue .recap h3, .prose-invert.student-extended-notes .recap h3 { color: #f1f5f9 !important; }
 
 /* Dark Mode - Dark Blue Theme */
 .dark-mode-blue {
@@ -745,14 +813,11 @@ button {
     border: 1px solid #334155 !important;
 }
 
-.dark-mode-blue .shadow-sm,
-.dark-mode-blue .shadow-md,
-.dark-mode-blue .shadow-lg,
-.dark-mode-blue .shadow-xl,
-.dark-mode-blue .shadow-2xl {
-    box-shadow: none !important;
-    border: 1px solid #334155 !important;
-}
+.dark-mode-blue .shadow-sm { box-shadow: 0 1px 3px rgba(0,0,0,0.5) !important; border: 1px solid #1e2d44 !important; }
+.dark-mode-blue .shadow-md { box-shadow: 0 2px 10px rgba(0,0,0,0.6) !important; border: 1px solid #1e3050 !important; }
+.dark-mode-blue .shadow-lg { box-shadow: 0 4px 18px rgba(0,0,0,0.65) !important; border: 1px solid #1e3254 !important; }
+.dark-mode-blue .shadow-xl { box-shadow: 0 6px 26px rgba(0,0,0,0.7) !important; border: 1px solid #203358 !important; }
+.dark-mode-blue .shadow-2xl { box-shadow: 0 8px 34px rgba(0,0,0,0.75) !important; border: 1px solid #1e3360 !important; }
 
 /* Force readability for .explanation in dark modes */
 .dark-mode .explanation,
@@ -1001,20 +1066,33 @@ button {
    These need to KEEP their dark text in dark/blue mode otherwise
    the global slate-text overrides make the text invisible.
    ═══════════════════════════════════════════════════════════════ */
-.dark-mode .keep-light-badge,
-.dark-mode-blue .keep-light-badge {
-  background-color: #FDFBF7 !important;
-  color: #1e293b !important;
-  border-color: #fde68a !important;
+.dark-mode .keep-light-badge {
+  background-color: #1e1e2e !important;
+  color: #e2e8f0 !important;
+  border-color: #3a3a5c !important;
+  box-shadow: 0 0 0 1px rgba(255,255,255,0.06) !important;
 }
-.dark-mode .keep-light-badge *,
-.dark-mode-blue .keep-light-badge * {
-  color: #1e293b !important;
+.dark-mode .keep-light-badge * {
+  color: #e2e8f0 !important;
   fill: currentColor !important;
 }
-.dark-mode .keep-light-badge:hover,
+.dark-mode .keep-light-badge:hover {
+  background-color: #252540 !important;
+  border-color: #4a4a70 !important;
+}
+.dark-mode-blue .keep-light-badge {
+  background-color: #0f2040 !important;
+  color: #93c5fd !important;
+  border-color: #1e4a80 !important;
+  box-shadow: 0 0 0 1px rgba(96,165,250,0.12) !important;
+}
+.dark-mode-blue .keep-light-badge * {
+  color: #93c5fd !important;
+  fill: currentColor !important;
+}
 .dark-mode-blue .keep-light-badge:hover {
-  background-color: #fef9e7 !important;
+  background-color: #0f2a50 !important;
+  border-color: #2a5a90 !important;
 }
 
 /* ═══════════════════════════════════════════════════════════════
@@ -1956,3 +2034,124 @@ model-viewer {
 :where(.notes-html-content) img { max-width: 100%; height: auto; }
 .notes-html-content .container, .notes-html-content [class*="container"] { max-width: 100% !important; width: auto !important; box-sizing: border-box !important; margin-left: 0 !important; margin-right: 0 !important; }
 .notes-html-content body { max-width: 100% !important; }
+
+/* ═══════════════════════════════════════════════════════════════
+   PROFESSIONAL DARK & BLUE MODE — STORE/PROFILE LEVEL POLISH
+   Notes headings, top bar, cards, inputs, overall refinement.
+   ═══════════════════════════════════════════════════════════════ */
+
+/* notes-html-content headings in dark modes — purple → soft indigo */
+.dark-mode :where(.notes-html-content) h1,
+.dark-mode :where(.notes-html-content) h2,
+.dark-mode :where(.notes-html-content) h3 { color: #a5b4fc !important; border-bottom-color: #2d2d4e !important; background: transparent !important; border-color: #2d2d4e !important; }
+.dark-mode :where(.notes-html-content) h4,
+.dark-mode :where(.notes-html-content) h5,
+.dark-mode :where(.notes-html-content) h6 { color: #c4b5fd !important; }
+.dark-mode-blue :where(.notes-html-content) h1,
+.dark-mode-blue :where(.notes-html-content) h2,
+.dark-mode-blue :where(.notes-html-content) h3 { color: #93c5fd !important; border-bottom-color: #1e3a5f !important; background: transparent !important; border-color: #1e3a5f !important; }
+.dark-mode-blue :where(.notes-html-content) h4,
+.dark-mode-blue :where(.notes-html-content) h5,
+.dark-mode-blue :where(.notes-html-content) h6 { color: #7dd3fc !important; }
+
+/* notes-html-content box types — dark mode */
+.dark-mode :where(.notes-html-content) .box,
+.dark-mode :where(.notes-html-content) .note-box,
+.dark-mode :where(.notes-html-content) .highlight-box { background: #15102a !important; border-color: #3730a3 !important; color: #c4b5fd !important; }
+.dark-mode :where(.notes-html-content) .warning-box { background: #1a1200 !important; border-color: #92400e !important; color: #fde68a !important; }
+.dark-mode :where(.notes-html-content) .success-box { background: #071a0e !important; border-color: #166534 !important; color: #86efac !important; }
+.dark-mode-blue :where(.notes-html-content) .box,
+.dark-mode-blue :where(.notes-html-content) .note-box,
+.dark-mode-blue :where(.notes-html-content) .highlight-box { background: #1a1e42 !important; border-color: #4338ca !important; color: #a5b4fc !important; }
+.dark-mode-blue :where(.notes-html-content) .warning-box { background: #1a1400 !important; border-color: #b45309 !important; color: #fcd34d !important; }
+.dark-mode-blue :where(.notes-html-content) .success-box { background: #091b10 !important; border-color: #16a34a !important; color: #86efac !important; }
+
+/* notes-html-content hr */
+.dark-mode :where(.notes-html-content) hr { border-top-color: #2d2d4e !important; }
+.dark-mode-blue :where(.notes-html-content) hr { border-top-color: #1e3a5f !important; }
+
+/* Top bar & sticky headers — stronger dark surface */
+.dark-mode .sticky.top-0,
+.dark-mode [class*="sticky"][class*="top-0"] { background-color: #0a0a0a !important; border-bottom-color: #1e1e1e !important; }
+.dark-mode-blue .sticky.top-0,
+.dark-mode-blue [class*="sticky"][class*="top-0"] { background-color: #0b1428 !important; border-bottom-color: #1e3a5f !important; }
+
+/* Top bar buttons — ensure text visible */
+.dark-mode [class*="text-slate-600"],
+.dark-mode [class*="text-slate-700"],
+.dark-mode [class*="text-slate-800"],
+.dark-mode [class*="text-slate-900"] { color: #e2e8f0 !important; }
+.dark-mode-blue [class*="text-slate-600"],
+.dark-mode-blue [class*="text-slate-700"],
+.dark-mode-blue [class*="text-slate-800"],
+.dark-mode-blue [class*="text-slate-900"] { color: #cbd5e1 !important; }
+
+/* Professional card surfaces */
+.dark-mode .rounded-2xl.bg-white,
+.dark-mode .rounded-xl.bg-white { background-color: #0f0f0f !important; border-color: #1e1e1e !important; }
+.dark-mode-blue .rounded-2xl.bg-white,
+.dark-mode-blue .rounded-xl.bg-white { background-color: #111c2e !important; border-color: #1e3a5f !important; }
+
+/* Card hover states */
+.dark-mode .hover\:bg-slate-50:hover { background-color: #141414 !important; }
+.dark-mode .hover\:bg-slate-100:hover { background-color: #181818 !important; }
+.dark-mode-blue .hover\:bg-slate-50:hover { background-color: #0f1e35 !important; }
+.dark-mode-blue .hover\:bg-slate-100:hover { background-color: #102040 !important; }
+
+/* Ring/focus states */
+.dark-mode [class*="ring-slate-200"],
+.dark-mode [class*="ring-slate-300"] { --tw-ring-color: #2a2a2a !important; }
+.dark-mode-blue [class*="ring-slate-200"],
+.dark-mode-blue [class*="ring-slate-300"] { --tw-ring-color: #1e3a5f !important; }
+
+/* Dividers and separators */
+.dark-mode [class*="divide-slate-"],
+.dark-mode [class*="border-slate-200"],
+.dark-mode [class*="border-slate-300"] { border-color: #1e1e1e !important; }
+.dark-mode-blue [class*="divide-slate-"],
+.dark-mode-blue [class*="border-slate-200"],
+.dark-mode-blue [class*="border-slate-300"] { border-color: #1e3050 !important; }
+
+/* Better inputs in dark modes */
+.dark-mode input:focus,
+.dark-mode textarea:focus,
+.dark-mode select:focus { border-color: #3b82f6 !important; box-shadow: 0 0 0 2px rgba(59,130,246,0.15) !important; outline: none !important; }
+.dark-mode-blue input:focus,
+.dark-mode-blue textarea:focus,
+.dark-mode-blue select:focus { border-color: #60a5fa !important; box-shadow: 0 0 0 2px rgba(96,165,250,0.15) !important; outline: none !important; }
+
+/* Placeholder text */
+.dark-mode ::placeholder { color: #475569 !important; }
+.dark-mode-blue ::placeholder { color: #4a6080 !important; }
+
+/* Notes .box / .note-box inside notes html content in dark mode */
+.dark-mode .notes-html-content .box,
+.dark-mode .notes-html-content .note-box,
+.dark-mode .notes-html-content .highlight-box { background: #15102a !important; border-color: #3730a3 !important; }
+.dark-mode-blue .notes-html-content .box,
+.dark-mode-blue .notes-html-content .note-box,
+.dark-mode-blue .notes-html-content .highlight-box { background: #1a1e42 !important; border-color: #4338ca !important; }
+
+/* Scrollbar styling in dark modes */
+.dark-mode ::-webkit-scrollbar { width: 4px; height: 4px; }
+.dark-mode ::-webkit-scrollbar-track { background: #0a0a0a; }
+.dark-mode ::-webkit-scrollbar-thumb { background: #2a2a2a; border-radius: 4px; }
+.dark-mode ::-webkit-scrollbar-thumb:hover { background: #3a3a3a; }
+.dark-mode-blue ::-webkit-scrollbar { width: 4px; height: 4px; }
+.dark-mode-blue ::-webkit-scrollbar-track { background: #0a1220; }
+.dark-mode-blue ::-webkit-scrollbar-thumb { background: #1e3a5f; border-radius: 4px; }
+.dark-mode-blue ::-webkit-scrollbar-thumb:hover { background: #2a4a70; }
+
+/* bg-slate-800/bg-slate-700/bg-slate-600 — proper dark equivalents */
+.dark-mode [class*="bg-slate-800"] { background-color: #161616 !important; }
+.dark-mode [class*="bg-slate-700"] { background-color: #1c1c1c !important; }
+.dark-mode [class*="bg-slate-600"] { background-color: #222222 !important; }
+.dark-mode-blue [class*="bg-slate-800"] { background-color: #0d1e38 !important; }
+.dark-mode-blue [class*="bg-slate-700"] { background-color: #102240 !important; }
+.dark-mode-blue [class*="bg-slate-600"] { background-color: #142a4e !important; }
+
+/* Muted secondary text improvement */
+.dark-mode [class*="text-slate-400"] { color: #64748b !important; }
+.dark-mode [class*="text-slate-300"] { color: #94a3b8 !important; }
+.dark-mode-blue [class*="text-slate-400"] { color: #5a7090 !important; }
+.dark-mode-blue [class*="text-slate-300"] { color: #7a90a8 !important; }
