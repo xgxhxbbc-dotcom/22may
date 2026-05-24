@@ -20,9 +20,9 @@ export const LEVEL_INFO: LevelInfo[] = [
   { level: 6,  minScore: 10000,   label: 'Veteran',     emoji: '🔥', color: '#f97316', gradient: 'from-orange-400 to-red-500',                 glowColor: 'rgba(249,115,22,0.55)',  discount: 8,  animationIntensity: 2 },
   { level: 7,  minScore: 20000,   label: 'Master',      emoji: '💫', color: '#a855f7', gradient: 'from-violet-400 to-purple-600',              glowColor: 'rgba(168,85,247,0.6)',   discount: 10, animationIntensity: 2, nameColor: '#a855f7' },
   { level: 8,  minScore: 50000,   label: 'GrandMaster', emoji: '💎', color: '#f59e0b', gradient: 'from-amber-400 to-yellow-500',               glowColor: 'rgba(245,158,11,0.65)',  discount: 13, animationIntensity: 3, nameColor: '#f59e0b' },
-  { level: 9,  minScore: 1000000, label: 'Titan',       emoji: '🌟', color: '#eab308', gradient: 'from-yellow-400 to-amber-500',               glowColor: 'rgba(234,179,8,0.75)',   discount: 17, animationIntensity: 3, nameColor: '#eab308' },
-  { level: 10, minScore: 2000000, label: 'Mythic',      emoji: '👑', color: '#f59e0b', gradient: 'from-amber-400 to-orange-400',               glowColor: 'rgba(245,158,11,0.8)',   discount: 20, animationIntensity: 3, nameColor: '#f59e0b' },
-  { level: 11, minScore: 5000000, label: 'Supreme',     emoji: '🏆', color: '#10b981', gradient: 'from-emerald-400 via-cyan-400 to-violet-500', glowColor: 'rgba(16,185,129,0.9)',  discount: 20, animationIntensity: 4, nameColor: '#10b981' },
+  { level: 9,  minScore: 250000,  label: 'Titan',       emoji: '🌟', color: '#eab308', gradient: 'from-yellow-400 to-amber-500',               glowColor: 'rgba(234,179,8,0.75)',   discount: 17, animationIntensity: 3, nameColor: '#eab308' },
+  { level: 10, minScore: 1250000, label: 'Mythic',      emoji: '👑', color: '#f59e0b', gradient: 'from-amber-400 to-orange-400',               glowColor: 'rgba(245,158,11,0.8)',   discount: 20, animationIntensity: 3, nameColor: '#f59e0b' },
+  { level: 11, minScore: 6250000, label: 'Supreme',     emoji: '🏆', color: '#10b981', gradient: 'from-emerald-400 via-cyan-400 to-violet-500', glowColor: 'rgba(16,185,129,0.9)',  discount: 20, animationIntensity: 4, nameColor: '#10b981' },
 ];
 
 export const MAX_LEVEL = 11;

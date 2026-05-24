@@ -17030,32 +17030,85 @@ RULES:
         const progress = getLevelProgress(totalScore);
         return (
           <div className="fixed inset-0 z-[9998] flex flex-col justify-end" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => { setShowScorePanel(false); setScorePanelTab('LEVEL'); }}>
-            <div className="bg-[#0e0e0e] rounded-t-3xl max-h-[88vh] overflow-y-auto no-scrollbar w-full" onClick={e => e.stopPropagation()}>
-              {/* Header */}
-              <div className="sticky top-0 bg-[#0e0e0e] pt-3 pb-2 px-5 z-10 border-b border-white/6">
-                <div className="w-10 h-1 bg-slate-700 rounded-full absolute left-1/2 -translate-x-1/2 top-1.5" />
-                <div className="flex items-center justify-between mt-2 mb-2">
+            {/* Panel — outer rounded container, no overflow (prevents white-corner flash) */}
+            <div className="bg-[#0e0e0e] rounded-t-3xl max-h-[88vh] flex flex-col w-full overflow-hidden" onClick={e => e.stopPropagation()}>
+              {/* Header — fixed, not sticky, so no repaint glitch */}
+              <div className="flex-shrink-0 bg-[#0e0e0e] pt-3 pb-2 px-5 border-b border-white/6">
+                <div className="w-10 h-1 bg-slate-700 rounded-full mx-auto mb-2" />
+                <div className="flex items-center justify-between mb-2">
                   <p className="text-sm font-black text-white">⚡ Activity Score</p>
                   <button onClick={() => { setShowScorePanel(false); setScorePanelTab('LEVEL'); }} className="w-7 h-7 flex items-center justify-center rounded-full bg-white/8 text-slate-400">✕</button>
                 </div>
-                {/* Tab toggle — 3 tabs */}
+                {/* Tab toggle — 3 tabs — no transition-all to prevent lag */}
                 <div className="flex gap-1.5">
                   <button
                     onClick={() => setScorePanelTab('LEVEL')}
-                    className={`flex-1 py-1.5 rounded-xl text-[10px] font-black transition-all ${scorePanelTab === 'LEVEL' ? 'bg-violet-600 text-white shadow-sm' : 'bg-white/6 text-slate-400 hover:bg-white/10'}`}
+                    className={`flex-1 py-1.5 rounded-xl text-[10px] font-black ${scorePanelTab === 'LEVEL' ? 'bg-violet-600 text-white' : 'bg-white/6 text-slate-400'}`}
                   >⚡ Level</button>
                   <button
                     onClick={() => setScorePanelTab('DAILY')}
-                    className={`flex-1 py-1.5 rounded-xl text-[10px] font-black transition-all ${scorePanelTab === 'DAILY' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white/6 text-slate-400 hover:bg-white/10'}`}
+                    className={`flex-1 py-1.5 rounded-xl text-[10px] font-black ${scorePanelTab === 'DAILY' ? 'bg-emerald-600 text-white' : 'bg-white/6 text-slate-400'}`}
                   >📊 Limits</button>
                   <button
                     onClick={() => setScorePanelTab('FEATURES')}
-                    className={`flex-1 py-1.5 rounded-xl text-[10px] font-black transition-all ${scorePanelTab === 'FEATURES' ? 'bg-sky-600 text-white shadow-sm' : 'bg-white/6 text-slate-400 hover:bg-white/10'}`}
+                    className={`flex-1 py-1.5 rounded-xl text-[10px] font-black ${scorePanelTab === 'FEATURES' ? 'bg-sky-600 text-white' : 'bg-white/6 text-slate-400'}`}
                   >🎯 Level System</button>
                 </div>
               </div>
 
+              {/* Scrollable content area */}
+              <div className="overflow-y-auto no-scrollbar flex-1">
               <div className="px-4 py-4 space-y-3">
+
+              {/* ── LEVEL HERO CARD — shown on ALL 3 tabs ── */}
+              {(() => {
+                const _lvlFrom = lvl.minScore;
+                const _lvlTo   = nextLvl ? nextLvl.minScore : null;
+                const _rangeTotal = _lvlTo ? _lvlTo - _lvlFrom : 0;
+                const _rangeEarned = _lvlTo ? Math.max(0, totalScore - _lvlFrom) : 0;
+                const _rangePct = _lvlTo ? Math.min(100, Math.round((_rangeEarned / _rangeTotal) * 100)) : 100;
+                const _ptsLeft = _lvlTo ? Math.max(0, _lvlTo - totalScore) : 0;
+                return (
+                  <div className="rounded-2xl p-4 text-center relative overflow-hidden"
+                    style={{ background: `linear-gradient(135deg, ${lvl.color}20, ${lvl.color}08)`, border: `1px solid ${lvl.color}50`, boxShadow: `0 0 32px ${lvl.glowColor}` }}>
+                    <div className="text-5xl mb-2.5">{lvl.emoji}</div>
+                    <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full mb-2" style={{ background: `${lvl.color}28`, border: `1px solid ${lvl.color}55` }}>
+                      <span className="text-xs font-black text-white">Level {lvl.level}</span>
+                      <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: lvl.color }}>· {lvl.label}</span>
+                    </div>
+                    <p className="text-3xl font-black" style={{ color: lvl.color }}>{totalScore.toLocaleString('en-IN')}</p>
+                    <p className="text-[9px] text-slate-500 uppercase tracking-widest mt-0.5">Total Score</p>
+                    {lvl.discount > 0 && (
+                      <div className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black text-white" style={{ background: `${lvl.color}cc` }}>
+                        🏷️ {lvl.discount}% Store Discount Active
+                      </div>
+                    )}
+                    {/* Level Range Progress */}
+                    <div className="mt-3 rounded-xl px-3 py-2.5" style={{ background: 'rgba(0,0,0,0.25)', border: `1px solid ${lvl.color}25` }}>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <div className="text-left">
+                          <p className="text-[7px] font-black uppercase tracking-widest text-slate-600">Level {lvl.level} shuru</p>
+                          <p className="text-[9px] font-black" style={{ color: lvl.color }}>{_lvlFrom.toLocaleString('en-IN')}</p>
+                        </div>
+                        <div className="text-center flex-1 px-2">
+                          <p className="text-[8px] font-black text-white">{_rangePct}% Complete</p>
+                          {_lvlTo && <p className="text-[7px] text-slate-500">{_ptsLeft.toLocaleString('en-IN')} pts baki</p>}
+                        </div>
+                        <div className="text-right">
+                          <p className="text-[7px] font-black uppercase tracking-widest text-slate-600">{nextLvl ? `Level ${nextLvl.level} pe` : 'Max Level'}</p>
+                          <p className="text-[9px] font-black text-slate-400">{_lvlTo ? _lvlTo.toLocaleString('en-IN') : '∞'}</p>
+                        </div>
+                      </div>
+                      <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                        <div className="h-full rounded-full" style={{ width: `${_rangePct}%`, background: `linear-gradient(90deg, ${lvl.color}99, ${lvl.color})` }} />
+                      </div>
+                      {_rangePct === 100 && !nextLvl && (
+                        <p className="text-[8px] font-black text-amber-400 mt-1 text-center">🏆 Highest Level Achieved!</p>
+                      )}
+                    </div>
+                  </div>
+                );
+              })()}
 
                 {/* ── DAILY LIMITS TAB ── */}
                 {scorePanelTab === 'DAILY' && (() => {
@@ -17340,23 +17393,6 @@ RULES:
                 {/* ── LEVEL SYSTEM TAB (default) ── */}
                 {scorePanelTab === 'LEVEL' && <React.Fragment>
 
-                {/* Level Hero Card */}
-                <div className="rounded-2xl p-4 text-center relative overflow-hidden"
-                  style={{ background: `linear-gradient(135deg, ${lvl.color}20, ${lvl.color}08)`, border: `1px solid ${lvl.color}50`, boxShadow: `0 0 32px ${lvl.glowColor}` }}>
-                  <div className="text-5xl mb-2.5" style={{ filter: `drop-shadow(0 0 14px ${lvl.glowColor})` }}>{lvl.emoji}</div>
-                  <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full mb-2" style={{ background: `${lvl.color}28`, border: `1px solid ${lvl.color}55` }}>
-                    <span className="text-xs font-black text-white">Level {lvl.level}</span>
-                    <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: lvl.color }}>· {lvl.label}</span>
-                  </div>
-                  <p className="text-3xl font-black" style={{ color: lvl.color }}>{totalScore.toLocaleString('en-IN')}</p>
-                  <p className="text-[9px] text-slate-500 uppercase tracking-widest mt-0.5">Total Score</p>
-                  {lvl.discount > 0 && (
-                    <div className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black text-white" style={{ background: `${lvl.color}cc` }}>
-                      🏷️ {lvl.discount}% Store Discount Active
-                    </div>
-                  )}
-                </div>
-
                 {/* Next Level + Daily Score — side by side */}
                 <div className="grid grid-cols-2 gap-2.5">
                   {nextLvl ? (
@@ -17507,6 +17543,7 @@ RULES:
                 <div className="h-4" />
                 </React.Fragment>}
 
+              </div>
               </div>
             </div>
           </div>

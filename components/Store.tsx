@@ -21,7 +21,7 @@ const DEFAULT_PACKAGES: CreditPackage[] = [
 ];
 
 export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) => {
-  const [tierType, setTierType] = useState<'BASIC' | 'ULTRA' | 'EARN'>('BASIC');
+  const [tierType, setTierType] = useState<'BASIC' | 'ULTRA' | 'EARN' | 'CREDITS'>('BASIC');
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
 
   const packages = settings?.packages || DEFAULT_PACKAGES;
@@ -223,6 +223,47 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
       {/* MAIN CONTENT */}
       <div className="px-4 pt-6">
 
+        {/* SPECIAL DISCOUNT EVENT BANNER — always visible on all tabs */}
+        {showEventBanner && (
+          <div className={`mb-5 p-4 rounded-2xl border animate-in fade-in ${
+            activeEvent
+              ? 'bg-gradient-to-r from-amber-900/40 to-orange-900/40 border-amber-500/40'
+              : 'bg-[#111] border-slate-700'
+          }`}>
+            <div className="flex items-center gap-3">
+              <span className="text-2xl">{activeEvent ? '🔥' : '⏳'}</span>
+              <div className="flex-1">
+                <p className={`text-sm font-black ${activeEvent ? 'text-amber-300' : 'text-slate-200'}`}>
+                  {activeEvent
+                    ? `${event?.eventName || 'Flash Sale'} — ${event?.discountPercent || 0}% OFF!`
+                    : `${event?.eventName || 'Sale'} — Jald aane wala hai!`}
+                </p>
+                <p className={`text-[11px] mt-0.5 ${activeEvent ? 'text-orange-300' : 'text-slate-400'}`}>
+                  {activeEvent
+                    ? 'Sabhi plans aur credits pe discount apply ho gaya!'
+                    : 'Event abhi start nahi hua — countdown dekho neeche'}
+                </p>
+              </div>
+            </div>
+            {timeLeft && (
+              <div className="flex gap-2 mt-3 justify-center">
+                {timeLeft.days > 0 && (
+                  <div className="bg-black/40 rounded-xl px-3 py-1.5 text-center min-w-[48px] border border-white/10">
+                    <p className="text-base font-black text-white font-mono leading-none">{String(timeLeft.days).padStart(2,'0')}</p>
+                    <p className="text-[8px] text-slate-500 uppercase mt-0.5">Days</p>
+                  </div>
+                )}
+                {[{ v: timeLeft.hours, l: 'Hrs' }, { v: timeLeft.minutes, l: 'Min' }, { v: timeLeft.seconds, l: 'Sec' }].map(item => (
+                  <div key={item.l} className="bg-black/40 rounded-xl px-3 py-1.5 text-center min-w-[48px] border border-white/10">
+                    <p className="text-base font-black text-white font-mono leading-none">{String(item.v).padStart(2,'0')}</p>
+                    <p className="text-[8px] text-slate-500 uppercase mt-0.5">{item.l}</p>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
         {/* SECTION LABEL */}
         <div className="flex items-center gap-2 mb-5">
           <span className="w-1 h-5 rounded-full bg-gradient-to-b from-cyan-400 to-indigo-500" />
@@ -230,7 +271,7 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
         </div>
 
         {/* TIER TOGGLE */}
-        <div className="bg-white/5 p-1 rounded-2xl border border-white/8 flex gap-1 mb-6">
+        <div className="bg-white/5 p-1 rounded-2xl border border-white/8 flex gap-1 mb-6 flex-wrap">
           <button
             onClick={() => setTierType('BASIC')}
             className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
@@ -261,6 +302,16 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
           >
             🎰 Earn
           </button>
+          <button
+            onClick={() => setTierType('CREDITS')}
+            className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+              tierType === 'CREDITS'
+                ? 'bg-gradient-to-r from-yellow-500 to-amber-500 text-white shadow-lg shadow-yellow-500/25'
+                : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            🪙 Credits
+          </button>
         </div>
 
         {/* EARN CONTENT */}
@@ -275,44 +326,113 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
           </div>
         )}
 
-        {tierType !== 'EARN' && (<>
-        {/* SPECIAL DISCOUNT EVENT BANNER */}
-        {showEventBanner && (
-          <div className={`mb-5 p-4 rounded-2xl border animate-in fade-in ${
-            activeEvent
-              ? 'bg-gradient-to-r from-amber-900/40 to-orange-900/40 border-amber-500/40'
-              : 'bg-[#111] border-slate-800'
-          }`}>
-            <div className="flex items-center gap-3">
-              <span className="text-2xl">{activeEvent ? '🔥' : '⏳'}</span>
-              <div className="flex-1">
-                <p className={`text-sm font-black ${activeEvent ? 'text-amber-300' : 'text-slate-300'}`}>
-                  {activeEvent ? `${event?.eventName || 'Flash Sale'} — ${event?.discountPercent || 0}% OFF!` : `${event?.eventName || 'Sale'} — Jald aane wala hai!`}
-                </p>
-                <p className={`text-[11px] mt-0.5 ${activeEvent ? 'text-orange-300' : 'text-slate-500'}`}>
-                  {activeEvent ? 'Sabhi plans pe discount apply ho gaya!' : 'Abhi start nahi hua, thoda rukiye...'}
-                </p>
+        {/* CREDITS CONTENT */}
+        {tierType === 'CREDITS' && (
+          <div className="animate-in fade-in duration-200 space-y-3">
+            {/* Header */}
+            <div className="rounded-2xl px-4 py-3 flex items-center gap-3" style={{ background: 'linear-gradient(135deg, rgba(234,179,8,0.15), rgba(245,158,11,0.08))', border: '1px solid rgba(234,179,8,0.3)' }}>
+              <span className="text-2xl">🪙</span>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-black text-amber-300">Credit Packages</p>
+                <p className="text-[10px] text-slate-400 mt-0.5">Ek baar kharido, kabhi bhi use karo — Write mode, unlocks aur aur bhi</p>
+              </div>
+              <div className="text-right shrink-0">
+                <p className="text-xs font-black text-amber-400">{(user.credits || 0).toLocaleString('en-IN')} CR</p>
+                <p className="text-[9px] text-slate-500">Aapke paas</p>
               </div>
             </div>
-            {timeLeft && (
-              <div className="flex gap-2 mt-3 justify-center">
-                {timeLeft.days > 0 && (
-                  <div className="bg-black/40 rounded-xl px-3 py-1.5 text-center min-w-[48px] border border-white/10">
-                    <p className="text-base font-black text-white font-mono leading-none">{String(timeLeft.days).padStart(2,'0')}</p>
-                    <p className="text-[8px] text-slate-500 uppercase mt-0.5">Days</p>
-                  </div>
-                )}
-                {[{ v: timeLeft.hours, l: 'Hrs' }, { v: timeLeft.minutes, l: 'Min' }, { v: timeLeft.seconds, l: 'Sec' }].map(item => (
-                  <div key={item.l} className="bg-black/40 rounded-xl px-3 py-1.5 text-center min-w-[48px] border border-white/10">
-                    <p className="text-base font-black text-white font-mono leading-none">{String(item.v).padStart(2,'0')}</p>
-                    <p className="text-[8px] text-slate-500 uppercase mt-0.5">{item.l}</p>
-                  </div>
-                ))}
-              </div>
-            )}
+
+            {/* What are credits */}
+            <div className="grid grid-cols-3 gap-2">
+              {[
+                { emoji: '✍️', label: 'Write Mode', sub: '10 CR/use' },
+                { emoji: '🔓', label: 'Content Unlock', sub: 'Anytime' },
+                { emoji: '🎁', label: 'Login Bonus', sub: 'Daily free' },
+              ].map(item => (
+                <div key={item.label} className="rounded-xl p-2.5 text-center bg-white/4 border border-white/8">
+                  <p className="text-lg">{item.emoji}</p>
+                  <p className="text-[9px] font-black text-slate-200 mt-1 leading-tight">{item.label}</p>
+                  <p className="text-[8px] text-amber-500 mt-0.5">{item.sub}</p>
+                </div>
+              ))}
+            </div>
+
+            {/* Credit packages */}
+            <div className="space-y-2">
+              {packages.map((pkg) => {
+                let finalPrice = pkg.price;
+                let discountPercentVal = 0;
+                if (activeEvent && event?.discountPercent) discountPercentVal += event.discountPercent;
+                if (isSubscribed) discountPercentVal += 5;
+                if (user.storeDiscount) discountPercentVal += user.storeDiscount;
+                if (scoreDiscount > 0) discountPercentVal += scoreDiscount;
+                if (discountPercentVal > 0) {
+                  if (discountPercentVal > 100) discountPercentVal = 100;
+                  finalPrice = Math.round(finalPrice * (1 - discountPercentVal / 100));
+                }
+                const perCredit = finalPrice > 0 ? (finalPrice / pkg.credits).toFixed(2) : '0';
+                const isPopular = pkg.credits === 500;
+                return (
+                  <button
+                    key={pkg.id}
+                    onClick={() => initiatePurchase(pkg)}
+                    className="w-full p-3.5 rounded-2xl border text-left transition-all hover:scale-[1.01] active:scale-[0.99] relative overflow-hidden group"
+                    style={{
+                      background: isPopular ? 'linear-gradient(135deg, rgba(234,179,8,0.12), rgba(245,158,11,0.06))' : 'rgba(255,255,255,0.03)',
+                      border: isPopular ? '1px solid rgba(234,179,8,0.4)' : '1px solid rgba(255,255,255,0.08)',
+                    }}
+                  >
+                    {isPopular && (
+                      <div className="absolute top-0 right-0 bg-amber-500 text-black text-[8px] font-black px-2.5 py-1 rounded-bl-xl rounded-tr-xl">
+                        POPULAR
+                      </div>
+                    )}
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg shrink-0" style={{ background: 'rgba(234,179,8,0.15)', border: '1px solid rgba(234,179,8,0.3)' }}>
+                          🪙
+                        </div>
+                        <div>
+                          <p className="text-sm font-black text-white">{pkg.credits.toLocaleString('en-IN')} Credits</p>
+                          <p className="text-[9px] text-slate-500 mt-0.5">₹{perCredit}/credit · {pkg.name}</p>
+                        </div>
+                      </div>
+                      <div className="text-right shrink-0">
+                        <div className="flex items-center gap-1.5">
+                          {discountPercentVal > 0 && (
+                            <span className="text-[9px] bg-amber-500/20 text-amber-300 px-1.5 py-0.5 rounded-full font-black border border-amber-500/30">
+                              {discountPercentVal}% OFF
+                            </span>
+                          )}
+                          <p className="text-base font-black text-white">₹{finalPrice.toLocaleString('en-IN')}</p>
+                        </div>
+                        {discountPercentVal > 0 && (
+                          <p className="text-[9px] text-slate-600 line-through text-right">₹{pkg.price.toLocaleString('en-IN')}</p>
+                        )}
+                      </div>
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* Trust badges */}
+            <div className="flex justify-center gap-4 mb-8 mt-2">
+              {[
+                { icon: <ShieldCheck size={12} />, text: 'Secure Payment' },
+                { icon: <Flame size={12} />, text: 'Instant Credits' },
+                { icon: <Star size={12} />, text: 'Never Expire' },
+              ].map(badge => (
+                <div key={badge.text} className="flex items-center gap-1 text-[10px] text-slate-600 font-bold">
+                  {badge.icon}
+                  <span>{badge.text}</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
+        {tierType !== 'EARN' && tierType !== 'CREDITS' && (<>
         {/* SCORE LEVEL BANNER */}
         <div className="mb-4 rounded-2xl overflow-hidden border border-white/10">
           <div className={`bg-gradient-to-r ${scoreTier.gradient} p-0.5`}>
