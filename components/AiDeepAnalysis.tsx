@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { User, SystemSettings, MCQResult, TopicItem } from '../types';
 import { BrainCircuit, Play, Pause, ChevronDown, ChevronUp, Star, Lock, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
 import { saveUserToLive, saveAiInteraction } from '../firebase';
+import { applyDeduction, getTotalCredits } from '../utils/creditSystem';
 import { speakText, stopSpeech, getCategorizedVoices } from '../utils/textToSpeech';
 import { TodayRevisionView } from './TodayRevisionView';
 
@@ -113,14 +114,14 @@ export const AiDeepAnalysis: React.FC<Props> = ({ user, settings, onUpdateUser, 
     };
 
     const handleUnlock = () => {
-        if (user.credits < COST) {
+        if (getTotalCredits(user) < COST) {
             alert(`Insufficient Coins! You need ${COST} coins.`);
             return;
         }
 
         if (!confirm(`Unlock AI Deep Analysis for ${COST} coins?`)) return;
 
-        const updatedUser = { ...user, credits: user.credits - COST };
+        const updatedUser = applyDeduction(user, COST)!;
         onUpdateUser(updatedUser);
         
         // Save Local Unlock

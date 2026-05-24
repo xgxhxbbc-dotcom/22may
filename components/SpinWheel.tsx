@@ -2,6 +2,7 @@ import React, { useState, useMemo } from 'react';
 import { User, SystemSettings, SpinReward, SpinGameType } from '../types';
 import { Trophy, Zap, Star, Lock, ChevronRight } from 'lucide-react';
 import { CustomAlert } from './CustomDialogs';
+import { applyDeduction, getTotalCredits } from '../utils/creditSystem';
 
 interface Props {
   user: User;
@@ -126,8 +127,7 @@ const SpinWheelCore: React.FC<SpinWheelCoreProps> = ({ user, onUpdateUser, rewar
       setResultMessage(msg);
 
       const updatedUser: any = {
-        ...user,
-        credits: user.credits - cost,
+        ...(applyDeduction(user, cost) ?? user),
         [spinDateKey]: todayStr,
         [spinCountKey]: spinsUsed + 1,
         lastSpinTime: new Date().toISOString(),

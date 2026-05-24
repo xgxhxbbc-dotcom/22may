@@ -4,6 +4,7 @@ import { CheckCircle, Lock, ArrowLeft, Crown, PlayCircle, HelpCircle, Trophy, Cl
 import { checkFeatureAccess } from '../utils/permissionUtils';
 import { CustomAlert, CustomConfirm } from './CustomDialogs';
 import { getChapterData, saveUserToLive, saveUserHistory, savePublicActivity } from '../firebase';
+import { applyDeduction, getTotalCredits } from '../utils/creditSystem';
 import { storage } from '../utils/storage';
 import { generateLocalAnalysis, generateAnalysisJson } from '../utils/analysisUtils';
 import { saveOfflineItem } from '../utils/offlineStorage';
@@ -348,7 +349,7 @@ export const McqView: React.FC<Props> = ({
                   return;
               }
               // Charge 5 credits for this session
-              const updatedUser = { ...user, credits: user.credits - mcqCostPerBlock };
+              const updatedUser = applyDeduction(user, mcqCostPerBlock) ?? user;
               localStorage.setItem('nst_current_user', JSON.stringify(updatedUser));
               saveUserToLive(updatedUser);
               onUpdateUser(updatedUser);
@@ -437,7 +438,7 @@ export const McqView: React.FC<Props> = ({
               title: "Start Premium Test",
               message: `Start Premium Test for ${cost} Coins?\nIncludes Instant Explanations & TTS.`,
               onConfirm: () => {
-                  const updatedUser = { ...user, credits: user.credits - cost };
+                  const updatedUser = applyDeduction(user, cost) ?? user;
                   localStorage.setItem('nst_current_user', JSON.stringify(updatedUser));
                   saveUserToLive(updatedUser);
                   onUpdateUser(updatedUser);
@@ -905,7 +906,7 @@ export const McqView: React.FC<Props> = ({
                   title: "Unlock Analysis",
                   message: `Unlock answers & mistakes for ${cost} Coins?`,
                   onConfirm: () => {
-                      const updatedUser = { ...user, credits: user.credits - cost };
+                      const updatedUser = applyDeduction(user, cost) ?? user;
                       localStorage.setItem('nst_current_user', JSON.stringify(updatedUser));
                       saveUserToLive(updatedUser);
                       onUpdateUser(updatedUser);
@@ -963,7 +964,7 @@ export const McqView: React.FC<Props> = ({
           message: `Pay ${cost} Coins to unlock detailed AI Analysis & Premium Notes?`,
           onConfirm: () => {
               // Deduct Credits
-              const updatedUser = { ...user, credits: user.credits - cost };
+              const updatedUser = applyDeduction(user, cost) ?? user;
               localStorage.setItem('nst_current_user', JSON.stringify(updatedUser));
               saveUserToLive(updatedUser);
               onUpdateUser(updatedUser);

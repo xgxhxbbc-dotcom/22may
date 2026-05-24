@@ -10,6 +10,7 @@ import { doc as fsDoc, setDoc as fsSetDoc } from 'firebase/firestore';
 import { storage } from './utils/storage';
 import { recalculateSubscriptionStatus, addSubscription } from './utils/subscriptionUtils';
 import { getLevelInfo, getLevelLimitBonus } from './utils/levelSystem';
+import { applyDeduction, getTotalCredits } from './utils/creditSystem';
 import { signInAnonymously } from 'firebase/auth';
 import { fetchChapters, fetchLessonContent } from './services/groq';
 import { AppLoadingScreen } from './components/AppLoadingScreen';
@@ -366,6 +367,7 @@ const App: React.FC = () => {
     storage.setItem('nst_active_student_tab', studentTab);
   }, [studentTab]);
   const [streakLoginPopup, setStreakLoginPopup] = useState<{newStreak: number; prevStreak: number; isNewRecord: boolean} | null>(null);
+  const [levelUpNotif, setLevelUpNotif] = useState<{level: number; label: string; emoji: string; color: string} | null>(null);
   const [lastTestResult, setLastTestResult] = useState<MCQResult | null>(null);
   const [lastTestQuestions, setLastTestQuestions] = useState<MCQItem[] | null>(null); // NEW: For granular analysis
   
@@ -442,6 +444,22 @@ const App: React.FC = () => {
     (window as any).recordActivity = recordActivity;
   }, [state.user?.id]);
 
+  // Level-up detection: fire notification when user crosses a level threshold
+  const prevLevelRef = React.useRef<number>(0);
+  useEffect(() => {
+    if (!state.user) return;
+    const info = getLevelInfo(state.user.totalScore || 0);
+    const prev = prevLevelRef.current;
+    if (prev > 0 && info.level > prev) {
+      const key = `nst_levelup_notif_${info.level}`;
+      if (!sessionStorage.getItem(key)) {
+        sessionStorage.setItem(key, '1');
+        setLevelUpNotif({ level: info.level, label: info.label, emoji: info.emoji, color: info.color });
+      }
+    }
+    prevLevelRef.current = info.level;
+  }, [state.user?.totalScore]);
+
   useEffect(() => {
       if (!state.user) return;
       const today = new Date().toDateString();
@@ -478,8 +496,8 @@ const App: React.FC = () => {
                       updatedUser.credits = (updatedUser.credits || 0) + 100;
                   }
               }
-              if (!sessionStorage.getItem('nst_streak_popup_shown')) {
-                  sessionStorage.setItem('nst_streak_popup_shown', 'true');
+              if (localStorage.getItem('nst_streak_popup_date') !== today) {
+                  localStorage.setItem('nst_streak_popup_date', today);
                   setStreakLoginPopup({ newStreak: updatedUser.streak, prevStreak: prev, isNewRecord: updatedUser.streak > prevLongest && prevLongest > 0 });
               }
           } else {
@@ -488,8 +506,8 @@ const App: React.FC = () => {
               updatedUser.streak = 1;
               // Update longestStreak if first time
               if (!updatedUser.longestStreak) updatedUser.longestStreak = 1;
-              if (!sessionStorage.getItem('nst_streak_popup_shown')) {
-                  sessionStorage.setItem('nst_streak_popup_shown', 'true');
+              if (localStorage.getItem('nst_streak_popup_date') !== today) {
+                  localStorage.setItem('nst_streak_popup_date', today);
                   setStreakLoginPopup({ newStreak: 1, prevStreak: prev > 1 ? prev : 0, isNewRecord: false });
               }
               // SCORE PENALTY: Streak break → drop 1 level (import-free inline logic)
@@ -1682,7 +1700,7 @@ const App: React.FC = () => {
                  });
                  return;
              }
-             const updatedUser = { ...state.user, credits: state.user.credits - cost };
+             const updatedUser = applyDeduction(state.user, cost) ?? state.user;
              if (!state.originalAdmin) {
                  localStorage.setItem('nst_current_user', JSON.stringify(updatedUser));
                  saveUserToLive(updatedUser);
@@ -1783,7 +1801,7 @@ const App: React.FC = () => {
                  return;
              }
 
-             const updatedUser = { ...state.user, credits: state.user.credits - cost };
+             const updatedUser = applyDeduction(state.user, cost) ?? state.user;
              if (!state.originalAdmin) {
                  localStorage.setItem('nst_current_user', JSON.stringify(updatedUser));
                  saveUserToLive(updatedUser);
@@ -2000,7 +2018,7 @@ const App: React.FC = () => {
             }
 
             // Deduct Credits
-            const updatedUser = { ...state.user, credits: state.user.credits - cost };
+            const updatedUser = applyDeduction(state.user, cost) ?? state.user;
 
             if (!state.originalAdmin) {
                 localStorage.setItem('nst_current_user', JSON.stringify(updatedUser));
@@ -2850,6 +2868,28 @@ const App: React.FC = () => {
           onClose={() => setStreakLoginPopup(null)}
           language={state.language}
         />
+      )}
+
+      {/* LEVEL-UP NOTIFICATION */}
+      {levelUpNotif && (
+        <div className="fixed inset-0 z-[9999] flex items-center justify-center pointer-events-none">
+          <div
+            className="pointer-events-auto mx-4 rounded-3xl p-6 text-center shadow-2xl animate-in zoom-in-95 fade-in duration-500"
+            style={{ background: 'linear-gradient(135deg, #0a0a0a 0%, #1a1a2e 100%)', border: `2px solid ${levelUpNotif.color}40`, boxShadow: `0 0 40px ${levelUpNotif.color}30` }}
+          >
+            <div className="text-5xl mb-3 animate-bounce">{levelUpNotif.emoji}</div>
+            <p className="text-xs font-bold uppercase tracking-widest mb-1" style={{ color: levelUpNotif.color }}>LEVEL UP!</p>
+            <p className="text-2xl font-black text-white mb-1">Level {levelUpNotif.level} — {levelUpNotif.label}</p>
+            <p className="text-sm text-white/50 mb-5">Badhaai ho! Naya level unlock hua 🎉</p>
+            <button
+              onClick={() => setLevelUpNotif(null)}
+              className="px-8 py-2.5 rounded-xl text-sm font-black text-white transition-all active:scale-95"
+              style={{ background: levelUpNotif.color }}
+            >
+              Shukriya!
+            </button>
+          </div>
+        </div>
       )}
       
       {/* POPUP QUEUE MANAGER */}

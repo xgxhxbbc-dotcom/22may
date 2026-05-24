@@ -39,57 +39,57 @@ export const LevelLeaderboard: React.FC<Props> = ({ user, settings, onBack }) =>
   useEffect(() => {
     const loadUsers = async () => {
       setLoading(true);
+      const mapUser = (u: any): LeaderboardUser => ({
+        id: u.id || '',
+        name: u.name || 'Student',
+        displayId: u.displayId,
+        totalScore: u.totalScore || 0,
+        level: getLevelInfo(u.totalScore || 0).level,
+        subscriptionLevel: u.subscriptionLevel,
+        subscriptionTier: u.subscriptionTier,
+        streak: u.streak || 0,
+        dailyMcqCount: u.dailyMcqCount || 0,
+        dailyVideoCount: u.dailyVideoCount || 0,
+        dailyPdfCount: u.dailyPdfCount || 0,
+        dailyWriteCount: u.dailyWriteCount || 0,
+        credits: u.credits || 0,
+        giftedCredits: u.giftedCredits || 0,
+        role: u.role,
+      });
+      const isStudent = (u: LeaderboardUser) => u.role !== 'ADMIN' && u.role !== 'SUB_ADMIN';
+
       try {
-        let allUsers: LeaderboardUser[] = [];
-        // Try Firebase first
-        try {
-          const snap = await get(ref(rtdb, 'users'));
-          if (snap.exists()) {
-            const data = snap.val();
-            allUsers = Object.values(data).map((u: any) => ({
-              id: u.id || '',
-              name: u.name || 'Student',
-              displayId: u.displayId,
-              totalScore: u.totalScore || 0,
-              level: getLevelInfo(u.totalScore || 0).level,
-              subscriptionLevel: u.subscriptionLevel,
-              subscriptionTier: u.subscriptionTier,
-              streak: u.streak || 0,
-              dailyMcqCount: u.dailyMcqCount || 0,
-              dailyVideoCount: u.dailyVideoCount || 0,
-              dailyPdfCount: u.dailyPdfCount || 0,
-              dailyWriteCount: u.dailyWriteCount || 0,
-              credits: u.credits || 0,
-              giftedCredits: u.giftedCredits || 0,
-              role: u.role,
-            })).filter((u: LeaderboardUser) => u.role !== 'ADMIN' && u.role !== 'SUB_ADMIN');
-          }
-        } catch (_) {}
+        let rtdbUsers: LeaderboardUser[] = [];
+        let fsUsers: LeaderboardUser[] = [];
+
+        // Fetch RTDB + Firestore in parallel
+        const [rtdbSnap, fsSnap] = await Promise.allSettled([
+          get(ref(rtdb, 'users')),
+          getDocs(collection(db, 'users')),
+        ]);
+
+        if (rtdbSnap.status === 'fulfilled' && rtdbSnap.value.exists()) {
+          rtdbUsers = (Object.values(rtdbSnap.value.val()) as any[])
+            .map(mapUser).filter(isStudent);
+        }
+
+        if (fsSnap.status === 'fulfilled') {
+          fsUsers = fsSnap.value.docs
+            .map(d => mapUser({ id: d.id, ...d.data() }))
+            .filter(isStudent);
+        }
+
+        // Merge: RTDB is authoritative; add any Firestore users missing from RTDB
+        const rtdbIds = new Set(rtdbUsers.map(u => u.id));
+        const extraFs = fsUsers.filter(u => u.id && !rtdbIds.has(u.id));
+        let allUsers = [...rtdbUsers, ...extraFs];
 
         if (allUsers.length === 0) {
-          // Fallback to localStorage
+          // Last-resort fallback to localStorage cache
           const stored = localStorage.getItem('nst_users');
           if (stored) {
             const parsed: any[] = JSON.parse(stored);
-            allUsers = parsed
-              .filter(u => u.role !== 'ADMIN' && u.role !== 'SUB_ADMIN')
-              .map(u => ({
-                id: u.id || '',
-                name: u.name || 'Student',
-                displayId: u.displayId,
-                totalScore: u.totalScore || 0,
-                level: getLevelInfo(u.totalScore || 0).level,
-                subscriptionLevel: u.subscriptionLevel,
-                subscriptionTier: u.subscriptionTier,
-                streak: u.streak || 0,
-                dailyMcqCount: u.dailyMcqCount || 0,
-                dailyVideoCount: u.dailyVideoCount || 0,
-                dailyPdfCount: u.dailyPdfCount || 0,
-                dailyWriteCount: u.dailyWriteCount || 0,
-                credits: u.credits || 0,
-                giftedCredits: u.giftedCredits || 0,
-                role: u.role,
-              }));
+            allUsers = parsed.map(mapUser).filter(isStudent);
           }
         }
 

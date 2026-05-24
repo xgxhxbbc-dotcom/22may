@@ -6,6 +6,7 @@ import { MistakePracticeView } from './MistakePracticeView';
 import { speakText, stopSpeech } from '../utils/textToSpeech';
 import { LessonView } from './LessonView';
 import { saveUserToLive, getChapterData } from '../firebase';
+import { applyDeduction, getTotalCredits } from '../utils/creditSystem';
 import { storage } from '../utils/storage';
 import { CustomAlert, CustomConfirm } from './CustomDialogs';
 import { OfflineDownloads } from './OfflineDownloads';
@@ -307,7 +308,7 @@ export const HistoryPage: React.FC<Props> = ({ user, onUpdateUser, settings, ini
 
   const executeOpenItem = (item: LessonContent, cost: number) => {
       if (cost > 0) {
-          const updatedUser: any = { ...user, credits: user.credits - cost };
+          const updatedUser: any = applyDeduction(user, cost) ?? user;
           onUpdateUser(updatedUser);
           localStorage.setItem('nst_current_user', JSON.stringify(updatedUser));
           saveUserToLive(updatedUser);

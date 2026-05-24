@@ -7,6 +7,7 @@ import {
     subscribePublishedThemes, subscribePublishedAnimations,
     likePublishedTheme, likePublishedAnimation
 } from '../firebase';
+import { applyDeduction, getTotalCredits } from '../utils/creditSystem';
 
 interface Props {
     user: User;
@@ -103,8 +104,7 @@ export const ThemeAnimationBuilder: React.FC<Props> = ({ user, onUpdateUser, onB
             await publishTheme({ ...theme, publishedName: themeName });
         }
         const updatedUser: User = {
-            ...user,
-            credits: user.credits - THEME_COST,
+            ...(applyDeduction(user, THEME_COST) ?? user),
             customTheme: theme,
             activeThemeAppliedUntil: appliedUntil,
         };
@@ -118,8 +118,8 @@ export const ThemeAnimationBuilder: React.FC<Props> = ({ user, onUpdateUser, onB
             alert('Custom animation sirf Ultra subscribers ke liye hai!');
             return;
         }
-        if (user.credits < ANIMATION_COST) {
-            alert(`Insufficient coins! Animation banane ke liye ${ANIMATION_COST} coins chahiye. Aapke paas: ${user.credits} coins.`);
+        if (getTotalCredits(user) < ANIMATION_COST) {
+            alert(`Insufficient coins! Animation banane ke liye ${ANIMATION_COST} coins chahiye. Aapke paas: ${getTotalCredits(user)} coins.`);
             return;
         }
         if (!confirm(`${ANIMATION_COST} coins spend karke apna custom animation apply karein? (24 ghante ke liye)`)) return;
@@ -144,8 +144,7 @@ export const ThemeAnimationBuilder: React.FC<Props> = ({ user, onUpdateUser, onB
             await publishAnimation({ ...anim, publishedName: animName });
         }
         const updatedUser: User = {
-            ...user,
-            credits: user.credits - ANIMATION_COST,
+            ...(applyDeduction(user, ANIMATION_COST) ?? user),
             customAnimation: anim,
             activeAnimationAppliedUntil: appliedUntil,
         };

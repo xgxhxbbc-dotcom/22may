@@ -3,6 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { Chapter, User, Subject, SystemSettings } from '../types';
 import { PlayCircle, Lock, ArrowLeft, Crown, AlertCircle, CheckCircle, Youtube, Maximize } from 'lucide-react';
 import { getChapterData, saveUserToLive } from '../firebase';
+import { applyDeduction, getTotalCredits } from '../utils/creditSystem';
 import { CreditConfirmationModal } from './CreditConfirmationModal';
 import { CustomAlert } from './CustomDialogs';
 import { AiInterstitial } from './AiInterstitial';
@@ -233,7 +234,7 @@ export const VideoPlaylistView: React.FC<Props> = ({
   };
 
   const processPaymentAndPlay = (video: any, price: number, enableAuto: boolean = false) => {
-      let updatedUser = { ...user, credits: user.credits - price };
+      let updatedUser = { ...(applyDeduction(user, price) ?? user) };
       
       if (enableAuto) {
           updatedUser.isAutoDeductEnabled = true;

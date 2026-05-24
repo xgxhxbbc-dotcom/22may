@@ -59,6 +59,7 @@ import {
   stripHtml,
 } from "../utils/textToSpeech";
 import { checkFeatureAccess } from "../utils/permissionUtils";
+import { applyDeduction, getTotalCredits } from "../utils/creditSystem";
 import { CustomConfirm } from "./CustomDialogs"; // Import CustomConfirm
 import { SpeakButton } from "./SpeakButton";
 import { MarksheetPieChart, MarksheetTopicBarChart } from "./MarksheetCharts";
@@ -642,7 +643,7 @@ export const MarksheetCard: React.FC<Props> = ({
       message: `View answers and explanations for ${COST} Coins?`,
       onConfirm: () => {
         if (onUpdateUser)
-          onUpdateUser({ ...user, credits: user.credits - COST });
+          onUpdateUser(applyDeduction(user, COST) ?? user);
         setIsAnalysisUnlocked(true);
         setConfirmConfig((prev) => ({ ...prev, isOpen: false }));
       },
@@ -678,9 +679,9 @@ export const MarksheetCard: React.FC<Props> = ({
         r.id === result.id ? updatedResult : r,
       );
 
+      const baseUser = skipCost ? user : (applyDeduction(user, cost) ?? user);
       const updatedUser = {
-        ...user,
-        credits: skipCost ? user.credits : user.credits - cost,
+        ...baseUser,
         mcqHistory: updatedHistory,
       };
       localStorage.setItem("nst_current_user", JSON.stringify(updatedUser));

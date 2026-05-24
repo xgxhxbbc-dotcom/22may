@@ -8,6 +8,7 @@ import { FileText, Lock, ArrowLeft, Crown, Star, CheckCircle, AlertCircle, Globe
 import { ReadingStylePopover } from './ReadingStylePopover';
 import { CustomAlert } from './CustomDialogs';
 import { getChapterData, saveUserToLive } from '../firebase';
+import { applyDeduction, getTotalCredits } from '../utils/creditSystem';
 import { CreditConfirmationModal } from './CreditConfirmationModal';
 import { AiInterstitial } from './AiInterstitial';
 import { InfoPopup } from './InfoPopup';
@@ -1171,9 +1172,9 @@ export const PdfView: React.FC<Props> = ({
               if (dailyCount >= freeLimit) {
                   // Over free limit — charge credits silently
                   const pdfCost = settings?.defaultPdfCost ?? 5;
-                  if (user.credits >= pdfCost) {
+                  if (getTotalCredits(user) >= pdfCost) {
                       const updatedUser = {
-                          ...user, credits: user.credits - pdfCost,
+                          ...(applyDeduction(user, pdfCost) ?? user),
                           dailyPdfDate: todayStr, dailyPdfCount: dailyCount + 1,
                           totalScore: (user.totalScore || 0) + 3 + pdfCost
                       };
@@ -1280,7 +1281,7 @@ export const PdfView: React.FC<Props> = ({
           const tabId = targetContent.replace('UNLOCK_TAB_', '');
           setSessionUnlockedTabs(prev => [...prev, tabId]);
 
-          let updatedUser = { ...user, credits: user.credits - price };
+          let updatedUser = { ...(applyDeduction(user, price) ?? user) };
           if (enableAuto) updatedUser.isAutoDeductEnabled = true;
           localStorage.setItem('nst_current_user', JSON.stringify(updatedUser));
           saveUserToLive(updatedUser);
@@ -1291,7 +1292,7 @@ export const PdfView: React.FC<Props> = ({
           return;
       }
 
-      let updatedUser = { ...user, credits: user.credits - price };
+      let updatedUser = { ...(applyDeduction(user, price) ?? user) };
       if (enableAuto) updatedUser.isAutoDeductEnabled = true;
       
       localStorage.setItem('nst_current_user', JSON.stringify(updatedUser));
@@ -1845,7 +1846,7 @@ export const PdfView: React.FC<Props> = ({
 
            {/* 2. DEEP DIVE (HTML + SCROLL) */}
            {activeTab === 'DEEP_DIVE' && (
-               <div className={deepDiveTopics.length > 0 ? 'fixed inset-0 z-[300] bg-white overflow-y-auto' : 'p-0 sm:p-4 space-y-6 w-full max-w-none mx-auto'}>
+               <div className={deepDiveTopics.length > 0 ? `fixed inset-0 z-[300] overflow-y-auto transition-colors duration-300 ${deepDiveViewMode === 'html' ? 'bg-[#0a0a0a]' : 'bg-white'}` : 'p-0 sm:p-4 space-y-6 w-full max-w-none mx-auto'}>
                    {(() => {
                         const access = getTabAccess('DEEP_DIVE');
 
@@ -1884,44 +1885,44 @@ export const PdfView: React.FC<Props> = ({
                                    Now: single thin row with section count + tiny icon
                                    buttons (Save, Read All chain) so notes start higher. */}
                                {deepDiveTopics.length > 0 && !hideHeader && (
-                               <div className="sticky top-0 z-10 bg-white border-b border-slate-200 shadow-sm">
+                               <div className={`sticky top-0 z-10 transition-colors duration-300 ${deepDiveViewMode === 'html' ? 'bg-[#111] border-b border-white/10' : 'bg-white border-b border-slate-200 shadow-sm'}`}>
                                    {/* Row 1: back + title */}
                                    <div className="flex items-center gap-2 px-3 pt-2 pb-1">
                                        <button
                                            onClick={() => { stopSpeech(); setIsAutoPlaying(false); setActiveTab('CONCEPT' as any); }}
-                                           className="shrink-0 p-1.5 rounded-full hover:bg-slate-100 active:bg-slate-200 transition-colors text-slate-600"
+                                           className={`shrink-0 p-1.5 rounded-full transition-colors ${deepDiveViewMode === 'html' ? 'text-white/60 hover:bg-white/10 active:bg-white/15' : 'text-slate-600 hover:bg-slate-100 active:bg-slate-200'}`}
                                            title="Back"
                                            aria-label="Back"
                                        >
                                            <ArrowLeft size={16} />
                                        </button>
                                        <div className="flex-1 min-w-0">
-                                           <p className="text-[9px] font-bold text-teal-600 uppercase tracking-wider leading-none">DEEP DIVE</p>
-                                           <p className="text-sm font-black text-slate-800 truncate leading-snug">{chapter.title}</p>
+                                           <p className={`text-[9px] font-bold uppercase tracking-wider leading-none ${deepDiveViewMode === 'html' ? 'text-amber-400' : 'text-teal-600'}`}>DEEP DIVE {deepDiveViewMode === 'html' ? '✦ WRITE' : ''}</p>
+                                           <p className={`text-sm font-black truncate leading-snug ${deepDiveViewMode === 'html' ? 'text-white' : 'text-slate-800'}`}>{chapter.title}</p>
                                        </div>
-                                       <span className="shrink-0 text-[10px] font-bold text-slate-400">{deepDiveTopics.length} Sections</span>
+                                       <span className={`shrink-0 text-[10px] font-bold ${deepDiveViewMode === 'html' ? 'text-white/40' : 'text-slate-400'}`}>{deepDiveTopics.length} Sections</span>
                                    </div>
                                    {/* Row 2: action buttons */}
                                    {!(syllabusMode === 'COMPETITION' && isImmersive) && (
                                    <div className="flex items-center gap-1 px-3 pb-2">
                                        <button
                                            onClick={() => { stopSpeech(); setIsAutoPlaying(false); setDeepDiveViewMode('chunk'); }}
-                                           className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-black transition-all border ${deepDiveViewMode === 'chunk' ? 'bg-amber-400 text-white border-amber-400 shadow-sm' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}
+                                           className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-black transition-all border ${deepDiveViewMode === 'chunk' ? 'bg-amber-400 text-white border-amber-400 shadow-sm' : deepDiveViewMode === 'html' ? 'bg-white/8 text-white/60 border-white/15 hover:bg-white/15' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}
                                        >
                                            <Volume2 size={11} /> Read
                                        </button>
                                        <button
                                            onClick={handleWriteModeClick}
-                                           className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-black transition-all border ${deepDiveViewMode === 'html' ? 'bg-teal-400 text-white border-teal-400 shadow-sm' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}
+                                           className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-black transition-all border ${deepDiveViewMode === 'html' ? 'bg-amber-500 text-white border-amber-400 shadow-sm shadow-amber-900/40' : 'bg-slate-100 text-slate-500 border-slate-200 hover:bg-slate-200'}`}
                                            title={!user.subscriptionLevel ? 'Free: 5 coins/use' : user.subscriptionLevel === 'BASIC' ? '5 free/day' : '10 free/day'}
                                        >
                                            <FileText size={11} /> Write
                                            {!user.subscriptionLevel && deepDiveViewMode !== 'html' && <span className="text-[8px] bg-amber-200 text-amber-800 px-1 rounded ml-0.5">5CR</span>}
                                        </button>
-                                       <div className="flex items-center gap-0 bg-slate-100 rounded-lg overflow-hidden border border-slate-200 shrink-0">
-                                            <button onClick={() => setWriteZoom(Math.max(0.5, writeZoom - 0.1))} className="px-1.5 py-1 text-slate-600 text-[11px] font-black hover:bg-slate-200 transition-colors" title="Zoom Out">A-</button>
-                                            <span className="px-0.5 text-slate-500 text-[9px] font-bold min-w-[24px] text-center">{Math.round(writeZoom * 100)}%</span>
-                                            <button onClick={() => setWriteZoom(Math.min(3, writeZoom + 0.1))} className="px-1.5 py-1 text-slate-600 text-[11px] font-black hover:bg-slate-200 transition-colors" title="Zoom In">A+</button>
+                                       <div className={`flex items-center gap-0 rounded-lg overflow-hidden shrink-0 ${deepDiveViewMode === 'html' ? 'bg-white/8 border border-white/15' : 'bg-slate-100 border border-slate-200'}`}>
+                                            <button onClick={() => setWriteZoom(Math.max(0.5, writeZoom - 0.1))} className={`px-1.5 py-1 text-[11px] font-black transition-colors ${deepDiveViewMode === 'html' ? 'text-white/60 hover:bg-white/12' : 'text-slate-600 hover:bg-slate-200'}`} title="Zoom Out">A-</button>
+                                            <span className={`px-0.5 text-[9px] font-bold min-w-[24px] text-center ${deepDiveViewMode === 'html' ? 'text-white/40' : 'text-slate-500'}`}>{Math.round(writeZoom * 100)}%</span>
+                                            <button onClick={() => setWriteZoom(Math.min(3, writeZoom + 0.1))} className={`px-1.5 py-1 text-[11px] font-black transition-colors ${deepDiveViewMode === 'html' ? 'text-white/60 hover:bg-white/12' : 'text-slate-600 hover:bg-slate-200'}`} title="Zoom In">A+</button>
                                        </div>
                                        <button
                                            onClick={handleRotatePdf}
@@ -2029,7 +2030,11 @@ export const PdfView: React.FC<Props> = ({
                                       <div
                                           id={`topic-card-${idx}`}
                                           key={idx}
-                                          className={`bg-white rounded-none sm:rounded-2xl p-3 sm:p-5 shadow-sm border-2 transition-all w-full ${isActive ? 'border-teal-400 ring-2 ring-teal-100 scale-[1.01] sm:scale-100' : isLastReadCard ? 'border-indigo-300 ring-1 ring-indigo-100' : 'border-transparent'}`}
+                                          className={`rounded-none sm:rounded-2xl p-3 sm:p-5 border-2 transition-all w-full ${
+                                            deepDiveViewMode === 'html'
+                                              ? `bg-[#111] ${isActive ? 'border-amber-500/60' : isLastReadCard ? 'border-amber-400/30' : 'border-white/6'}`
+                                              : `bg-white shadow-sm ${isActive ? 'border-teal-400 ring-2 ring-teal-100 scale-[1.01] sm:scale-100' : isLastReadCard ? 'border-indigo-300 ring-1 ring-indigo-100' : 'border-transparent'}`
+                                          }`}
                                       >
                                           {/* Compact card header — section badge + title + lightweight
                                               icon-only PDF/Audio buttons. Earlier the badge + Read All +
@@ -2038,21 +2043,21 @@ export const PdfView: React.FC<Props> = ({
                                           <div className="flex justify-between items-center mb-2 gap-2">
                                               <div className="min-w-0 flex items-center gap-2 flex-wrap">
                                                   {isLastReadCard && (
-                                                      <span className="text-[9px] font-bold text-indigo-600 bg-indigo-50 px-1.5 py-0.5 rounded shrink-0 border border-indigo-200">
+                                                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 border ${deepDiveViewMode === 'html' ? 'text-amber-300 bg-amber-500/15 border-amber-500/30' : 'text-indigo-600 bg-indigo-50 border-indigo-200'}`}>
                                                           ↩ Last Read
                                                       </span>
                                                   )}
                                                   {idx === 0 && topic.title !== "Introduction" && (
-                                                      <span className="text-[9px] font-bold text-teal-600 bg-teal-50 px-1.5 py-0.5 rounded shrink-0">
+                                                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${deepDiveViewMode === 'html' ? 'text-amber-400 bg-amber-500/12 border border-amber-500/25' : 'text-teal-600 bg-teal-50'}`}>
                                                           DEEP DIVE
                                                       </span>
                                                   )}
                                                   {idx > 0 && (
-                                                      <span className="text-[9px] font-bold text-purple-600 bg-purple-50 px-1.5 py-0.5 rounded shrink-0">
+                                                      <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded shrink-0 ${deepDiveViewMode === 'html' ? 'text-violet-300 bg-violet-500/12 border border-violet-500/25' : 'text-purple-600 bg-purple-50'}`}>
                                                           T{idx}
                                                       </span>
                                                   )}
-                                                  <h4 className="text-base sm:text-lg font-black text-slate-800 leading-tight truncate">{topic.title}</h4>
+                                                  <h4 className={`text-base sm:text-lg font-black leading-tight truncate ${deepDiveViewMode === 'html' ? 'text-white' : 'text-slate-800'}`}>{topic.title}</h4>
                                               </div>
                                               <div className="flex gap-1 items-center shrink-0">
                                                   {topic.pdfLink && (
@@ -2082,12 +2087,12 @@ export const PdfView: React.FC<Props> = ({
                                           </div>
                                           {topic.content && topic.content.trim() !== '<p></p>' && (
                                               deepDiveViewMode === 'html' ? (
-                                                  /* ── Write Mode: Smart HTML rendered view ── */
-                                                  <div>
+                                                  /* ── Write Mode: Ultra dark styled HTML view ── */
+                                                  <div className="dark-mode">
                                                       <div
                                                           id={`pdf-html-${idx}`}
                                                           className="notes-html-content px-3 sm:px-5 py-3"
-                                                          style={{ fontSize: `${Math.round(15 * writeZoom)}px`, lineHeight: '1.8' }}
+                                                          style={{ fontSize: `${Math.round(15 * writeZoom)}px`, lineHeight: '1.95', background: 'transparent' }}
                                                           dangerouslySetInnerHTML={{ __html: topic.content }}
                                                       />
                                                   </div>
@@ -2835,8 +2840,7 @@ export const PdfView: React.FC<Props> = ({
              const todayStr = new Date().toDateString();
              const dailyCount = (user.dailyWriteDate === todayStr) ? (user.dailyWriteCount ?? 0) : 0;
              const updatedUser = {
-               ...user,
-               credits: user.credits - writeModePendingCost,
+               ...(applyDeduction(user, writeModePendingCost) ?? user),
                dailyWriteDate: todayStr,
                dailyWriteCount: dailyCount + 1,
              };

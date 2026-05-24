@@ -23,6 +23,7 @@ import { DownloadOptionsModal } from './DownloadOptionsModal';
 import { downloadAsMHTML } from '../utils/downloadUtils';
 import { saveOfflineItem } from '../utils/offlineStorage';
 import { rotateScreen, isDesktopModeOn, setDesktopMode } from '../utils/displayPrefs';
+import { applyDeduction, getTotalCredits } from '../utils/creditSystem';
 
 
 interface Props {
@@ -446,11 +447,11 @@ export const LessonView: React.FC<Props> = ({
                           setAlertConfig({ isOpen: true, message: `HTML Notes unlock karne ke liye ${HTML_UNLOCK_COST} coins chahiye.` });
                           return;
                       }
-                      if ((user.credits || 0) < HTML_UNLOCK_COST) {
-                          setAlertConfig({ isOpen: true, message: `HTML Notes unlock karne ke liye ${HTML_UNLOCK_COST} coins chahiye. Aapke paas sirf ${user.credits || 0} coins hain.` });
+                      if (getTotalCredits(user) < HTML_UNLOCK_COST) {
+                          setAlertConfig({ isOpen: true, message: `HTML Notes unlock karne ke liye ${HTML_UNLOCK_COST} coins chahiye. Aapke paas sirf ${getTotalCredits(user)} coins hain.` });
                           return;
                       }
-                      const updatedUser = { ...user, credits: (user.credits || 0) - HTML_UNLOCK_COST };
+                      const updatedUser = applyDeduction(user, HTML_UNLOCK_COST)!;
                       onUpdateUser(updatedUser);
                       saveUserToLive(updatedUser);
                       try { localStorage.setItem(htmlUnlockKey, '1'); } catch {}
@@ -1157,7 +1158,7 @@ export const LessonView: React.FC<Props> = ({
 
         // Deduct
         if (cost > 0) {
-            const updatedUser = { ...user, credits: user.credits - cost };
+            const updatedUser = applyDeduction(user, cost) ?? user;
             onUpdateUser(updatedUser);
             localStorage.setItem('nst_current_user', JSON.stringify(updatedUser));
             saveUserToLive(updatedUser);

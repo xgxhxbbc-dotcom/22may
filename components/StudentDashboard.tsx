@@ -3860,7 +3860,7 @@ export const StudentDashboard: React.FC<Props> = ({
       setCreditDeductToast({ visible: true, previous: prevCredits, deducted, current: newCredits });
       creditToastTimerRef.current = setTimeout(() => {
         setCreditDeductToast(null);
-      }, 5000);
+      }, 2000);
     }
 
     // Ignore nst_users if empty, just save to live and current user directly
@@ -8504,6 +8504,17 @@ export const StudentDashboard: React.FC<Props> = ({
                           <span className="text-base">📊</span>
                           <span className="flex-1 text-left">Daily Limits & Usage</span>
                           <span className="text-[10px] text-emerald-400">→</span>
+                        </button>
+                      </div>
+                      {/* App Guide Link */}
+                      <div className="px-4 pt-1 pb-1">
+                        <button
+                          onClick={() => { setShowUserGuide(true); setShowDotsMenu(false); }}
+                          className="w-full flex items-center gap-2 p-2.5 rounded-xl bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-200 text-indigo-700 hover:from-indigo-100 hover:to-violet-100 font-bold text-xs transition-all"
+                        >
+                          <span className="text-base">📖</span>
+                          <span className="flex-1 text-left">App Guide — Har feature samjhein</span>
+                          <span className="text-[10px] text-indigo-400">→</span>
                         </button>
                       </div>
                       {/* Rules Page Link */}
@@ -17605,6 +17616,11 @@ RULES:
         );
       })()}
 
+      {/* ═══════════ USER GUIDE MODAL ═══════════ */}
+      {showUserGuide && (
+        <UserGuide onClose={() => setShowUserGuide(false)} />
+      )}
+
       {/* CUSTOM CONFIRM DIALOG */}
       {/* ═══════════ RULES PAGE MODAL ═══════════ */}
       {showRulesPage && (
@@ -18018,106 +18034,102 @@ RULES:
         const nextCost = Math.min(20, _wmBaseCost + (Math.floor(_paidWriteCount / 10) + 1) * 5);
         return (
         <div
-          className="fixed inset-0 z-[9999] flex items-center justify-center px-5"
-          style={{ background: 'rgba(10,10,30,0.72)', backdropFilter: 'blur(10px)' }}
+          className="fixed inset-0 z-[9999] flex items-center justify-center px-4"
+          style={{ background: 'rgba(10,10,30,0.65)', backdropFilter: 'blur(8px)' }}
           onClick={() => { setShowWMUnlockPrompt(false); setPendingWMCallback(null); }}
         >
           <div
-            className="w-full max-w-sm rounded-3xl overflow-hidden shadow-2xl"
-            style={{ boxShadow: '0 40px 80px -16px rgba(0,0,0,0.5)', maxHeight: '85vh', overflowY: 'auto' }}
+            className="w-full rounded-2xl overflow-hidden shadow-xl"
+            style={{ maxWidth: 320, boxShadow: '0 24px 48px -8px rgba(0,0,0,0.45)', maxHeight: '90vh', overflowY: 'auto' }}
             onClick={e => e.stopPropagation()}
           >
-            {/* Header gradient */}
-            <div className={`px-6 pt-8 pb-6 text-center ${
+            {/* Compact header */}
+            <div className={`px-4 pt-5 pb-4 flex items-center gap-3 ${
               isHardBlocked
-                ? 'bg-gradient-to-br from-rose-600 via-red-600 to-rose-700'
+                ? 'bg-gradient-to-r from-rose-600 to-red-600'
                 : _isUltraUser
-                ? 'bg-gradient-to-br from-violet-600 via-purple-600 to-indigo-700'
+                ? 'bg-gradient-to-r from-violet-600 to-indigo-600'
                 : _isBasicUser
-                ? 'bg-gradient-to-br from-sky-500 via-blue-600 to-indigo-600'
-                : 'bg-gradient-to-br from-teal-500 via-emerald-600 to-green-700'
+                ? 'bg-gradient-to-r from-sky-500 to-blue-600'
+                : 'bg-gradient-to-r from-teal-500 to-emerald-600'
             }`}>
-              <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center mx-auto mb-4 shadow-lg">
-                <span className="text-3xl">{isHardBlocked ? '🔒' : '✍️'}</span>
+              <div className="w-10 h-10 bg-white/20 rounded-xl flex items-center justify-center shrink-0">
+                <span className="text-xl">{isHardBlocked ? '🔒' : '✍️'}</span>
               </div>
-              <h2 className="text-white font-black text-xl leading-tight tracking-tight">
-                {isHardBlocked ? 'Daily Limit Full' : 'Write Mode'}
-              </h2>
-              <p className="text-white/75 text-xs mt-1.5 font-medium">
-                {isHardBlocked
-                  ? `Aaj ke ${WM_PAID_DAILY_MAX} credit unlocks ho gaye — kal vapas aao`
-                  : _isUltraUser
-                  ? `Aaj ki ${settings?.ultraHtmlDailyLimit ?? 10} free views khatam ho gayi`
-                  : _isBasicUser
-                  ? `Aaj ki ${settings?.basicHtmlDailyLimit ?? 5} free views khatam ho gayi`
-                  : `Credits se styled notes unlock karo`}
-              </p>
+              <div className="flex-1 min-w-0">
+                <h2 className="text-white font-black text-sm leading-tight">
+                  {isHardBlocked ? 'Daily Limit Full' : 'Write Mode'}
+                </h2>
+                <p className="text-white/70 text-[10px] mt-0.5 leading-tight">
+                  {isHardBlocked
+                    ? `${WM_PAID_DAILY_MAX} unlocks ho gaye — kal aao`
+                    : _isUltraUser
+                    ? `${settings?.ultraHtmlDailyLimit ?? 10} free views khatam`
+                    : _isBasicUser
+                    ? `${settings?.basicHtmlDailyLimit ?? 5} free views khatam`
+                    : `Credits se notes unlock karo`}
+                </p>
+              </div>
+              <button
+                onClick={() => { setShowWMUnlockPrompt(false); setPendingWMCallback(null); }}
+                className="w-7 h-7 rounded-full bg-white/15 flex items-center justify-center text-white/70 hover:text-white shrink-0"
+              >
+                <span className="text-base leading-none">×</span>
+              </button>
             </div>
 
             {/* Body */}
-            <div className="bg-white px-6 pt-5 pb-6">
+            <div className="bg-white px-4 pt-4 pb-4">
 
               {/* Hard block message */}
               {isHardBlocked ? (
-                <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 mb-5 text-center">
-                  <p className="text-rose-700 font-black text-sm">🔒 Aaj ke {WM_PAID_DAILY_MAX}/100 credit unlocks poore ho gaye!</p>
-                  <p className="text-rose-500 text-xs mt-1 font-medium">Kal midnight ke baad limit reset hogi.</p>
+                <div className="bg-rose-50 border border-rose-100 rounded-xl p-3 mb-3 text-center">
+                  <p className="text-rose-700 font-black text-xs">🔒 {WM_PAID_DAILY_MAX}/100 credit unlocks poore ho gaye!</p>
+                  <p className="text-rose-400 text-[10px] mt-0.5">Kal midnight ke baad reset hogi.</p>
                 </div>
               ) : (
                 <>
-                  {/* Credit cost card */}
-                  <div className="bg-gradient-to-r from-slate-50 to-slate-100 border border-slate-200 rounded-2xl p-4 mb-3">
-                    <div className="flex items-center justify-between mb-3">
+                  {/* Credit cost row */}
+                  <div className="bg-slate-50 border border-slate-200 rounded-xl p-3 mb-2">
+                    <div className="flex items-center justify-between mb-2">
                       <div>
-                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-wider mb-0.5">Is view ke liye</p>
-                        <p className="text-3xl font-black text-slate-800">{_currentWmCost}<span className="text-base text-slate-400 font-bold ml-1.5">Credits</span></p>
+                        <p className="text-[9px] font-black text-slate-400 uppercase tracking-wider mb-0.5">IS VIEW KE LIYE</p>
+                        <p className="text-2xl font-black text-slate-800 leading-none">
+                          {_currentWmCost}
+                          <span className="text-xs text-slate-400 font-semibold ml-1">CR</span>
+                        </p>
                         {_wmEscalation > 0 && (
-                          <p className="text-[10px] text-amber-600 font-bold mt-0.5">+{_wmEscalation} CR escalation ({Math.floor(_paidWriteCount / 10) * 10}+ unlocks)</p>
+                          <p className="text-[9px] text-amber-600 font-bold mt-0.5">+{_wmEscalation} escalation</p>
                         )}
                       </div>
-                      <div className="w-14 h-14 rounded-2xl flex items-center justify-center shadow-md" style={{ background: 'linear-gradient(135deg,#f59e0b,#f97316)' }}>
-                        <span className="text-3xl">💎</span>
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center" style={{ background: 'linear-gradient(135deg,#f59e0b,#f97316)' }}>
+                        <span className="text-xl">💎</span>
                       </div>
                     </div>
-                    <div className="flex items-center justify-between bg-white rounded-xl px-3.5 py-2.5 border border-slate-100">
-                      <span className="text-xs font-bold text-slate-400">Tumhara balance</span>
-                      <span className={`text-sm font-black ${canAfford ? 'text-emerald-600' : 'text-red-500'}`}>
-                        {(user.credits || 0).toLocaleString()} CR&nbsp;
-                        {canAfford ? '✓' : '— kam hai'}
+                    <div className="flex items-center justify-between bg-white rounded-lg px-2.5 py-1.5 border border-slate-100">
+                      <span className="text-[10px] font-semibold text-slate-400">Balance</span>
+                      <span className={`text-xs font-black ${canAfford ? 'text-emerald-600' : 'text-red-500'}`}>
+                        {(user.credits || 0).toLocaleString()} CR {canAfford ? '✓' : '✗'}
                       </span>
                     </div>
                   </div>
 
-                  {/* Progress info */}
-                  <div className="bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 mb-4 flex items-center justify-between">
-                    <span className="text-[10px] font-bold text-slate-500">
-                      Credit unlocks aaj: <span className="text-slate-700 font-black">{_paidWriteCount}/{WM_PAID_DAILY_MAX}</span>
+                  {/* Progress + plan — single compact row */}
+                  <div className="flex items-center justify-between mb-3 px-0.5">
+                    <span className="text-[9px] font-bold text-slate-400">
+                      Unlocks: <span className="text-slate-600">{_paidWriteCount}/{WM_PAID_DAILY_MAX}</span>
                     </span>
-                    {_currentWmCost < 20 && (
-                      <span className="text-[10px] font-bold text-amber-600">
-                        Agli {nextThreshold - _paidWriteCount} pe: {nextCost} CR
-                      </span>
-                    )}
-                  </div>
-
-                  {/* Plan info pill */}
-                  <div className={`rounded-xl px-3.5 py-2.5 mb-5 flex items-center gap-2.5 ${
-                    _isUltraUser ? 'bg-violet-50 border border-violet-100' : _isBasicUser ? 'bg-sky-50 border border-sky-100' : 'bg-emerald-50 border border-emerald-100'
-                  }`}>
-                    <span className="text-base shrink-0">{_isUltraUser ? '⚡' : _isBasicUser ? '🔵' : '🆓'}</span>
-                    <p className={`text-[11px] font-bold ${_isUltraUser ? 'text-violet-700' : _isBasicUser ? 'text-sky-700' : 'text-emerald-700'}`}>
-                      {_isUltraUser
-                        ? `Ultra plan: ${settings?.ultraHtmlDailyLimit ?? 10} free views/day — limit khatam`
-                        : _isBasicUser
-                        ? `Basic plan: ${settings?.basicHtmlDailyLimit ?? 5} free views/day — limit khatam`
-                        : `Free plan: credits se unlock karo, ya upgrade karo`}
-                    </p>
+                    <span className={`text-[9px] font-bold px-2 py-0.5 rounded-full ${
+                      _isUltraUser ? 'bg-violet-50 text-violet-600' : _isBasicUser ? 'bg-sky-50 text-sky-600' : 'bg-emerald-50 text-emerald-600'
+                    }`}>
+                      {_isUltraUser ? '⚡ Ultra' : _isBasicUser ? '🔵 Basic' : '🆓 Free'}
+                    </span>
                   </div>
                 </>
               )}
 
               {/* CTA buttons */}
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 {!isHardBlocked && (
                   canAfford ? (
                     <button
@@ -18132,55 +18144,53 @@ RULES:
                         pendingWMCallback?.();
                         setPendingWMCallback(null);
                       }}
-                      className="w-full py-4 rounded-2xl font-black text-[15px] text-white active:scale-[0.97] transition-all flex items-center justify-center gap-2.5"
-                      style={{ background: 'linear-gradient(135deg,#059669,#10b981)', boxShadow: '0 8px 24px -4px rgba(16,185,129,0.45)' }}
+                      className="w-full py-2.5 rounded-xl font-black text-sm text-white active:scale-[0.97] transition-all flex items-center justify-center gap-2"
+                      style={{ background: 'linear-gradient(135deg,#059669,#10b981)', boxShadow: '0 4px 14px -2px rgba(16,185,129,0.4)' }}
                     >
-                      <span className="text-xl">💎</span>
-                      {_currentWmCost} Credits use karo — Kholo
+                      <span>💎</span>
+                      {_currentWmCost} CR use karo — Kholo
                     </button>
                   ) : (
                     <button
                       onClick={() => { setShowWMUnlockPrompt(false); setPendingWMCallback(null); onTabChange('STORE'); }}
-                      className="w-full py-4 rounded-2xl font-black text-[15px] text-white active:scale-[0.97] transition-all flex items-center justify-center gap-2.5"
-                      style={{ background: 'linear-gradient(135deg,#f59e0b,#f97316)', boxShadow: '0 8px 24px -4px rgba(245,158,11,0.45)' }}
+                      className="w-full py-2.5 rounded-xl font-black text-sm text-white active:scale-[0.97] transition-all flex items-center justify-center gap-2"
+                      style={{ background: 'linear-gradient(135deg,#f59e0b,#f97316)', boxShadow: '0 4px 14px -2px rgba(245,158,11,0.4)' }}
                     >
-                      <span className="text-xl">💰</span>
-                      Credits earn karo — Store jaao
+                      <span>💰</span>
+                      Credits earn karo — Store
                     </button>
                   )
                 )}
                 {!_isUltraUser && (
                   <button
                     onClick={() => { setShowWMUnlockPrompt(false); setPendingWMCallback(null); onTabChange('STORE'); }}
-                    className="w-full py-3.5 rounded-2xl font-black text-sm text-white active:scale-[0.97] transition-all flex items-center justify-center gap-2"
-                    style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', boxShadow: '0 6px 20px -4px rgba(124,58,237,0.35)' }}
+                    className="w-full py-2.5 rounded-xl font-black text-xs text-white active:scale-[0.97] transition-all flex items-center justify-center gap-1.5"
+                    style={{ background: 'linear-gradient(135deg,#7c3aed,#6d28d9)', boxShadow: '0 4px 14px -2px rgba(124,58,237,0.3)' }}
                   >
-                    <span className="text-lg">👑</span>
-                    {_isBasicUser ? 'Ultra pe upgrade — 10 free views/day' : 'Upgrade karo — Basic ya Ultra plan'}
+                    <span>👑</span>
+                    {_isBasicUser ? 'Ultra upgrade — 10 free views/day' : 'Upgrade — Basic ya Ultra plan'}
                   </button>
                 )}
                 {/* Don't show again toggle */}
                 {!isHardBlocked && canAfford && (
                   <button
                     onClick={() => setWmDontShowChecked(v => !v)}
-                    className="w-full flex items-center justify-between px-4 py-3 rounded-2xl border transition-all active:scale-[0.98]"
+                    className="w-full flex items-center gap-2 px-3 py-2 rounded-xl border transition-all active:scale-[0.98]"
                     style={{
-                      background: wmDontShowChecked ? 'rgba(16,185,129,0.08)' : 'rgba(0,0,0,0)',
+                      background: wmDontShowChecked ? 'rgba(16,185,129,0.06)' : 'transparent',
                       borderColor: wmDontShowChecked ? '#10b981' : '#e2e8f0'
                     }}
                   >
-                    <div className="flex items-center gap-2.5">
-                      <span className="text-base">{wmDontShowChecked ? '✅' : '⬜'}</span>
-                      <div className="text-left">
-                        <p className="text-xs font-black text-slate-700">Dobara mat dikhana</p>
-                        <p className="text-[9px] text-slate-400">Agli baar credits auto-kat jayenge (popup nahi aayega)</p>
-                      </div>
+                    <span className="text-sm">{wmDontShowChecked ? '✅' : '⬜'}</span>
+                    <div className="text-left">
+                      <p className="text-[10px] font-black text-slate-700">Dobara mat dikhana</p>
+                      <p className="text-[9px] text-slate-400">Credits auto-kat jayenge</p>
                     </div>
                   </button>
                 )}
                 <button
                   onClick={() => { setShowWMUnlockPrompt(false); setPendingWMCallback(null); }}
-                  className="w-full py-3 text-slate-400 text-sm font-bold active:scale-95 transition"
+                  className="w-full py-2 text-slate-400 text-xs font-semibold active:scale-95 transition"
                 >
                   Baad mein
                 </button>
@@ -18204,36 +18214,38 @@ RULES:
         </div>
       )}
 
-      {/* CREDIT DEDUCTION TOAST */}
+      {/* CREDIT DEDUCTION TOAST — auto-dismiss only, no close button */}
       {creditDeductToast?.visible && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[9999] w-[92vw] max-w-sm animate-in slide-in-from-bottom-4 fade-in duration-300">
-          <div className="bg-[#0f0f0f] border border-white/10 rounded-2xl shadow-2xl overflow-hidden">
-            {/* Top accent bar */}
-            <div className="h-1 w-full bg-gradient-to-r from-amber-500 via-orange-400 to-amber-500" />
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[99999] w-[88vw] max-w-xs animate-in slide-in-from-bottom-4 fade-in duration-300 pointer-events-none">
+          <div className="bg-[#111] border border-white/12 rounded-2xl shadow-2xl overflow-hidden">
+            {/* Auto-dismiss progress bar — shrinks over 2s */}
+            <div className="h-1 w-full bg-white/5 relative">
+              <div
+                className="absolute left-0 top-0 h-full bg-gradient-to-r from-rose-500 via-orange-400 to-amber-400"
+                style={{ animation: 'credit-toast-bar 2s linear forwards' }}
+              />
+            </div>
             <div className="px-4 pt-3 pb-3">
-              <div className="flex items-center gap-2 mb-3">
-                <div className="w-7 h-7 rounded-xl bg-amber-500/20 flex items-center justify-center">
-                  <span className="text-base">🪙</span>
+              {/* Header */}
+              <div className="flex items-center gap-2 mb-2.5">
+                <div className="w-6 h-6 rounded-lg bg-rose-500/20 flex items-center justify-center shrink-0">
+                  <span className="text-sm">🪙</span>
                 </div>
-                <p className="text-white font-black text-sm">Credits Kate</p>
-                <button
-                  onClick={() => setCreditDeductToast(null)}
-                  className="ml-auto text-slate-600 hover:text-white transition-colors text-lg leading-none"
-                >×</button>
+                <p className="text-white font-black text-xs tracking-wide">Credits Kate</p>
               </div>
-              {/* Credit stats row */}
-              <div className="grid grid-cols-3 gap-2 mb-3">
-                <div className="bg-white/5 rounded-xl p-2.5 text-center">
-                  <p className="text-[9px] text-slate-500 font-bold uppercase tracking-wide mb-0.5">Pehle tha</p>
-                  <p className="text-white font-black text-sm">{creditDeductToast.previous.toLocaleString('en-IN')}</p>
+              {/* Stats row */}
+              <div className="grid grid-cols-3 gap-1.5">
+                <div className="bg-white/5 rounded-xl p-2 text-center">
+                  <p className="text-[8px] text-slate-500 font-bold uppercase tracking-wide mb-0.5">Pehle</p>
+                  <p className="text-white font-black text-xs">{creditDeductToast.previous.toLocaleString('en-IN')}</p>
                 </div>
-                <div className="bg-rose-500/10 border border-rose-500/20 rounded-xl p-2.5 text-center">
-                  <p className="text-[9px] text-rose-400 font-bold uppercase tracking-wide mb-0.5">Kata</p>
-                  <p className="text-rose-400 font-black text-sm">−{creditDeductToast.deducted.toLocaleString('en-IN')}</p>
+                <div className="bg-rose-500/12 border border-rose-500/20 rounded-xl p-2 text-center">
+                  <p className="text-[8px] text-rose-400 font-bold uppercase tracking-wide mb-0.5">Kata</p>
+                  <p className="text-rose-400 font-black text-xs">−{creditDeductToast.deducted.toLocaleString('en-IN')}</p>
                 </div>
-                <div className="bg-emerald-500/10 border border-emerald-500/20 rounded-xl p-2.5 text-center">
-                  <p className="text-[9px] text-emerald-400 font-bold uppercase tracking-wide mb-0.5">Bacha</p>
-                  <p className="text-emerald-400 font-black text-sm">{creditDeductToast.current.toLocaleString('en-IN')}</p>
+                <div className="bg-emerald-500/12 border border-emerald-500/20 rounded-xl p-2 text-center">
+                  <p className="text-[8px] text-emerald-400 font-bold uppercase tracking-wide mb-0.5">Bacha</p>
+                  <p className="text-emerald-400 font-black text-xs">{creditDeductToast.current.toLocaleString('en-IN')}</p>
                 </div>
               </div>
             </div>
