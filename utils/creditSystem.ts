@@ -17,6 +17,7 @@
  */
 
 import { getLevelInfo } from './levelSystem';
+import { fireCreditNotify } from './creditNotify';
 
 const LEVEL_RATIOS: Record<number, [number, number]> = {
   1:  [1.00, 0.00],
@@ -110,10 +111,15 @@ export const applyDeduction = <T extends CreditUser>(
     newGiftedCredits -= expiryLeft;
   }
 
-  return {
+  const result = {
     ...user,
     credits: Math.max(0, permanent - fromPermanent),
     bonusCredits: Math.max(0, newBonusCredits),
     giftedCredits: Math.max(0, newGiftedCredits),
   };
+
+  const remaining = (result.credits ?? 0) + (result.bonusCredits ?? 0) + (result.giftedCredits ?? 0);
+  fireCreditNotify({ type: 'DEDUCTION', amount, remaining });
+
+  return result;
 };

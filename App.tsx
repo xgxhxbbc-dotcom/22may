@@ -38,6 +38,7 @@ import { MarksheetCard } from './components/MarksheetCard';
 import { UpdatePopup } from './components/UpdatePopup'; // NEW
 import { StreakLoginPopup } from './components/StreakLoginPopup';
 import { ErrorBoundary } from './components/ErrorBoundary'; // NEW
+import { CreditToast } from './components/CreditToast';
 import { generateDailyChallengeQuestions } from './utils/challengeGenerator';
 import { BrainCircuit, Globe, LogOut, LayoutDashboard, BookOpen, Headphones, HelpCircle, Newspaper, KeyRound, Lock, X, ShieldCheck, FileText, UserPlus, EyeOff, WifiOff, Cloud, ArrowLeft, ExternalLink } from 'lucide-react';
 import { SUPPORT_EMAIL, APP_VERSION } from './constants';
@@ -521,40 +522,49 @@ const App: React.FC = () => {
           }
       }
 
-      // 1. Daily Login Bonus (Configurable) → always goes to inbox, no popup
+      // 1. Weekly Sunday Login Bonus — sirf Sunday ke first login pe, aur sirf jab streak toot gayi ho
       const lastRewardDate = state.user.lastLoginRewardDate ? new Date(state.user.lastLoginRewardDate).toDateString() : '';
-      if (lastRewardDate !== today && !sessionStorage.getItem('nst_daily_reward_checked')) {
-          sessionStorage.setItem('nst_daily_reward_checked', 'true'); // Prevent double-firing
-          // Check Streak for Strict Mode
-          let streakBroken = false;
-          if (state.user.lastLoginDate && lastLoginDateString !== yesterday.toDateString() && lastLoginDateString !== today) {
-              streakBroken = true;
-          }
+      const _isSunday = now.getDay() === 0; // 0 = Sunday
+      // Streak toot gayi check — last login na aaj hai, na kal tha
+      const _streakBrokenForBonus = !!(state.user.lastLoginDate &&
+          lastLoginDateString !== yesterday.toDateString() &&
+          lastLoginDateString !== today);
 
-          updatedUser.lastLoginRewardDate = new Date().toISOString(); // Mark as checked immediately
+      // Layer-2 guard: localStorage per-device per-user key (survives tab close/reopen, shared across tabs)
+      const _bonusLSKey = `nst_wkbonus_${state.user.id}_${today}`;
+      // Layer-3 guard: inbox already has this reward? (catches cross-device race window)
+      const _bonusInboxId = `login-bonus-${today}`;
+      const _alreadyInInbox = (updatedUser.inbox || []).some((m: any) => m.id === _bonusInboxId);
+
+      if (_isSunday && _streakBrokenForBonus
+          && lastRewardDate !== today          // Layer-1: Firebase lastLoginRewardDate
+          && !localStorage.getItem(_bonusLSKey) // Layer-2: localStorage same-device all-tabs
+          && !_alreadyInInbox                  // Layer-3: inbox dedup
+      ) {
+          // Claim locks — set ALL guards immediately before any async work
+          localStorage.setItem(_bonusLSKey, '1');
+          updatedUser.lastLoginRewardDate = new Date().toISOString(); // written to Firebase immediately
           hasUpdates = true;
 
-          if (!(state.settings.loginBonusConfig?.strictStreak && streakBroken)) {
-              // Grant Bonus based on Tier — push straight to inbox
-              let bonusAmount = state.settings.loginBonusConfig?.freeBonus ?? 2;
-              if (state.user.subscriptionTier !== 'FREE') {
-                  if (state.user.subscriptionLevel === 'BASIC') bonusAmount = state.settings.loginBonusConfig?.basicBonus ?? 5;
-                  if (state.user.subscriptionLevel === 'ULTRA') bonusAmount = state.settings.loginBonusConfig?.ultraBonus ?? 10;
-              }
-              // Add level-based bonus credits (L6: +2, L7: +3, L8: +5)
-              const _loginUserLevel = getLevelInfo(state.user.totalScore || 0).level;
-              const _loginLvlBonus  = getLevelLimitBonus(_loginUserLevel);
-              bonusAmount += _loginLvlBonus.bonusLoginCredits;
-
-              const loginExpiryHours = state.settings.rewardExpiryHours ?? 12;
-              newReward = {
-                  id: `login-bonus-${today}`,
-                  type: 'COINS',
-                  amount: bonusAmount,
-                  label: 'Daily Login Bonus',
-                  expiresAt: new Date(now.getTime() + loginExpiryHours * 60 * 60 * 1000).toISOString()
-              };
+          // Grant Bonus based on Tier — push straight to inbox
+          let bonusAmount = state.settings.loginBonusConfig?.freeBonus ?? 2;
+          if (state.user.subscriptionTier !== 'FREE') {
+              if (state.user.subscriptionLevel === 'BASIC') bonusAmount = state.settings.loginBonusConfig?.basicBonus ?? 5;
+              if (state.user.subscriptionLevel === 'ULTRA') bonusAmount = state.settings.loginBonusConfig?.ultraBonus ?? 10;
           }
+          // Add level-based bonus credits (L6: +2, L7: +3, L8: +5)
+          const _loginUserLevel = getLevelInfo(state.user.totalScore || 0).level;
+          const _loginLvlBonus  = getLevelLimitBonus(_loginUserLevel);
+          bonusAmount += _loginLvlBonus.bonusLoginCredits;
+
+          const loginExpiryHours = state.settings.rewardExpiryHours ?? 12;
+          newReward = {
+              id: _bonusInboxId,
+              type: 'COINS',
+              amount: bonusAmount,
+              label: '🗓️ Sunday Streak Recovery Bonus',
+              expiresAt: new Date(now.getTime() + loginExpiryHours * 60 * 60 * 1000).toISOString()
+          };
       }
 
       // 2. Check Pending Unlocks (Prizes) → push to inbox
@@ -3051,6 +3061,7 @@ const App: React.FC = () => {
           </div>
       )}
     </div>
+    <CreditToast />
     </ErrorBoundary>
   );
 };

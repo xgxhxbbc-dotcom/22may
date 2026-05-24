@@ -21,7 +21,7 @@ const DEFAULT_PACKAGES: CreditPackage[] = [
 ];
 
 export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) => {
-  const [tierType, setTierType] = useState<'BASIC' | 'ULTRA' | 'EARN' | 'CREDITS'>('EARN');
+  const [tierType, setTierType] = useState<'BASIC' | 'ULTRA' | 'EARN' | 'CREDITS'>('BASIC');
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
 
   const packages = settings?.packages || DEFAULT_PACKAGES;
@@ -219,6 +219,38 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
 
       {/* MAIN CONTENT */}
       <div className="px-4 pt-6">
+
+        {/* CHOOSE YOUR PLAN — 4 TAB BUTTONS */}
+        <div className="mb-5">
+          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">Choose Your Plan</p>
+          <div className="grid grid-cols-4 gap-2">
+            {[
+              { id: 'BASIC' as const, label: 'PRO', icon: '☆' },
+              { id: 'ULTRA' as const, label: 'MAX', icon: '⚡' },
+              { id: 'CREDITS' as const, label: 'Credits', icon: '🪙' },
+              { id: 'EARN' as const, label: 'Earn', icon: '🎰' },
+            ].map(tab => (
+              <button
+                key={tab.id}
+                onClick={() => setTierType(tab.id)}
+                className={`py-2 px-1 rounded-xl text-[11px] font-black transition-all flex flex-col items-center gap-0.5 ${
+                  tierType === tab.id
+                    ? tab.id === 'BASIC'
+                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50'
+                      : tab.id === 'ULTRA'
+                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/50'
+                      : tab.id === 'EARN'
+                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/50'
+                      : 'bg-amber-500/20 text-amber-300 border border-amber-500/50'
+                    : 'bg-white/5 text-slate-400 border border-white/8 hover:bg-white/10'
+                }`}
+              >
+                <span className="text-base leading-none">{tab.icon}</span>
+                <span className="leading-tight text-center">{tab.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
 
         {/* SPECIAL DISCOUNT EVENT BANNER — always visible on all tabs */}
         {showEventBanner && (
@@ -432,7 +464,7 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
         {/* FEATURES LIST */}
         <div className="mb-6 bg-[#111] rounded-2xl border border-slate-800 p-4">
           <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">
-            {tierType === 'BASIC' ? '★ Basic PRO' : '⚡ Ultra MAX'} — Features
+            {tierType === 'BASIC' ? '★ PRO' : '⚡ MAX'} — Features
           </p>
           <div className="grid grid-cols-1 gap-2">
             {featuresList.map((feat, i) => (
@@ -552,7 +584,7 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
             <span className="absolute inset-0 bg-white/15 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 skew-x-12 pointer-events-none" />
             <span className="relative flex items-center justify-center gap-2">
               <Sparkles size={15} />
-              Get {tierType === 'BASIC' ? 'Basic PRO' : 'Ultra MAX'} — Abhi Unlock Karo
+              Get {tierType === 'BASIC' ? 'PRO' : 'MAX'} — Abhi Unlock Karo
             </span>
           </button>
         )}

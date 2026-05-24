@@ -39,9 +39,10 @@ export interface LevelTierLimits {
 export const UNLIMITED = 9999;
 
 // ── Unified daily limits per level ───────────────────────────────────────────
-// notes  = Chunk Notes Reading free sessions/day
-// tts    = Audio/TTS free sessions/day
-// No AI field (AI feature removed from limits)
+// notes     = Chunk Notes Reading free sessions/day
+// tts       = Audio/TTS free sessions/day
+// concept   = Concept (DEEP_DIVE) tab free opens/day — Free=0, Basic/Ultra scaled with write
+// retention = Retention (PREMIUM) tab free opens/day — Free=0 (N/A), Basic/Ultra scaled with write
 export interface LevelDailyLimits {
   mcq:               LevelTierLimits;
   dl:                LevelTierLimits;
@@ -50,18 +51,22 @@ export interface LevelDailyLimits {
   notes:             LevelTierLimits;
   tts:               LevelTierLimits;
   write:             LevelTierLimits;
+  concept:           LevelTierLimits;
+  retention:         LevelTierLimits;
   creditWriteMax:    number;
   bonusLoginCredits: number;
 }
 
 // ── Helper to build one level row ────────────────────────────────────────────
-// MCQ:   base Free=50, Basic=70, Ultra=100; +30 per level (all tiers)
-// DL:    base Free=2,  Basic=5,  Ultra=10;  Free+2, Basic+3, Ultra+5 per level
-// PDF:   base Free=2,  Basic=3,  Ultra=5;   Free+2, Basic+3, Ultra+5 per level
-// Video: base Free=0,  Basic=2,  Ultra=5;   Free+1(from L2), Basic+2, Ultra+2 per level
-// Notes: Fixed Free=5, Basic=10, Ultra=15;  L9+ = UNLIMITED
-// TTS:   Same as Notes
-// Write: base Free=0,  Basic=5,  Ultra=10;  Basic+1, Ultra+1 per level from L4
+// MCQ:       base Free=50, Basic=70, Ultra=100; +30 per level (all tiers)
+// DL:        base Free=2,  Basic=5,  Ultra=10;  Free+2, Basic+3, Ultra+5 per level
+// PDF:       base Free=2,  Basic=3,  Ultra=5;   Free+2, Basic+3, Ultra+5 per level
+// Video:     base Free=0,  Basic=2,  Ultra=5;   Free+1(from L2), Basic+2, Ultra+2 per level
+// Notes:     Fixed Free=5, Basic=10, Ultra=15;  L9+ = UNLIMITED
+// TTS:       Same as Notes
+// Write:     base Free=0,  Basic=5,  Ultra=10;  Basic+1, Ultra+1 per level from L4
+// Concept:   Same formula as Write (Free=0 credit-only, Basic/Ultra scaled)
+// Retention: Same formula as Write (Free=0 N/A, Basic/Ultra scaled — Premium only)
 // bonusLoginCredits: 0,5,10,15,20,30,40,50,65,80,100
 
 const _BONUS_LOGIN = [0, 5, 10, 15, 20, 30, 40, 50, 65, 80, 100];
@@ -72,14 +77,18 @@ const buildTable = (): Record<number, LevelDailyLimits> => {
   for (let i = 1; i <= MAX_LEVEL; i++) {
     const n = i - 1; // 0-indexed increment
     const unlimitedNotes = i >= 9;
+    const writeBasic = Math.max(5, 5 + Math.max(0, n - 3));
+    const writeUltra = Math.max(10, 10 + Math.max(0, n - 3));
     tbl[i] = {
-      mcq:   { free: 50  + n * 30, basic: 70  + n * 30, ultra: 100 + n * 30 },
-      dl:    { free: 2   + n * 2,  basic: 5   + n * 3,  ultra: 10  + n * 5  },
-      pdf:   { free: 2   + n * 2,  basic: 3   + n * 3,  ultra: 5   + n * 5  },
-      video: { free: Math.max(0, n), basic: 2 + n * 2, ultra: 5 + n * 2 },
-      notes: unlimitedNotes ? { free: UNLIMITED, basic: UNLIMITED, ultra: UNLIMITED } : { free: 5, basic: 10, ultra: 15 },
-      tts:   unlimitedNotes ? { free: UNLIMITED, basic: UNLIMITED, ultra: UNLIMITED } : { free: 5, basic: 10, ultra: 15 },
-      write: { free: 0, basic: Math.max(5, 5 + Math.max(0, n - 3)), ultra: Math.max(10, 10 + Math.max(0, n - 3)) },
+      mcq:       { free: 50  + n * 30, basic: 70  + n * 30, ultra: 100 + n * 30 },
+      dl:        { free: 2   + n * 2,  basic: 5   + n * 3,  ultra: 10  + n * 5  },
+      pdf:       { free: 2   + n * 2,  basic: 3   + n * 3,  ultra: 5   + n * 5  },
+      video:     { free: Math.max(0, n), basic: 2 + n * 2, ultra: 5 + n * 2 },
+      notes:     unlimitedNotes ? { free: UNLIMITED, basic: UNLIMITED, ultra: UNLIMITED } : { free: 5, basic: 10, ultra: 15 },
+      tts:       unlimitedNotes ? { free: UNLIMITED, basic: UNLIMITED, ultra: UNLIMITED } : { free: 5, basic: 10, ultra: 15 },
+      write:     { free: 0, basic: writeBasic, ultra: writeUltra },
+      concept:   { free: 0, basic: writeBasic, ultra: writeUltra },
+      retention: { free: 0, basic: writeBasic, ultra: writeUltra },
       creditWriteMax:    _CREDIT_WRITE_MAX[n],
       bonusLoginCredits: _BONUS_LOGIN[n],
     };
@@ -110,13 +119,15 @@ export const getLevelDailyLimitsWithOverride = (
     o ? { free: o.free ?? b.free, basic: o.basic ?? b.basic, ultra: o.ultra ?? b.ultra } : b;
 
   return {
-    mcq:               mergeTier(base.mcq,   ov.mcq),
-    dl:                mergeTier(base.dl,    ov.dl),
-    pdf:               mergeTier(base.pdf,   ov.pdf),
-    video:             mergeTier(base.video, ov.video),
-    notes:             mergeTier(base.notes, ov.notes),
-    tts:               mergeTier(base.tts,   ov.tts),
-    write:             mergeTier(base.write, ov.write),
+    mcq:               mergeTier(base.mcq,       ov.mcq),
+    dl:                mergeTier(base.dl,         ov.dl),
+    pdf:               mergeTier(base.pdf,        ov.pdf),
+    video:             mergeTier(base.video,      ov.video),
+    notes:             mergeTier(base.notes,      ov.notes),
+    tts:               mergeTier(base.tts,        ov.tts),
+    write:             mergeTier(base.write,      ov.write),
+    concept:           mergeTier(base.concept,    ov.concept),
+    retention:         mergeTier(base.retention,  ov.retention),
     creditWriteMax:    ov.creditWriteMax    ?? base.creditWriteMax,
     bonusLoginCredits: ov.bonusLoginCredits ?? base.bonusLoginCredits,
   };
@@ -131,12 +142,14 @@ export interface LevelDailyLimitsOverride {
   notes?:             Partial<LevelTierLimits>;
   tts?:               Partial<LevelTierLimits>;
   write?:             Partial<LevelTierLimits>;
+  concept?:           Partial<LevelTierLimits>;
+  retention?:         Partial<LevelTierLimits>;
   creditWriteMax?:    number;
   bonusLoginCredits?: number;
 }
 
 // ── Unified effective daily limit getter ─────────────────────────────────────
-export type DailyLimitFeature = 'mcq' | 'video' | 'pdf' | 'dl' | 'write' | 'notes' | 'tts';
+export type DailyLimitFeature = 'mcq' | 'video' | 'pdf' | 'dl' | 'write' | 'notes' | 'tts' | 'concept' | 'retention';
 
 export const getEffectiveDailyLimit = (
   feature: DailyLimitFeature,

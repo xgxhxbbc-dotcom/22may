@@ -17,6 +17,7 @@ import { recordAttempt as recordRevisionAttempt } from '../utils/revisionTracker
 import { addMistakes, removeMistakeByQuestion } from '../utils/mistakeBank';
 import { getLevelFromScore, getEffectiveDailyLimit } from '../utils/levelSystem';
 import { getUserTier } from '../utils/permissionUtils';
+import { fireCreditNotify } from '../utils/creditNotify';
 
 // Normalize chapter data so handleStart sees `manualMcqData` regardless of
 // whether the admin/save layer used `manualMcqData` or `mcqData` (legacy).
@@ -333,6 +334,7 @@ export const McqView: React.FC<Props> = ({
 
           // FREE users: hard daily limit
           if (!user.subscriptionLevel && solvedToday >= dailyLimit) {
+              fireCreditNotify({ type: 'FREE_LIMIT', message: `MCQ daily limit khatam (${dailyLimit}/day)` });
               setAlertConfig({
                   isOpen: true,
                   title: "Daily Limit Reached",
@@ -345,6 +347,7 @@ export const McqView: React.FC<Props> = ({
           if (user.subscriptionLevel && solvedToday >= dailyLimit) {
               const mcqCostPerBlock = 5;
               if (user.credits < mcqCostPerBlock) {
+                  fireCreditNotify({ type: 'FREE_LIMIT', message: `Free MCQ limit khatam — credits kam hain` });
                   setAlertConfig({
                       isOpen: true,
                       title: "Low Balance",
@@ -352,6 +355,7 @@ export const McqView: React.FC<Props> = ({
                   });
                   return;
               }
+              fireCreditNotify({ type: 'FREE_LIMIT', message: `Free MCQ limit khatam — credits katenge` });
               // Charge 5 credits for this session
               const updatedUser = applyDeduction(user, mcqCostPerBlock) ?? user;
               localStorage.setItem('nst_current_user', JSON.stringify(updatedUser));

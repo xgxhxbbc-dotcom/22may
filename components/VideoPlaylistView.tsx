@@ -4,6 +4,7 @@ import { Chapter, User, Subject, SystemSettings } from '../types';
 import { PlayCircle, Lock, ArrowLeft, Crown, AlertCircle, CheckCircle, Youtube, Maximize } from 'lucide-react';
 import { getChapterData, saveUserToLive } from '../firebase';
 import { applyDeduction, getTotalCredits } from '../utils/creditSystem';
+import { fireCreditNotify } from '../utils/creditNotify';
 import { CreditConfirmationModal } from './CreditConfirmationModal';
 import { CustomAlert } from './CustomDialogs';
 import { AiInterstitial } from './AiInterstitial';
@@ -213,6 +214,7 @@ export const VideoPlaylistView: React.FC<Props> = ({
               return;
           }
           // Over daily free limit — show remaining info
+          fireCreditNotify({ type: 'FREE_LIMIT', message: `Free video limit khatam (${freeLimit}/day) — credits katenge` });
           setAlertConfig({ isOpen: true, message: `Aaj ke ${freeLimit} free videos ho gaye! Ab har video ke liye ${price} coins lagenge.` });
           // fall through to pay
       }

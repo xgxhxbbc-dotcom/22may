@@ -1426,6 +1426,7 @@ export const StudentDashboard: React.FC<Props> = ({
   const [canClaimReward, setCanClaimReward] = useState(false);
   const [selectedPhoneId, setSelectedPhoneId] = useState<string>("");
   const [showUserGuide, setShowUserGuide] = useState(false);
+  const [showProfileSettings, setShowProfileSettings] = useState(false);
   const [showNameChangeModal, setShowNameChangeModal] = useState(false);
   const [newNameInput, setNewNameInput] = useState("");
   const [showSupportModal, setShowSupportModal] = useState(false);
@@ -1458,6 +1459,7 @@ export const StudentDashboard: React.FC<Props> = ({
   const [showScorePanel, setShowScorePanel] = useState(false);
   const [scorePanelTab, setScorePanelTab] = useState<'LEVEL' | 'DAILY' | 'FEATURES'>('LEVEL');
   const [scoreDailyTier, setScoreDailyTier] = useState<'FREE' | 'BASIC' | 'ULTRA' | null>(null);
+  const [viewedLevelIdx, setViewedLevelIdx] = useState<number>(0);
   const [ttsProgressPercent, setTtsProgressPercent] = useState(0);
   const [ttsSessionKey, setTtsSessionKey] = useState<string | null>(null);
   const [ttsScoreSessionKey, setTtsScoreSessionKey] = useState<string | null>(null);
@@ -7725,22 +7727,7 @@ export const StudentDashboard: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Store/Credits Sub-tabs */}
-          <div className="flex gap-2 px-4 pt-3 pb-2">
-            <button
-              onClick={() => setStoreSubTab('STORE')}
-              className={`flex-1 py-2.5 rounded-xl text-sm font-black transition-all ${storeSubTab === 'STORE' ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-500/30' : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'}`}
-            >
-              👑 Plans
-            </button>
-            <button
-              onClick={() => setStoreSubTab('CREDITS')}
-              className={`flex-1 py-2.5 rounded-xl text-sm font-black transition-all ${storeSubTab === 'CREDITS' ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/30' : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'}`}
-            >
-              🪙 Credits
-            </button>
-          </div>
-          {storeSubTab === 'STORE' && (() => {
+          {(() => {
             const _discKey = `nst_sv_disc_${user.id}`;
             let _svDisc: { percent: number; expiresAt: string; visits: number } | null = null;
             try { _svDisc = JSON.parse(localStorage.getItem(_discKey) || 'null'); } catch {}
@@ -7801,7 +7788,7 @@ export const StudentDashboard: React.FC<Props> = ({
               </>
             );
           })()}
-          {storeSubTab === 'CREDITS' && (() => {
+          {(() => {
             const packages = settings?.packages || [
               { id: 'pkg-1', credits: 100, price: 10 },
               { id: 'pkg-2', credits: 200, price: 20 },
@@ -7827,14 +7814,7 @@ export const StudentDashboard: React.FC<Props> = ({
             })();
             return (
               <div className="animate-in fade-in duration-200 pb-28 bg-black min-h-screen">
-                {/* Header */}
-                <div className="px-4 pt-5 pb-3">
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className="w-1 h-5 rounded-full bg-gradient-to-b from-amber-400 to-orange-500" />
-                    <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.15em]">Top-up Coins</p>
-                  </div>
-                  <p className="text-[10px] text-slate-600 ml-3">Credits kharido — MCQ unlock, features use karo</p>
-                </div>
+                <div className="px-4 pt-4" />
                 {/* Current Balance */}
                 <div className="mx-4 mb-4 px-4 py-3 rounded-2xl flex items-center gap-3" style={{ background: 'linear-gradient(90deg, rgba(245,158,11,0.12), rgba(234,88,12,0.08))', border: '1.5px solid rgba(245,158,11,0.25)' }}>
                   <span className="text-2xl">🪙</span>
@@ -7898,7 +7878,7 @@ export const StudentDashboard: React.FC<Props> = ({
                   <span className="text-xl">🎰</span>
                   <div className="flex-1">
                     <p className="text-xs font-black text-amber-400">Free mein bhi kama sakte ho!</p>
-                    <p className="text-[10px] text-slate-600">Plans tab → Earn pe jaake Spin karo</p>
+                    <p className="text-[10px] text-slate-600">Neeche Plans section → Earn pe jaake Spin karo</p>
                   </div>
                 </div>
               </div>
@@ -8101,25 +8081,6 @@ export const StudentDashboard: React.FC<Props> = ({
                   );
                 })()}
 
-                {/* Info pills */}
-                <div className="flex flex-wrap gap-1.5 mb-4">
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-white/5 border border-white/10 text-slate-400">
-                    🆔 {user.displayId || (user.id || '').substring(0, 8)}
-                  </span>
-                  {(activeSessionClass || user.classLevel) && (
-                    <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-white/5 border border-white/10 text-slate-400">
-                      📚 Class {activeSessionClass || user.classLevel}
-                    </span>
-                  )}
-                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-white/5 border border-white/10 text-slate-400">
-                    🏫 {activeSessionBoard || user.board || 'CBSE'}
-                  </span>
-                  {user.email && (
-                    <span className="px-2 py-0.5 rounded-md text-[10px] font-medium bg-white/5 border border-white/10 text-slate-500 truncate max-w-[180px]">
-                      ✉️ {user.email}
-                    </span>
-                  )}
-                </div>
 
                 {/* Stats row */}
                 <div className="grid grid-cols-3 gap-2 mb-3">
@@ -8210,40 +8171,78 @@ export const StudentDashboard: React.FC<Props> = ({
               )}
 
               {/* History */}
-              {(() => {
-                const access = getFeatureAccess('HISTORY_PAGE');
-                if (access.isHidden) return null;
-                const isLocked = !access.hasAccess;
-                return (
-                  <button onClick={() => { if (isLocked) { showAlert('🔒 Locked by Admin.', 'ERROR'); return; } onTabChange('HISTORY'); }}
-                    className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-white/4 active:bg-white/6 transition-colors border-b border-slate-800/80">
-                    <div className="w-9 h-9 rounded-xl bg-rose-500/15 flex items-center justify-center shrink-0">
-                      <History size={16} className="text-rose-400" />
-                    </div>
-                    <div className="flex-1 text-left min-w-0">
-                      <p className="text-sm font-bold text-white flex items-center gap-2">
-                        Activity History {isLocked && <Lock size={10} className="text-red-400" />}
-                      </p>
-                      <p className="text-[11px] text-slate-500">Tests, sessions & past activity</p>
-                    </div>
-                    <ChevronRight size={14} className="text-slate-600 shrink-0" />
-                  </button>
-                );
-              })()}
-
-
-              {/* App Guide */}
-              <button onClick={() => setShowUserGuide(true)}
+              {/* Settings button — opens sub-panel with App Guide, Activity History, Reset Settings */}
+              <button onClick={() => setShowProfileSettings(v => !v)}
                 className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-white/4 active:bg-white/6 transition-colors border-b border-slate-800/80">
-                <div className="w-9 h-9 rounded-xl bg-indigo-500/15 flex items-center justify-center shrink-0">
-                  <span className="text-base">📖</span>
+                <div className="w-9 h-9 rounded-xl bg-slate-500/15 flex items-center justify-center shrink-0">
+                  <Settings size={16} className="text-slate-400" />
                 </div>
                 <div className="flex-1 text-left min-w-0">
-                  <p className="text-sm font-bold text-white">App Guide</p>
-                  <p className="text-[11px] text-slate-500">Har feature ka guide padhein</p>
+                  <p className="text-sm font-bold text-white">Settings</p>
+                  <p className="text-[11px] text-slate-500">Guide, History, Reset</p>
                 </div>
-                <ChevronRight size={14} className="text-slate-600 shrink-0" />
+                <ChevronRight size={14} className={`text-slate-600 shrink-0 transition-transform duration-200 ${showProfileSettings ? 'rotate-90' : ''}`} />
               </button>
+
+              {/* Settings sub-panel — expands inline */}
+              {showProfileSettings && (() => {
+                const histAccess = getFeatureAccess('HISTORY_PAGE');
+                const histLocked = !histAccess.hasAccess;
+                return (
+                  <div className="border-b border-slate-800/80 bg-white/[0.02]">
+                    {/* App Guide */}
+                    <button onClick={() => setShowUserGuide(true)}
+                      className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/4 active:bg-white/6 transition-colors border-b border-slate-800/40">
+                      <div className="w-8 h-8 rounded-lg bg-indigo-500/15 flex items-center justify-center shrink-0">
+                        <span className="text-sm">📖</span>
+                      </div>
+                      <div className="flex-1 text-left min-w-0">
+                        <p className="text-sm font-bold text-white">App Guide</p>
+                        <p className="text-[10px] text-slate-500">Har feature ka guide padhein</p>
+                      </div>
+                      <ChevronRight size={13} className="text-slate-600 shrink-0" />
+                    </button>
+
+                    {/* Activity History */}
+                    {!histAccess.isHidden && (
+                      <button onClick={() => { if (histLocked) { showAlert('🔒 Locked by Admin.', 'ERROR'); return; } onTabChange('HISTORY'); setShowProfileSettings(false); }}
+                        className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/4 active:bg-white/6 transition-colors border-b border-slate-800/40">
+                        <div className="w-8 h-8 rounded-lg bg-rose-500/15 flex items-center justify-center shrink-0">
+                          <History size={14} className="text-rose-400" />
+                        </div>
+                        <div className="flex-1 text-left min-w-0">
+                          <p className="text-sm font-bold text-white flex items-center gap-2">
+                            Activity History {histLocked && <Lock size={10} className="text-red-400" />}
+                          </p>
+                          <p className="text-[10px] text-slate-500">Tests, sessions & past activity</p>
+                        </div>
+                        <ChevronRight size={13} className="text-slate-600 shrink-0" />
+                      </button>
+                    )}
+
+                    {/* Reset Settings */}
+                    <button onClick={() => {
+                      const keysToRemove: string[] = [];
+                      for (let i = 0; i < localStorage.length; i++) {
+                        const key = localStorage.key(i);
+                        if (key && key.startsWith(`nst_credit_skip_${user.id}_`)) keysToRemove.push(key);
+                      }
+                      keysToRemove.forEach(k => localStorage.removeItem(k));
+                      showAlert('Settings reset ho gayi! Credit popup dobara dikhega.', 'SUCCESS');
+                    }}
+                      className="w-full px-6 py-3 flex items-center gap-3 hover:bg-white/4 active:bg-white/6 transition-colors">
+                      <div className="w-8 h-8 rounded-lg bg-orange-500/15 flex items-center justify-center shrink-0">
+                        <RotateCcw size={14} className="text-orange-400" />
+                      </div>
+                      <div className="flex-1 text-left min-w-0">
+                        <p className="text-sm font-bold text-white">Reset Settings</p>
+                        <p className="text-[10px] text-slate-500">Sab settings default pe reset karo</p>
+                      </div>
+                      <ChevronRight size={13} className="text-slate-600 shrink-0" />
+                    </button>
+                  </div>
+                );
+              })()}
 
               {/* Leaderboard */}
               <button onClick={() => setShowLevelLeaderboard(true)}
@@ -8273,26 +8272,6 @@ export const StudentDashboard: React.FC<Props> = ({
                 </button>
               )}
 
-              {/* Reset Settings */}
-              <button onClick={() => {
-                const keysToRemove: string[] = [];
-                for (let i = 0; i < localStorage.length; i++) {
-                  const key = localStorage.key(i);
-                  if (key && key.startsWith(`nst_credit_skip_${user.id}_`)) keysToRemove.push(key);
-                }
-                keysToRemove.forEach(k => localStorage.removeItem(k));
-                showAlert('Settings reset ho gayi! Credit popup dobara dikhega.', 'SUCCESS');
-              }}
-                className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-white/4 active:bg-white/6 transition-colors border-b border-slate-800/80">
-                <div className="w-9 h-9 rounded-xl bg-orange-500/15 flex items-center justify-center shrink-0">
-                  <RotateCcw size={16} className="text-orange-400" />
-                </div>
-                <div className="flex-1 text-left min-w-0">
-                  <p className="text-sm font-bold text-white">Reset Settings</p>
-                  <p className="text-[11px] text-slate-500">Sab settings default pe reset karo</p>
-                </div>
-                <ChevronRight size={14} className="text-slate-600 shrink-0" />
-              </button>
 
               {/* Logout */}
               {(settings?.isLogoutEnabled !== false || user.role === 'ADMIN' || isImpersonating) && (
@@ -8600,14 +8579,15 @@ export const StudentDashboard: React.FC<Props> = ({
           {/* RIGHT SIDE: Fixed action icons + Credits (no scroll) */}
           <div className="flex items-center gap-1 flex-1 min-w-0 ml-1 z-10 justify-end">
 
-              {/* Streak indicator — LINE 1, fire icon + day count, not a button */}
-              <span
-                className={`inline-flex items-center gap-0.5 text-[11px] font-black shrink-0 select-none ${user.streak > 0 ? 'text-amber-300' : 'text-white/60'}`}
+              {/* Streak button — tap to open streak popup */}
+              <button
+                onClick={() => setShowStreakPopup(true)}
+                className={`inline-flex items-center gap-0.5 text-[11px] font-black shrink-0 active:scale-90 transition-transform ${user.streak > 0 ? 'text-amber-300' : 'text-white/60'}`}
                 title={`Login streak: ${user.streak} day${user.streak === 1 ? '' : 's'}`}
               >
                 <span className="text-[13px] leading-none">🔥</span>
                 <span>{user.streak}d</span>
-              </span>
+              </button>
 
               {/* Search icon — opens home search from top bar */}
               {isHomeSectionVisible('home_search_button', settings) && (
@@ -8674,6 +8654,38 @@ export const StudentDashboard: React.FC<Props> = ({
                         >
                           <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M1 1l12 12M13 1L1 13" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>
                         </button>
+                      </div>
+
+                      {/* Profile Details */}
+                      <div className="px-4 pt-2 pb-3 border-b border-slate-100">
+                        <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Profile Info</p>
+                        <div className="space-y-1.5">
+                          <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-slate-50 border border-slate-100">
+                            <span className="text-xs shrink-0">🆔</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">User ID</p>
+                              <p className="text-[11px] font-black text-slate-700 truncate">{user.displayId || (user.id || '').substring(0, 8)}</p>
+                            </div>
+                          </div>
+                          {(activeSessionClass || user.classLevel) && (
+                            <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-slate-50 border border-slate-100">
+                              <span className="text-xs shrink-0">📚</span>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Class</p>
+                                <p className="text-[11px] font-black text-slate-700">Class {activeSessionClass || user.classLevel}</p>
+                              </div>
+                            </div>
+                          )}
+                          {user.email && (
+                            <div className="flex items-center gap-2 px-2 py-1.5 rounded-lg bg-slate-50 border border-slate-100">
+                              <span className="text-xs shrink-0">✉️</span>
+                              <div className="flex-1 min-w-0">
+                                <p className="text-[9px] font-bold text-slate-400 uppercase tracking-wider">Email</p>
+                                <p className="text-[11px] font-black text-slate-700 truncate">{user.email}</p>
+                              </div>
+                            </div>
+                          )}
+                        </div>
                       </div>
                       {/* Board switch */}
                       <div className="px-4 pt-3 pb-2 border-b border-slate-100">
@@ -13777,7 +13789,7 @@ export const StudentDashboard: React.FC<Props> = ({
                   { icon: '✍️', label: 'Write Mode (free views)', free: '0 free', basic: `${basicHtmlLimit}/day free`, ultra: `${ultraHtmlLimitModal}/day free` },
                   { icon: '💎', label: 'Write Mode (credit)', free: `${htmlCost} CR/use`, basic: `10 CR/use`, ultra: `10 CR/use` },
                   { icon: '📥', label: 'HTML Downloads', free: `${dlFree}/day`, basic: `${dlBasic}/day`, ultra: `${dlUltra}/day` },
-                  { icon: '🌅', label: 'Daily Login Bonus', free: `+${freeBonus} CR`, basic: `+${basicBonus} CR`, ultra: `+${ultraBonus} CR` },
+                  { icon: '🗓️', label: 'Sunday Bonus (streak tootne pe)', free: `+${freeBonus} CR`, basic: `+${basicBonus} CR`, ultra: `+${ultraBonus} CR` },
                   { icon: '🔊', label: 'Audio / TTS', free: '✓ Free', basic: '✓ Free', ultra: '✓ Free' },
                 ];
 
@@ -17056,11 +17068,14 @@ RULES:
       {/* ═══════════ SCORE / LEVEL PANEL ═══════════ */}
       {showScorePanel && (() => {
         const totalScore = (user.role === 'ADMIN' || user.role === 'SUB_ADMIN') ? 9999999 : (user.totalScore || 0);
-        const lvl = getLevelInfo(totalScore);
-        const nextLvl = getNextLevelInfo(totalScore);
+        const userLvl = getLevelInfo(totalScore);
+        const _vIdx = viewedLevelIdx === 0 ? userLvl.level - 1 : viewedLevelIdx - 1;
+        const lvl = LEVEL_INFO[_vIdx] ?? userLvl;
+        const nextLvl = LEVEL_INFO[_vIdx + 1] ?? null;
         const progress = getLevelProgress(totalScore);
+        const _closePanel = () => { setShowScorePanel(false); setScorePanelTab('LEVEL'); setViewedLevelIdx(0); };
         return (
-          <div className="fixed inset-0 z-[9998] flex flex-col justify-end" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => { setShowScorePanel(false); setScorePanelTab('LEVEL'); }}>
+          <div className="fixed inset-0 z-[9998] flex flex-col justify-end" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={_closePanel}>
             {/* Panel — outer rounded container, no overflow (prevents white-corner flash) */}
             <div className="bg-[#0e0e0e] rounded-t-3xl max-h-[88vh] flex flex-col w-full overflow-hidden" onClick={e => e.stopPropagation()}>
               {/* Header — fixed, not sticky, so no repaint glitch */}
@@ -17068,7 +17083,7 @@ RULES:
                 <div className="w-10 h-1 bg-slate-700 rounded-full mx-auto mb-2" />
                 <div className="flex items-center justify-between mb-2">
                   <p className="text-sm font-black text-white">⚡ Activity Score</p>
-                  <button onClick={() => { setShowScorePanel(false); setScorePanelTab('LEVEL'); }} className="w-7 h-7 flex items-center justify-center rounded-full bg-white/8 text-slate-400">✕</button>
+                  <button onClick={_closePanel} className="w-7 h-7 flex items-center justify-center rounded-full bg-white/8 text-slate-400">✕</button>
                 </div>
                 {/* Tab toggle — 3 tabs — no transition-all to prevent lag */}
                 <div className="flex gap-1.5">
@@ -17099,19 +17114,56 @@ RULES:
                 const _rangeEarned = _lvlTo ? Math.max(0, totalScore - _lvlFrom) : 0;
                 const _rangePct = _lvlTo ? Math.min(100, Math.round((_rangeEarned / _rangeTotal) * 100)) : 100;
                 const _ptsLeft = _lvlTo ? Math.max(0, _lvlTo - totalScore) : 0;
+                const _isUserLevel = lvl.level === userLvl.level;
+                const _canPrev = lvl.level > 1;
+                const _canNext = lvl.level < LEVEL_INFO.length;
                 return (
                   <div className="rounded-2xl p-4 text-center relative overflow-hidden"
                     style={{ background: `linear-gradient(135deg, ${lvl.color}20, ${lvl.color}08)`, border: `1px solid ${lvl.color}50`, boxShadow: `0 0 32px ${lvl.glowColor}` }}>
+
+                    {/* ‹ Prev / Next › Nav Buttons */}
+                    <button
+                      onClick={() => setViewedLevelIdx(_canPrev ? lvl.level - 1 : lvl.level)}
+                      disabled={!_canPrev}
+                      className="absolute left-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full transition-all active:scale-90"
+                      style={{ background: _canPrev ? `${lvl.color}22` : 'rgba(255,255,255,0.04)', border: `1px solid ${_canPrev ? lvl.color + '50' : 'rgba(255,255,255,0.08)'}`, color: _canPrev ? lvl.color : '#334155' }}
+                    >‹</button>
+                    <button
+                      onClick={() => setViewedLevelIdx(_canNext ? lvl.level + 1 : lvl.level)}
+                      disabled={!_canNext}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 w-8 h-8 flex items-center justify-center rounded-full transition-all active:scale-90"
+                      style={{ background: _canNext ? `${lvl.color}22` : 'rgba(255,255,255,0.04)', border: `1px solid ${_canNext ? lvl.color + '50' : 'rgba(255,255,255,0.08)'}`, color: _canNext ? lvl.color : '#334155' }}
+                    >›</button>
+
                     <div className="text-5xl mb-2.5">{lvl.emoji}</div>
-                    <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full mb-2" style={{ background: `${lvl.color}28`, border: `1px solid ${lvl.color}55` }}>
+                    <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full mb-1" style={{ background: `${lvl.color}28`, border: `1px solid ${lvl.color}55` }}>
                       <span className="text-xs font-black text-white">Level {lvl.level}</span>
                       <span className="text-[9px] font-black uppercase tracking-widest" style={{ color: lvl.color }}>· {lvl.label}</span>
                     </div>
-                    <p className="text-3xl font-black" style={{ color: lvl.color }}>{totalScore.toLocaleString('en-IN')}</p>
-                    <p className="text-[9px] text-slate-500 uppercase tracking-widest mt-0.5">Total Score</p>
+
+                    {/* "Your Level" badge — only when browsing other levels */}
+                    {!_isUserLevel && (
+                      <div className="mb-1.5">
+                        <button onClick={() => setViewedLevelIdx(0)} className="text-[9px] font-black text-slate-500 underline underline-offset-2">
+                          Mera Level: {userLvl.emoji} L{userLvl.level} pe vapas jao
+                        </button>
+                      </div>
+                    )}
+                    {_isUserLevel && (
+                      <div className="mb-1.5">
+                        <span className="text-[8px] font-black px-2 py-0.5 rounded-full" style={{ background: `${lvl.color}28`, color: lvl.color }}>✦ Mera Current Level</span>
+                      </div>
+                    )}
+
+                    <p className="text-3xl font-black" style={{ color: _isUserLevel ? lvl.color : '#64748b' }}>
+                      {_isUserLevel ? totalScore.toLocaleString('en-IN') : lvl.minScore.toLocaleString('en-IN')}
+                    </p>
+                    <p className="text-[9px] text-slate-500 uppercase tracking-widest mt-0.5">
+                      {_isUserLevel ? 'Mera Score' : 'Min. Score Required'}
+                    </p>
                     {lvl.discount > 0 && (
                       <div className="mt-2.5 inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-black text-white" style={{ background: `${lvl.color}cc` }}>
-                        🏷️ {lvl.discount}% Store Discount Active
+                        🏷️ {lvl.discount}% Store Discount
                       </div>
                     )}
                     {/* Level Range Progress */}
@@ -17122,8 +17174,14 @@ RULES:
                           <p className="text-[9px] font-black" style={{ color: lvl.color }}>{_lvlFrom.toLocaleString('en-IN')}</p>
                         </div>
                         <div className="text-center flex-1 px-2">
-                          <p className="text-[8px] font-black text-white">{_rangePct}% Complete</p>
-                          {_lvlTo && <p className="text-[7px] text-slate-500">{_ptsLeft.toLocaleString('en-IN')} pts baki</p>}
+                          {_isUserLevel ? (
+                            <>
+                              <p className="text-[8px] font-black text-white">{_rangePct}% Complete</p>
+                              {_lvlTo && <p className="text-[7px] text-slate-500">{_ptsLeft.toLocaleString('en-IN')} pts baki</p>}
+                            </>
+                          ) : (
+                            <p className="text-[8px] font-black text-slate-500">Preview Mode</p>
+                          )}
                         </div>
                         <div className="text-right">
                           <p className="text-[7px] font-black uppercase tracking-widest text-slate-600">{nextLvl ? `Level ${nextLvl.level} pe` : 'Max Level'}</p>
@@ -17131,9 +17189,9 @@ RULES:
                         </div>
                       </div>
                       <div className="h-2 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
-                        <div className="h-full rounded-full" style={{ width: `${_rangePct}%`, background: `linear-gradient(90deg, ${lvl.color}99, ${lvl.color})` }} />
+                        <div className="h-full rounded-full" style={{ width: `${_isUserLevel ? _rangePct : 0}%`, background: `linear-gradient(90deg, ${lvl.color}99, ${lvl.color})` }} />
                       </div>
-                      {_rangePct === 100 && !nextLvl && (
+                      {_rangePct === 100 && !nextLvl && _isUserLevel && (
                         <p className="text-[8px] font-black text-amber-400 mt-1 text-center">🏆 Highest Level Achieved!</p>
                       )}
                     </div>
@@ -17145,79 +17203,179 @@ RULES:
                 {scorePanelTab === 'DAILY' && (() => {
                   const _userTier = (user.role === 'ADMIN' || user.role === 'SUB_ADMIN') ? 'ULTRA' : user.isPremium ? (user.subscriptionLevel === 'ULTRA' ? 'ULTRA' : 'BASIC') : 'FREE';
                   const _tier = scoreDailyTier ?? _userTier;
+                  const _isOwnTier = _tier === _userTier;
                   const _ld = getLevelDailyLimitsWithOverride(lvl.level, settings) ?? getLevelDailyLimits(lvl.level);
-                  const _bonusBasic = _ld.bonusLoginCredits;
-                  const _bonusUltra = _bonusBasic > 0 ? _bonusBasic + 5 : 0;
-                  const _creditMax  = _ld.creditWriteMax;
+                  const _ldNext = LEVEL_INFO[lvl.level] ? (getLevelDailyLimitsWithOverride(lvl.level + 1, settings) ?? getLevelDailyLimits(lvl.level + 1)) : null;
+                  const _creditMax = _ld.creditWriteMax;
                   const _isUnlimNotes = _ld.notes.free >= UNLIMITED;
-
-                  type DLRow = { icon: string; label: string; sub?: string; free: string; freeSub?: string; basic: string; ultra: string };
-                  const _rows: DLRow[] = [
-                    {
-                      icon: '❓', label: 'MCQ\nPractice',
-                      free: `${_ld.mcq.free}/day`, freeSub: 'Hard block',
-                      basic: `${_ld.mcq.basic}/day`,
-                      ultra: `${_ld.mcq.ultra}/day`,
-                    },
-                    {
-                      icon: '🖼️', label: 'HTML\nDownloads',
-                      free: `${_ld.dl.free}/day`,
-                      basic: `${_ld.dl.basic}/day`,
-                      ultra: `${_ld.dl.ultra}/day`,
-                    },
-                    {
-                      icon: '✍️', label: 'Write Mode\n(Free)',
-                      free: '0 (credit only)',
-                      basic: `${_ld.write.basic}/day`,
-                      ultra: `${_ld.write.ultra}/day`,
-                    },
-                    {
-                      icon: '🎬', label: 'Video\nLectures',
-                      free: `${_ld.video.free}/day`,
-                      basic: `${_ld.video.basic}/day`,
-                      ultra: `${_ld.video.ultra}/day`,
-                    },
-                    {
-                      icon: '📄', label: 'PDF / Notes',
-                      free: `${_ld.pdf.free}/day`,
-                      basic: `${_ld.pdf.basic}/day`,
-                      ultra: `${_ld.pdf.ultra}/day`,
-                    },
-                    {
-                      icon: '📖', label: 'Notes\nReading', sub: _isUnlimNotes ? undefined : '∞ at L9',
-                      free: _isUnlimNotes ? '∞ Unlimited' : `${_ld.notes.free}/day`,
-                      basic: _isUnlimNotes ? '∞ Unlimited' : `${_ld.notes.basic}/day`,
-                      ultra: _isUnlimNotes ? '∞ Unlimited' : `${_ld.notes.ultra}/day`,
-                    },
-                    {
-                      icon: '🎧', label: 'Audio / TTS', sub: _isUnlimNotes ? undefined : '∞ at L9',
-                      free: _isUnlimNotes ? '∞ Unlimited' : `${_ld.tts.free}/day`,
-                      basic: _isUnlimNotes ? '∞ Unlimited' : `${_ld.tts.basic}/day`,
-                      ultra: _isUnlimNotes ? '∞ Unlimited' : `${_ld.tts.ultra}/day`,
-                    },
-                    {
-                      icon: '🪙', label: 'Login Bonus\nCR',
-                      free: '0 CR',
-                      basic: `+${_bonusBasic} CR`,
-                      ultra: `+${_bonusUltra} CR`,
-                    },
-                    {
-                      icon: '✏️', label: 'Write\n(Credits)', sub: '10 CR/unlock',
-                      free: `${_creditMax} max/day`,
-                      basic: `${_creditMax} max/day`,
-                      ultra: `${_creditMax} max/day`,
-                    },
-                  ];
-
-                  const _tierColor = _tier === 'ULTRA' ? '#a78bfa' : _tier === 'BASIC' ? '#38bdf8' : '#94a3b8';
-                  const _tierBg = _tier === 'ULTRA' ? '#7c3aed' : _tier === 'BASIC' ? '#0ea5e9' : '#475569';
                   const todayStr = new Date().toISOString().split('T')[0];
-                  const mcqToday = parseInt(localStorage.getItem(`nst_mcq_daily_total_${todayStr}_${user.id}`) || '0', 10);
-                  const _todayVals: Record<number, string> = { 0: mcqToday.toString() };
+
+                  // ── Today's actual usage (only for own tier) ──
+                  const _mcqUsed   = _isOwnTier ? parseInt(localStorage.getItem(`nst_mcq_daily_total_${todayStr}_${user.id}`) || '0', 10) : 0;
+                  const _dlUsed    = _isOwnTier ? parseInt(localStorage.getItem(`nst_dl_html_${user.id}_${todayStr}`) || '0', 10) : 0;
+                  const _writeUsed = _isOwnTier ? parseInt(localStorage.getItem(
+                    _userTier === 'ULTRA' ? `nst_ultra_html_${user.id}_${todayStr}`
+                    : _userTier === 'BASIC' ? `nst_basic_html_${user.id}_${todayStr}`
+                    : `nst_free_html_${user.id}_${todayStr}`
+                  ) || '0', 10) : 0;
+                  const _paidWriteUsed = _isOwnTier ? parseInt(localStorage.getItem(`nst_paid_write_${user.id}_${todayStr}`) || '0', 10) : 0;
+
+                  // ── Bar color based on usage % ──
+                  const _barClr = (pct: number) =>
+                    pct >= 100 ? '#ef4444' : pct >= 75 ? '#f97316' : pct >= 50 ? '#eab308' : pct >= 25 ? '#3b82f6' : '#22c55e';
+                  const _barLabel = (pct: number) =>
+                    pct >= 100 ? 'BLOCKED' : pct >= 75 ? 'Almost full' : pct >= 50 ? 'Half used' : pct >= 25 ? 'Going' : 'Available';
+
+                  // ── Reusable card renderer ──
+                  // accessType: 'free' = green, 'credit' = blue, 'locked' = grey/lock
+                  const _renderCard = (
+                    icon: string, label: string,
+                    limit: number | null, used: number,
+                    isUnlim: boolean,
+                    accessType: 'free' | 'credit' | 'locked',
+                    nextLvlVal: number | null,
+                    tracked: boolean,
+                    crCost?: number,
+                    nextLvlCrCost?: number
+                  ) => {
+                    const isLocked  = accessType === 'locked';
+                    const isCredit  = accessType === 'credit';
+                    const isFree    = accessType === 'free';
+
+                    const pct = (isFree && !isUnlim && limit && limit > 0 && tracked && _isOwnTier)
+                      ? Math.min(100, Math.round((used / limit) * 100)) : 0;
+                    const isBarBlocked = pct >= 100;
+
+                    // Card color theme
+                    const cardBg    = isLocked  ? 'rgba(255,255,255,0.02)'
+                                    : isCredit  ? '#3b82f608'
+                                    : isBarBlocked ? '#ef444410'
+                                    : '#22c55e08';
+                    const cardBdr   = isLocked  ? 'rgba(255,255,255,0.05)'
+                                    : isCredit  ? '#3b82f625'
+                                    : isBarBlocked ? '#ef444440'
+                                    : '#22c55e25';
+                    const accentClr = isLocked ? '#475569' : isCredit ? '#60a5fa' : _barClr(pct);
+
+                    return (
+                      <div className="rounded-xl px-3 py-2.5" style={{ background: cardBg, border: `1px solid ${cardBdr}`, opacity: isLocked ? 0.55 : 1 }}>
+                        <div className="flex items-center gap-2">
+                          {/* Icon + lock overlay */}
+                          <div className="relative shrink-0">
+                            <span className="text-base">{icon}</span>
+                            {isLocked && <span className="absolute -bottom-0.5 -right-1 text-[8px]">🔒</span>}
+                          </div>
+
+                          {/* Label + sub-info */}
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[10px] font-black leading-tight" style={{ color: isLocked ? '#64748b' : '#e2e8f0' }}>{label}</p>
+                            {isCredit && crCost !== undefined && (
+                              <p className="text-[8px] font-black mt-0.5" style={{ color: '#60a5fa' }}>
+                                💰 {crCost} CR/unlock
+                                {nextLvlCrCost !== undefined && nextLvlCrCost < crCost && (
+                                  <span className="text-amber-400 ml-1">→ {nextLvlCrCost} CR next level</span>
+                                )}
+                              </p>
+                            )}
+                            {isLocked && (
+                              <p className="text-[8px] font-bold mt-0.5 text-slate-600">Is plan pe available nahi</p>
+                            )}
+                          </div>
+
+                          {/* Right badge */}
+                          <div className="shrink-0 text-right flex flex-col items-end gap-0.5">
+                            {isLocked ? (
+                              <span className="text-[9px] font-black text-slate-600 px-2 py-0.5 rounded-full" style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.06)' }}>🔒 Locked</span>
+                            ) : isUnlim ? (
+                              <span className="text-[9px] font-black text-emerald-400">∞ Unlimited</span>
+                            ) : isCredit ? (
+                              <div className="flex flex-col items-end">
+                                {limit !== null && <span className="text-[9px] font-black text-sky-400">{limit}/day max</span>}
+                                {_isOwnTier && tracked && limit !== null && (
+                                  <span className="text-[8px] font-bold text-sky-300">{used} used today</span>
+                                )}
+                              </div>
+                            ) : limit !== null ? (
+                              <div className="flex flex-col items-end gap-0.5">
+                                {_isOwnTier && tracked ? (
+                                  <span className="text-[10px] font-black" style={{ color: accentClr }}>{used} / {limit}</span>
+                                ) : (
+                                  <span className="text-[9px] font-black text-emerald-400">{limit}/day</span>
+                                )}
+                                {isBarBlocked && <span className="text-[7px] font-black text-red-400 uppercase tracking-widest">BLOCKED</span>}
+                              </div>
+                            ) : null}
+                          </div>
+                        </div>
+
+                        {/* Progress bar — only for free tracked features */}
+                        {isFree && !isUnlim && limit !== null && limit > 0 && (
+                          <div className="mt-2">
+                            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
+                              <div className="h-full rounded-full transition-all duration-500" style={{
+                                width: (_isOwnTier && tracked) ? `${pct}%` : '0%',
+                                background: `linear-gradient(90deg, ${accentClr}80, ${accentClr})`
+                              }} />
+                            </div>
+                            <div className="flex items-center justify-between mt-0.5">
+                              {_isOwnTier && tracked
+                                ? <p className="text-[7px] font-bold" style={{ color: accentClr }}>{_barLabel(pct)} · {pct}%</p>
+                                : <p className="text-[7px] text-slate-600">Preview mode</p>
+                              }
+                              {_ldNext && nextLvlVal !== null && nextLvlVal > limit && (
+                                <p className="text-[7px] text-slate-500">Next Lvl: <span className="text-amber-400 font-black">{nextLvlVal}</span></p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Credit bar — only for credit tracked features */}
+                        {isCredit && limit !== null && limit > 0 && _isOwnTier && tracked && (
+                          <div className="mt-2">
+                            <div className="h-1.5 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.07)' }}>
+                              <div className="h-full rounded-full transition-all duration-500" style={{
+                                width: `${Math.min(100, Math.round((used / limit) * 100))}%`,
+                                background: 'linear-gradient(90deg, #3b82f680, #60a5fa)'
+                              }} />
+                            </div>
+                            <div className="flex items-center justify-between mt-0.5">
+                              <p className="text-[7px] font-bold text-sky-400">{used} of {limit} unlocks used</p>
+                              {_ldNext && nextLvlVal !== null && nextLvlVal > limit && (
+                                <p className="text-[7px] text-slate-500">Next Lvl: <span className="text-amber-400 font-black">{nextLvlVal}</span></p>
+                              )}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Unlimited footer */}
+                        {isUnlim && (
+                          <p className="text-[7px] text-emerald-600/70 mt-1">✓ No daily cap</p>
+                        )}
+                      </div>
+                    );
+                  };
+
+                  const _mcqLim  = _tier === 'ULTRA' ? _ld.mcq.ultra  : _tier === 'BASIC' ? _ld.mcq.basic  : _ld.mcq.free;
+                  const _dlLim   = _tier === 'ULTRA' ? _ld.dl.ultra   : _tier === 'BASIC' ? _ld.dl.basic   : _ld.dl.free;
+                  const _wrtLim  = _tier === 'ULTRA' ? _ld.write.ultra : _tier === 'BASIC' ? _ld.write.basic : 0;
+                  const _vidLim  = _tier === 'ULTRA' ? _ld.video.ultra : _tier === 'BASIC' ? _ld.video.basic : _ld.video.free;
+                  const _pdfLim  = _tier === 'ULTRA' ? _ld.pdf.ultra  : _tier === 'BASIC' ? _ld.pdf.basic  : _ld.pdf.free;
+                  const _conLim  = _tier === 'ULTRA' ? _ld.concept.ultra : _tier === 'BASIC' ? _ld.concept.basic : 0;
+                  const _retLim  = _tier === 'ULTRA' ? _ld.retention.ultra : _tier === 'BASIC' ? _ld.retention.basic : 0;
+
+                  const _mcqNext  = _ldNext ? (_tier === 'ULTRA' ? _ldNext.mcq.ultra  : _tier === 'BASIC' ? _ldNext.mcq.basic  : _ldNext.mcq.free) : null;
+                  const _dlNext   = _ldNext ? (_tier === 'ULTRA' ? _ldNext.dl.ultra   : _tier === 'BASIC' ? _ldNext.dl.basic   : _ldNext.dl.free) : null;
+                  const _wrtNext  = _ldNext ? (_tier === 'ULTRA' ? _ldNext.write.ultra : _tier === 'BASIC' ? _ldNext.write.basic : 0) : null;
+                  const _vidNext  = _ldNext ? (_tier === 'ULTRA' ? _ldNext.video.ultra : _tier === 'BASIC' ? _ldNext.video.basic : _ldNext.video.free) : null;
+                  const _pdfNext  = _ldNext ? (_tier === 'ULTRA' ? _ldNext.pdf.ultra  : _tier === 'BASIC' ? _ldNext.pdf.basic  : _ldNext.pdf.free) : null;
+                  const _conNext  = _ldNext ? (_tier === 'ULTRA' ? _ldNext.concept.ultra : _tier === 'BASIC' ? _ldNext.concept.basic : 0) : null;
+                  const _wrtCrCost  = settings?.htmlUnlockCost ?? 5;
+                  const _vidCrCost  = settings?.defaultVideoCost ?? 10;
+                  const _pdfCrCost  = settings?.defaultPdfCost ?? 5;
 
                   return (
                     <>
-                      {/* 3 Tier Selector Buttons */}
+                      {/* Tier Selector */}
                       <div className="flex gap-1.5">
                         {(['FREE', 'BASIC', 'ULTRA'] as const).map(t => {
                           const isActive = _tier === t;
@@ -17226,7 +17384,7 @@ RULES:
                           const lbl = t === 'ULTRA' ? '⚡ Ultra' : t === 'BASIC' ? '🔵 Basic' : '🆓 Free';
                           return (
                             <button key={t} onClick={() => setScoreDailyTier(t === scoreDailyTier ? null : t)}
-                              className="flex-1 py-2 rounded-xl text-[10px] font-black transition-all flex flex-col items-center gap-0.5"
+                              className="flex-1 py-2 rounded-xl text-[10px] font-black flex flex-col items-center gap-0.5"
                               style={{ background: isActive ? c + '28' : 'rgba(255,255,255,0.04)', border: `1px solid ${isActive ? c + '60' : 'rgba(255,255,255,0.08)'}`, color: isActive ? c : '#64748b' }}>
                               <span>{lbl}</span>
                               {isMe && <span style={{ fontSize: '7px', fontWeight: 900, letterSpacing: '0.06em', opacity: 0.75 }}>MY PLAN</span>}
@@ -17235,63 +17393,99 @@ RULES:
                         })}
                       </div>
 
-                      {/* Section Header */}
-                      <div className="rounded-2xl px-4 py-3" style={{ background: `${lvl.color}12`, border: `1px solid ${lvl.color}30` }}>
-                        <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: lvl.color }}>📋 DAILY LIMITS — {_tier} — LEVEL {lvl.level}</p>
-                        <p className="text-[8px] text-slate-500 mt-0.5">Level badhne par ye limits badhengi · L9 pe Notes & TTS Unlimited</p>
-                      </div>
-
-                      {/* Table — 3 columns: Feature | Limit | Today Used */}
-                      <div className="rounded-2xl overflow-hidden border border-white/10">
-                        {/* Column headers */}
-                        <div className="grid border-b border-white/10" style={{ gridTemplateColumns: '2fr 1.3fr 1fr', background: 'rgba(255,255,255,0.04)' }}>
-                          <div className="px-2 py-2">
-                            <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">FEATURE</p>
-                          </div>
-                          <div className="px-1 py-2 flex items-center justify-center" style={{ background: _tierBg + '28' }}>
-                            <p className="text-[8px] font-black uppercase tracking-widest text-center" style={{ color: _tierColor }}>LIMIT</p>
-                          </div>
-                          <div className="px-1 py-2 flex items-center justify-center">
-                            <p className="text-[8px] font-black text-emerald-400 uppercase tracking-widest text-center">AJ USE</p>
-                          </div>
+                      {/* Header info strip */}
+                      <div className="rounded-xl px-3 py-2 flex items-center justify-between" style={{ background: `${lvl.color}12`, border: `1px solid ${lvl.color}25` }}>
+                        <div>
+                          <p className="text-[9px] font-black uppercase tracking-widest" style={{ color: lvl.color }}>Level {lvl.level} · {_tier} Limits</p>
+                          <p className="text-[7px] text-slate-500 mt-0.5">Level badhne pe limits badhti hain</p>
                         </div>
-
-                        {/* Data rows */}
-                        {_rows.map((row, idx) => {
-                          const limit = row[_tier.toLowerCase() as 'free' | 'basic' | 'ultra'];
-                          const todayVal = _todayVals[idx] ?? '—';
-                          return (
-                          <div key={idx} className="grid border-b border-white/5 last:border-0" style={{ gridTemplateColumns: '2fr 1.3fr 1fr', background: idx % 2 === 0 ? 'rgba(255,255,255,0.015)' : 'transparent' }}>
-                            {/* Feature label */}
-                            <div className="px-2 py-2.5 flex items-center gap-1.5">
-                              <span className="text-sm shrink-0">{row.icon}</span>
-                              <div>
-                                {row.label.split('\n').map((ln, i) => (
-                                  <p key={i} className={`leading-tight ${i === 0 ? 'text-[9px] font-black text-slate-200' : 'text-[8px] font-bold text-slate-400'}`}>{ln}</p>
-                                ))}
-                                {row.sub && <p className="text-[7px] text-slate-600 mt-0.5">{row.sub}</p>}
-                              </div>
+                        {/* Legend */}
+                        <div className="flex items-center gap-1.5">
+                          {[['#22c55e','0%'], ['#3b82f6','25%'], ['#eab308','50%'], ['#f97316','75%'], ['#ef4444','100%']].map(([c,l]) => (
+                            <div key={l} className="flex flex-col items-center gap-0.5">
+                              <div className="w-2 h-2 rounded-full" style={{ background: c as string }} />
+                              <p className="text-[5px] font-bold text-slate-600">{l}</p>
                             </div>
-                            {/* Limit for selected tier */}
-                            <div className="px-1 py-2.5 flex flex-col items-center justify-center" style={{ background: _tierBg + '10' }}>
-                              <p className="text-[8px] font-black text-center leading-tight" style={{ color: _tierColor }}>{limit}</p>
-                              {row.freeSub && _tier === 'FREE' && idx === 0 && <p className="text-[7px] text-slate-600 mt-0.5 text-center">{row.freeSub}</p>}
-                            </div>
-                            {/* Today Used */}
-                            <div className="px-1 py-2.5 flex items-center justify-center">
-                              <p className="text-[8px] font-black text-center leading-tight text-emerald-400">{todayVal}</p>
-                            </div>
-                          </div>
-                          );
-                        })}
+                          ))}
+                        </div>
                       </div>
 
-                      {/* Upgrade nudge for free users */}
+                      {/* Usage note — only when own tier */}
+                      {_isOwnTier && (
+                        <p className="text-[8px] text-slate-500 text-center -mt-1">
+                          📊 Aaj ki usage dikh rahi hai · Bar rang badlega usage ke saath
+                        </p>
+                      )}
+                      {!_isOwnTier && (
+                        <p className="text-[8px] text-amber-500/70 text-center -mt-1">
+                          👁 Preview mode — {_tier} plan ki limits dikh rahi hain
+                        </p>
+                      )}
+
+                      {/* Feature cards */}
+                      <div className="space-y-1.5">
+
+                        {/* ── FREE features (green) ── */}
+                        {_renderCard('❓', 'MCQ Practice', _mcqLim, _mcqUsed, false, 'free', _mcqNext, true)}
+                        {_renderCard('📥', 'HTML Downloads', _dlLim, _dlUsed, false, 'free', _dlNext, true)}
+
+                        {/* Write Mode Free: green if plan has free quota, else credit/locked */}
+                        {_wrtLim > 0
+                          ? _renderCard('✍️', 'Write Mode (Free)', _wrtLim, _writeUsed, false, 'free', _wrtNext, true)
+                          : _tier === 'FREE'
+                            ? _renderCard('✍️', 'Write Mode (Free)', null, 0, false, 'locked', null, false)
+                            : _renderCard('✍️', 'Write Mode (Free)', null, 0, false, 'credit', null, false, _wrtCrCost)}
+
+                        {/* Notes Reading */}
+                        {_isUnlimNotes
+                          ? _renderCard('📖', 'Notes Reading', null, 0, true, 'free', null, false)
+                          : _renderCard('📖', 'Notes Reading',
+                              _tier === 'ULTRA' ? _ld.notes.ultra : _tier === 'BASIC' ? _ld.notes.basic : _ld.notes.free,
+                              0, false, 'free', null, false)}
+
+                        {/* Audio / TTS */}
+                        {_isUnlimNotes
+                          ? _renderCard('🎧', 'Audio / TTS', null, 0, true, 'free', null, false)
+                          : _renderCard('🎧', 'Audio / TTS',
+                              _tier === 'ULTRA' ? _ld.tts.ultra : _tier === 'BASIC' ? _ld.tts.basic : _ld.tts.free,
+                              0, false, 'free', null, false)}
+
+                        {/* ── CREDIT features (blue) ── */}
+                        {/* Video Lectures */}
+                        {_vidLim > 0
+                          ? _renderCard('🎬', 'Video Lectures', _vidLim, 0, false, 'free', _vidNext, false)
+                          : _renderCard('🎬', 'Video Lectures', null, 0, false, 'credit', null, false, _vidCrCost)}
+
+                        {/* PDF / Notes Access */}
+                        {_pdfLim > 0
+                          ? _renderCard('📄', 'PDF / Notes Access', _pdfLim, 0, false, 'free', _pdfNext, false)
+                          : _renderCard('📄', 'PDF / Notes Access', null, 0, false, 'credit', null, false, _pdfCrCost)}
+
+                        {/* Concept Notes: credit if plan has it, locked if FREE */}
+                        {_conLim > 0
+                          ? _renderCard('💡', 'Concept Notes', _conLim, 0, false, 'free', _conNext, false)
+                          : _tier === 'FREE'
+                            ? _renderCard('💡', 'Concept Notes', null, 0, false, 'locked', null, false)
+                            : _renderCard('💡', 'Concept Notes', null, 0, false, 'credit', null, false, _wrtCrCost)}
+
+                        {/* Retention Notes: locked on FREE, credit on BASIC/ULTRA */}
+                        {_retLim > 0
+                          ? _renderCard('🔁', 'Retention Notes', _retLim, 0, false, 'free', null, false)
+                          : _tier === 'FREE'
+                            ? _renderCard('🔁', 'Retention Notes', null, 0, false, 'locked', null, false)
+                            : _renderCard('🔁', 'Retention Notes', null, 0, false, 'credit', null, false, _wrtCrCost)}
+
+                        {/* Write (Credits) — always credit (blue) */}
+                        {_renderCard('✏️', 'Write Mode (Credits)', _creditMax, _paidWriteUsed, false, 'credit', null, true, _wrtCrCost)}
+
+                      </div>
+
+                      {/* Upgrade nudge */}
                       {_tier === 'FREE' && (
-                        <div className="rounded-2xl px-4 py-3 flex items-center gap-3" style={{ background: 'linear-gradient(135deg, #7c3aed18, #4f46e518)', border: '1px solid #7c3aed30' }}>
-                          <span className="text-lg">⚡</span>
+                        <div className="rounded-xl px-3 py-2.5 flex items-center gap-2.5" style={{ background: 'linear-gradient(135deg, #7c3aed18, #4f46e518)', border: '1px solid #7c3aed30' }}>
+                          <span className="text-base">⚡</span>
                           <div className="flex-1 min-w-0">
-                            <p className="text-[10px] font-black text-violet-300">Basic / Ultra pe upgrade karo</p>
+                            <p className="text-[10px] font-black text-violet-300">Basic / Ultra upgrade karo</p>
                             <p className="text-[8px] text-slate-400 mt-0.5">Zyada limits + higher levels pe aur badhengi</p>
                           </div>
                         </div>
@@ -17371,8 +17565,8 @@ RULES:
                     },
                     ...(_fl.level >= 6 ? [{
                       emoji: '💰',
-                      title: `Bonus Daily Login Credits: +${_bonusCredits} CR/day`,
-                      desc: `Roz login karne pe ${_bonusCredits} extra credits aapke plan bonus ke upar milenge — L6+ exclusive!`,
+                      title: `Sunday Streak Recovery Bonus: +${_bonusCredits} CR (Sunday first login pe)`,
+                      desc: `Sunday ke pehle login pe streak tootne par ${_bonusCredits} extra credits milenge — L6+ exclusive!`,
                       color: '#f59e0b',
                       active: true,
                     }] : []),
@@ -17679,8 +17873,8 @@ RULES:
           // ── L6+ new perks ──
           ...(l.level >= 6 ? [{
             emoji: '💰',
-            title: `Bonus Daily Login Credits: +${getLevelLimitBonus(l.level).bonusLoginCredits} CR/day`,
-            desc: `Roz login karne pe ${getLevelLimitBonus(l.level).bonusLoginCredits} extra credits aapke plan bonus ke upar milenge — L6+ exclusive perk!`,
+            title: `Sunday Streak Recovery Bonus: +${getLevelLimitBonus(l.level).bonusLoginCredits} CR`,
+            desc: `Sunday ke pehle login pe streak tootne par ${getLevelLimitBonus(l.level).bonusLoginCredits} extra credits milenge — L6+ exclusive perk!`,
             color: '#f59e0b',
             active: true,
           }] : []),
@@ -18165,7 +18359,7 @@ RULES:
                     </p>
                   </div>
                   {_lvlBonusModal.bonusLoginCredits > 0 && (
-                    <span className="shrink-0 text-[9px] font-black px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">+{_lvlBonusModal.bonusLoginCredits} CR/day</span>
+                    <span className="shrink-0 text-[9px] font-black px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 border border-amber-200">+{_lvlBonusModal.bonusLoginCredits} CR/Sunday</span>
                   )}
                 </div>
               )}
