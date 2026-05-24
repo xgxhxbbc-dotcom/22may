@@ -7,6 +7,7 @@ interface Props {
   user: User;
   settings?: SystemSettings;
   onUserUpdate: (user: User) => void;
+  renderEarnContent?: React.ReactNode;
 }
 
 const DEFAULT_PACKAGES: CreditPackage[] = [
@@ -19,8 +20,8 @@ const DEFAULT_PACKAGES: CreditPackage[] = [
   { id: 'pkg-7', name: '10000 Credits', credits: 10000, price: 1000 }
 ];
 
-export const Store: React.FC<Props> = ({ user, settings }) => {
-  const [tierType, setTierType] = useState<'BASIC' | 'ULTRA'>('BASIC');
+export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) => {
+  const [tierType, setTierType] = useState<'BASIC' | 'ULTRA' | 'EARN'>('BASIC');
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
 
   const packages = settings?.packages || DEFAULT_PACKAGES;
@@ -232,26 +233,49 @@ export const Store: React.FC<Props> = ({ user, settings }) => {
         <div className="bg-white/5 p-1 rounded-2xl border border-white/8 flex gap-1 mb-6">
           <button
             onClick={() => setTierType('BASIC')}
-            className={`flex-1 py-3 rounded-xl text-sm font-black transition-all flex items-center justify-center gap-2 ${
+            className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
               tierType === 'BASIC'
                 ? 'bg-gradient-to-r from-cyan-500 to-sky-500 text-white shadow-lg shadow-cyan-500/25'
                 : 'text-slate-500 hover:text-slate-300'
             }`}
           >
-            <Star size={14} /> Basic PRO
+            <Star size={12} /> Basic PRO
           </button>
           <button
             onClick={() => setTierType('ULTRA')}
-            className={`flex-1 py-3 rounded-xl text-sm font-black transition-all flex items-center justify-center gap-2 ${
+            className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
               tierType === 'ULTRA'
                 ? 'bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-lg shadow-purple-500/25'
                 : 'text-slate-500 hover:text-slate-300'
             }`}
           >
-            <Zap size={14} /> Ultra MAX
+            <Zap size={12} /> Ultra MAX
+          </button>
+          <button
+            onClick={() => setTierType('EARN')}
+            className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
+              tierType === 'EARN'
+                ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/25'
+                : 'text-slate-500 hover:text-slate-300'
+            }`}
+          >
+            🎰 Earn
           </button>
         </div>
 
+        {/* EARN CONTENT */}
+        {tierType === 'EARN' && (
+          <div className="animate-in fade-in duration-200">
+            {renderEarnContent ?? (
+              <div className="text-center py-12 text-slate-500 font-bold">
+                <p className="text-2xl mb-2">🎰</p>
+                <p>Earn content loading...</p>
+              </div>
+            )}
+          </div>
+        )}
+
+        {tierType !== 'EARN' && (<>
         {/* SPECIAL DISCOUNT EVENT BANNER */}
         {showEventBanner && (
           <div className={`mb-5 p-4 rounded-2xl border animate-in fade-in ${
@@ -478,62 +502,7 @@ export const Store: React.FC<Props> = ({ user, settings }) => {
             </div>
           ))}
         </div>
-
-        {/* DIVIDER */}
-        <div className="flex items-center gap-3 mb-6">
-          <div className="flex-1 h-px bg-white/5" />
-          <span className="text-[11px] text-slate-600 font-bold uppercase tracking-widest">Top-up Coins</span>
-          <div className="flex-1 h-px bg-white/5" />
-        </div>
-
-        {/* COIN STORE */}
-        <div className="grid grid-cols-3 gap-2.5 mb-4">
-          {packages.slice(0, 6).map(pkg => {
-            let finalPrice = pkg.price;
-            let creditDiscount = 0;
-            if (activeEvent && event?.discountPercent) creditDiscount += event.discountPercent;
-            if (isSubscribed) creditDiscount += 5;
-            if (user.storeDiscount) creditDiscount += user.storeDiscount;
-            if (scoreDiscount > 0) creditDiscount += scoreDiscount;
-            if (creditDiscount > 0) {
-              if (creditDiscount > 100) creditDiscount = 100;
-              finalPrice = Math.round(pkg.price * (1 - creditDiscount / 100));
-            }
-            const bonusConfig = (settings as any)?.coinPurchaseBonus;
-            let extraCredits = 0;
-            if (bonusConfig?.active && pkg.price >= (bonusConfig.minAmount || 0)) {
-              extraCredits = Math.floor(pkg.credits * (bonusConfig.percent / 100));
-            }
-            const totalCredits = pkg.credits + extraCredits;
-            const isDiscounted = finalPrice < pkg.price;
-
-            return (
-              <button
-                key={pkg.id}
-                onClick={() => initiatePurchase({ ...pkg, price: finalPrice, credits: totalCredits })}
-                className="bg-[#111] border border-slate-800 p-3 rounded-2xl hover:bg-[#1a1a1a] hover:border-amber-500/30 transition-all text-center group relative overflow-hidden"
-              >
-                {extraCredits > 0 && (
-                  <div className="absolute top-0 right-0 bg-amber-500 text-black text-[7px] font-black px-1.5 py-0.5 rounded-bl-xl">
-                    +{extraCredits}
-                  </div>
-                )}
-                <div className="text-amber-400 text-lg mb-0.5">🪙</div>
-                <p className="text-white font-black text-sm leading-none">{totalCredits.toLocaleString('en-IN')}</p>
-                <p className="text-[10px] mt-1.5 font-bold">
-                  {isDiscounted ? (
-                    <>
-                      <span className="text-slate-600 line-through mr-1">₹{pkg.price}</span>
-                      <span className="text-emerald-400">₹{finalPrice}</span>
-                    </>
-                  ) : (
-                    <span className="text-slate-400">₹{pkg.price}</span>
-                  )}
-                </p>
-              </button>
-            );
-          })}
-        </div>
+        </>)}
 
       </div>
     </div>

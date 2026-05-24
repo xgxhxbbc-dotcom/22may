@@ -14,6 +14,7 @@ interface Props {
     onNavigate?: (path: string) => void;
     onToggleLayoutEdit?: () => void;
     isLayoutEditing?: boolean;
+    onOpenGuide?: () => void;
 }
 
 // Icon Mapper

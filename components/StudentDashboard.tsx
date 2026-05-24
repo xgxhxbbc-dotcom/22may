@@ -864,6 +864,16 @@ export const StudentDashboard: React.FC<Props> = ({
       const correct = (parseInt(localStorage.getItem(correctKey) || '0')) + (isCorrect ? 1 : 0);
       localStorage.setItem(countKey, total.toString());
       localStorage.setItem(correctKey, correct.toString());
+      // ── Free limit notification: show count after each MCQ for free users ──
+      if (!freshUser.isPremium) {
+        const mcqLim = getEffectiveDailyLimit('mcq', getLevelInfo(freshUser.totalScore || 0).level, 'FREE', settings);
+        const left = Math.max(0, mcqLim - total);
+        if (left <= 10 && left > 0) {
+          showAlert(`📊 Daily Free MCQ Limit: ${mcqLim}-${total}=${left} remaining`, 'INFO');
+        } else if (left === 0) {
+          showAlert(`🚫 Daily Free MCQ Limit khatam! (${mcqLim}/${mcqLim}) — Kal dobara milega.`, 'INFO');
+        }
+      }
       // ── Score earning per correct MCQ (daily limit 200 pts) ──────────────
       if (isCorrect) {
         const boost = getActiveBoost(freshUser);
@@ -1426,6 +1436,7 @@ export const StudentDashboard: React.FC<Props> = ({
   };
   const [showDotsMenu, setShowDotsMenu] = useState(false);
   const [showScorePanel, setShowScorePanel] = useState(false);
+  const [scorePanelTab, setScorePanelTab] = useState<'LEVEL' | 'DAILY' | 'FEATURES'>('LEVEL');
   const [ttsProgressPercent, setTtsProgressPercent] = useState(0);
   const [ttsSessionKey, setTtsSessionKey] = useState<string | null>(null);
   const [ttsScoreSessionKey, setTtsScoreSessionKey] = useState<string | null>(null);
@@ -1437,7 +1448,7 @@ export const StudentDashboard: React.FC<Props> = ({
   const [showLoginHistory, setShowLoginHistory] = useState(false);
   const [showContentNewSheet, setShowContentNewSheet] = useState(false);
   const [showCreditsMini, setShowCreditsMini] = useState(false);
-  const [storeSubTab, setStoreSubTab] = useState<'STORE' | 'EARN'>('STORE');
+  const [storeSubTab, setStoreSubTab] = useState<'STORE' | 'CREDITS'>('STORE');
   const [inboxTab, setInboxTab] = useState<'MESSAGES' | 'UPDATES' | 'REWARDS' | 'HISTORY' | 'RULES'>('UPDATES');
   const [rewardSubTab, setRewardSubTab] = useState<'EARNED' | 'RULES' | 'HISTORY'>('EARNED');
   const [rewardHistorySeenCount, setRewardHistorySeenCount] = useState<number>(() => {
@@ -3310,14 +3321,66 @@ export const StudentDashboard: React.FC<Props> = ({
     }
   }, [user.id]);
 
-  // === STORE VISIT COUNT — auto-track whenever Store tab opens ===
+  // === WEEKLY LEVEL BONUS MAILBOX (L9/10/11) ===
+  useEffect(() => {
+    if (!user?.id) return;
+    const lvlForBonus = getLevelInfo(user.totalScore || 0).level;
+    if (lvlForBonus < 9) return;
+    const bonusMap: Record<number, number> = { 9: 500, 10: 700, 11: 1000 };
+    const bonusAmt = bonusMap[Math.min(lvlForBonus, 11)] ?? 500;
+    const weekStart = new Date();
+    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
+    const weekKey = weekStart.toISOString().split('T')[0];
+    const sentKey = `nst_weekly_lvl_bonus_${user.id}_${weekKey}`;
+    if (localStorage.getItem(sentKey)) return;
+    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
+    const bonusMsg: any = {
+      id: `wlvlbonus-${user.id}-${weekKey}`,
+      text: `🎁 Level ${lvlForBonus} Weekly Bonus!\n\nAapke level ki taraf se is hafte ka special reward aaya hai!\n\n💰 ${bonusAmt} Credits — 7 din mein expire ho jayenge\n\nYe credits Store, MCQ unlock, sabhi jagah use ho sakte hain!\n\nNeeche "Claim Karo" dabao.`,
+      date: new Date().toISOString(),
+      read: false,
+      type: 'GIFT',
+      gift: { type: 'CREDITS', value: bonusAmt },
+      expiresAt,
+      isClaimed: false,
+    };
+    const latestUser = (window as any).__dashUserRef?.current ?? user;
+    handleUserUpdate({ ...latestUser, inbox: [bonusMsg, ...(latestUser.inbox || [])] });
+    localStorage.setItem(sentKey, '1');
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user?.id, user?.totalScore]);
+
+  // === STORE VISIT → INSTANT DISCOUNT (1 visit=5%, 5 visits=10%, 1hr expiry) ===
   useEffect(() => {
     if (activeTab !== 'STORE') return;
     if (!user?.id) return;
     const todayStr = new Date().toISOString().split('T')[0];
     const key = `nst_store_visits_${user.id}_${todayStr}`;
-    try { localStorage.setItem(key, String(parseInt(localStorage.getItem(key) || '0', 10) + 1)); } catch {}
+    const discKey = `nst_sv_disc_${user.id}`;
+    try {
+      const visits = parseInt(localStorage.getItem(key) || '0', 10) + 1;
+      localStorage.setItem(key, String(visits));
+      const existing = JSON.parse(localStorage.getItem(discKey) || 'null');
+      const now = Date.now();
+      if (!existing || new Date(existing.expiresAt).getTime() < now) {
+        // New discount: 5% for 1 hour
+        const newDisc = { percent: 5, expiresAt: new Date(now + 60 * 60 * 1000).toISOString(), visits };
+        localStorage.setItem(discKey, JSON.stringify(newDisc));
+        showAlert('🎉 Store Visit Discount! 5% OFF — 1 ghante ke liye active!', 'SUCCESS', 'Discount Active!');
+      } else if (existing.percent < 10 && visits >= 5) {
+        // Upgrade to 10% after 5 visits
+        const upgraded = { ...existing, percent: 10, visits };
+        localStorage.setItem(discKey, JSON.stringify(upgraded));
+        showAlert('🔥 5 Store Visits! Discount 10% OFF ho gaya — 1 ghante tak valid!', 'SUCCESS', 'Discount Upgraded!');
+      } else {
+        const updated = { ...existing, visits };
+        localStorage.setItem(discKey, JSON.stringify(updated));
+      }
+    } catch {}
   }, [activeTab, user?.id]);
+
+  // === STORE VISIT COUNT — kept for legacy usage tracking ===
+  // (visit count is now tracked inside the discount useEffect above)
 
   // === STORE VISIT → DISCOUNT COUPON CODE INBOX ===
   // Jab user Store visit kare aur discount event active ho aur user subscribed nahi ho
@@ -3888,7 +3951,7 @@ export const StudentDashboard: React.FC<Props> = ({
   // Countdown ticker — updates every 30s when inbox is open
   useEffect(() => {
     if (!showInbox) return;
-    const tid = setInterval(() => setNowTick(Date.now()), 30000);
+    const tid = setInterval(() => setNowTick(Date.now()), 1000);
     return () => clearInterval(tid);
   }, [showInbox]);
 
@@ -7634,57 +7697,185 @@ export const StudentDashboard: React.FC<Props> = ({
             </div>
           </div>
 
-          {/* Store/Earn Sub-tabs */}
+          {/* Store/Credits Sub-tabs */}
           <div className="flex gap-2 px-4 pt-3 pb-2">
             <button
               onClick={() => setStoreSubTab('STORE')}
               className={`flex-1 py-2.5 rounded-xl text-sm font-black transition-all ${storeSubTab === 'STORE' ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-500/30' : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'}`}
             >
-              🛒 Store
+              👑 Plans
             </button>
             <button
-              onClick={() => setStoreSubTab('EARN')}
-              className={`flex-1 py-2.5 rounded-xl text-sm font-black transition-all ${storeSubTab === 'EARN' ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/30' : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'}`}
+              onClick={() => setStoreSubTab('CREDITS')}
+              className={`flex-1 py-2.5 rounded-xl text-sm font-black transition-all ${storeSubTab === 'CREDITS' ? 'bg-amber-500 text-white shadow-sm shadow-amber-500/30' : 'bg-white/5 text-slate-400 border border-white/10 hover:bg-white/10'}`}
             >
-              🎰 Earn
+              🪙 Credits
             </button>
           </div>
-          {storeSubTab === 'STORE' && (
-            <Store
-              user={user}
-              settings={settings}
-              onUserUpdate={handleUserUpdate}
-            />
-          )}
-          {storeSubTab === 'EARN' && (
-            <div className="px-0 pb-6">
-              <div className="flex items-center gap-2 px-4 mb-3 mt-2">
-                <span className="inline-block h-2.5 w-2.5 rounded-full bg-gradient-to-r from-amber-400 to-orange-500" />
-                <h3 className="text-sm font-black text-slate-800 uppercase tracking-widest">
-                  {(settings?.spinGameTypes?.length || 0) > 1 ? 'Earn Coins — Games' : 'Earn Coins — Spin the Wheel'}
-                </h3>
-              </div>
-              {isGameEnabled ? (
-                user.isGameBanned ? (
-                  <div className="mx-4 text-center py-10 bg-red-50 rounded-2xl border border-red-100">
-                    <Ban size={36} className="mx-auto text-red-500 mb-3" />
-                    <p className="text-sm font-bold text-red-700">Admin has disabled the game for your account.</p>
+          {storeSubTab === 'STORE' && (() => {
+            const _discKey = `nst_sv_disc_${user.id}`;
+            let _svDisc: { percent: number; expiresAt: string; visits: number } | null = null;
+            try { _svDisc = JSON.parse(localStorage.getItem(_discKey) || 'null'); } catch {}
+            const _discActive = _svDisc && new Date(_svDisc.expiresAt).getTime() > nowTick;
+            const _discMsLeft = _discActive ? Math.max(0, new Date(_svDisc!.expiresAt).getTime() - nowTick) : 0;
+            const _discHH = Math.floor(_discMsLeft / 3600000).toString().padStart(2, '0');
+            const _discMM = Math.floor((_discMsLeft % 3600000) / 60000).toString().padStart(2, '0');
+            const _discSS = Math.floor((_discMsLeft % 60000) / 1000).toString().padStart(2, '0');
+            return (
+              <>
+                {_discActive && (
+                  <div className="mx-4 mt-2 mb-1 px-4 py-3 rounded-2xl flex items-center gap-3" style={{ background: 'linear-gradient(90deg, rgba(16,185,129,0.15), rgba(5,150,105,0.1))', border: '1.5px solid rgba(16,185,129,0.4)' }}>
+                    <span className="text-2xl">🏷️</span>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-black text-emerald-400 leading-tight">{_svDisc!.percent}% Store Visit Discount Active!</p>
+                      <p className="text-[10px] text-emerald-600 mt-0.5">Visit {_svDisc!.visits}/5 — {_svDisc!.visits >= 5 ? 'Max discount!' : `${5 - _svDisc!.visits} more visits ke liye 10% off milega`}</p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-xs font-black text-white font-mono">{_discHH}:{_discMM}:{_discSS}</p>
+                      <p className="text-[8px] text-slate-500">Expires in</p>
+                    </div>
                   </div>
-                ) : (
-                  <SpinWheel
-                    user={user}
-                    onUpdateUser={handleUserUpdate}
-                    settings={settings}
-                  />
-                )
-              ) : (
-                <div className="mx-4 text-center py-14 bg-slate-50 rounded-2xl border border-slate-100">
-                  <Gamepad2 size={36} className="mx-auto text-slate-400 mb-3" />
-                  <p className="text-sm font-bold text-slate-600">Game is currently disabled by admin.</p>
+                )}
+                {!_discActive && _svDisc && (
+                  <div className="mx-4 mt-2 mb-1 px-3 py-2 rounded-xl flex items-center gap-2" style={{ background: 'rgba(100,116,139,0.1)', border: '1px solid rgba(100,116,139,0.2)' }}>
+                    <span>⏰</span>
+                    <p className="text-[10px] font-bold text-slate-500">Store visit discount khatam ho gaya — dobara visit karo!</p>
+                  </div>
+                )}
+                <Store
+                  user={user}
+                  settings={settings}
+                  onUserUpdate={handleUserUpdate}
+                  renderEarnContent={
+                    isGameEnabled
+                      ? user.isGameBanned
+                        ? (
+                          <div className="mx-4 text-center py-10 bg-red-950/40 rounded-2xl border border-red-800/40">
+                            <Ban size={36} className="mx-auto text-red-500 mb-3" />
+                            <p className="text-sm font-bold text-red-400">Admin ne game band kar diya hai.</p>
+                          </div>
+                        )
+                        : (
+                          <SpinWheel
+                            user={user}
+                            onUpdateUser={handleUserUpdate}
+                            settings={settings}
+                          />
+                        )
+                      : (
+                        <div className="mx-4 text-center py-14 bg-black/40 rounded-2xl border border-white/10">
+                          <Gamepad2 size={36} className="mx-auto text-slate-500 mb-3" />
+                          <p className="text-sm font-bold text-slate-500">Game abhi disabled hai admin ke taraf se.</p>
+                        </div>
+                      )
+                  }
+                />
+              </>
+            );
+          })()}
+          {storeSubTab === 'CREDITS' && (() => {
+            const packages = settings?.packages || [
+              { id: 'pkg-1', credits: 100, price: 10 },
+              { id: 'pkg-2', credits: 200, price: 20 },
+              { id: 'pkg-3', credits: 500, price: 50 },
+              { id: 'pkg-4', credits: 1000, price: 100 },
+              { id: 'pkg-5', credits: 2000, price: 200 },
+              { id: 'pkg-6', credits: 5000, price: 500 },
+            ];
+            const event = settings?.specialDiscountEvent;
+            const isEventActive = (() => {
+              if (!event?.enabled) return false;
+              const now = Date.now();
+              const startsAt = event.startsAt ? new Date(event.startsAt).getTime() : 0;
+              const endsAt = event.endsAt ? new Date(event.endsAt).getTime() : Infinity;
+              if (startsAt === endsAt && now >= startsAt) return true;
+              return now >= startsAt && now < endsAt;
+            })();
+            const isSubscribed = user.isPremium && user.subscriptionEndDate && new Date(user.subscriptionEndDate) > new Date();
+            const totalScore = user.totalScore || 0;
+            const scoreDiscount = (() => {
+              const l = getLevelInfo ? getLevelInfo(totalScore) : null;
+              return (l as any)?.discount ?? 0;
+            })();
+            return (
+              <div className="animate-in fade-in duration-200 pb-28 bg-black min-h-screen">
+                {/* Header */}
+                <div className="px-4 pt-5 pb-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="w-1 h-5 rounded-full bg-gradient-to-b from-amber-400 to-orange-500" />
+                    <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.15em]">Top-up Coins</p>
+                  </div>
+                  <p className="text-[10px] text-slate-600 ml-3">Credits kharido — MCQ unlock, features use karo</p>
                 </div>
-              )}
-            </div>
-          )}
+                {/* Current Balance */}
+                <div className="mx-4 mb-4 px-4 py-3 rounded-2xl flex items-center gap-3" style={{ background: 'linear-gradient(90deg, rgba(245,158,11,0.12), rgba(234,88,12,0.08))', border: '1.5px solid rgba(245,158,11,0.25)' }}>
+                  <span className="text-2xl">🪙</span>
+                  <div>
+                    <p className="text-xs text-slate-500 font-bold">Aapke paas hain</p>
+                    <p className="text-lg font-black text-amber-300">{((user.credits ?? 0) + (user.bonusCredits ?? 0)).toLocaleString('en-IN')} <span className="text-xs text-amber-600">CR</span></p>
+                  </div>
+                  {(user.bonusCredits ?? 0) > 0 && (
+                    <div className="ml-auto text-right">
+                      <p className="text-[9px] text-emerald-500 font-black">+{user.bonusCredits} Bonus</p>
+                      <p className="text-[8px] text-slate-600">included</p>
+                    </div>
+                  )}
+                </div>
+                {/* Coin Packages */}
+                <div className="px-4 grid grid-cols-3 gap-2.5 mb-4">
+                  {packages.slice(0, 6).map((pkg: any) => {
+                    let finalPrice = pkg.price;
+                    let creditDiscount = 0;
+                    if (isEventActive && event?.discountPercent) creditDiscount += event.discountPercent;
+                    if (isSubscribed) creditDiscount += 5;
+                    if (user.storeDiscount) creditDiscount += user.storeDiscount;
+                    if (scoreDiscount > 0) creditDiscount += scoreDiscount;
+                    if (creditDiscount > 100) creditDiscount = 100;
+                    if (creditDiscount > 0) finalPrice = Math.round(pkg.price * (1 - creditDiscount / 100));
+                    const bonusConfig = (settings as any)?.coinPurchaseBonus;
+                    let extraCredits = 0;
+                    if (bonusConfig?.active && pkg.price >= (bonusConfig.minAmount || 0)) {
+                      extraCredits = Math.floor(pkg.credits * (bonusConfig.percent / 100));
+                    }
+                    const totalCredits = pkg.credits + extraCredits;
+                    const isDiscounted = finalPrice < pkg.price;
+                    return (
+                      <button
+                        key={pkg.id}
+                        onClick={() => {
+                          const message = `Hello Admin, I want to buy:\n\nItem: ${totalCredits} Credits\nPrice: ₹${finalPrice}\nUser ID: ${user.id}\nDetails: ${totalCredits} Credits Top-up\n\nPlease share payment details.`;
+                          const payNum = (settings?.paymentNumbers || [{ number: '8227070298' }])[0];
+                          window.open(`https://wa.me/91${payNum.number}?text=${encodeURIComponent(message)}`, '_blank');
+                        }}
+                        className="bg-[#111] border border-slate-800 p-3 rounded-2xl hover:bg-[#1a1a1a] hover:border-amber-500/30 transition-all text-center group relative overflow-hidden"
+                      >
+                        {extraCredits > 0 && (
+                          <div className="absolute top-0 right-0 bg-amber-500 text-black text-[7px] font-black px-1.5 py-0.5 rounded-bl-xl">+{extraCredits}</div>
+                        )}
+                        <div className="text-amber-400 text-lg mb-0.5">🪙</div>
+                        <p className="text-white font-black text-sm leading-none">{totalCredits.toLocaleString('en-IN')}</p>
+                        <p className="text-[10px] mt-1.5 font-bold">
+                          {isDiscounted ? (
+                            <><span className="text-slate-600 line-through mr-1">₹{pkg.price}</span><span className="text-emerald-400">₹{finalPrice}</span></>
+                          ) : (
+                            <span className="text-slate-400">₹{pkg.price}</span>
+                          )}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+                {/* Earn coins CTA */}
+                <div className="mx-4 mt-2 px-4 py-3 rounded-2xl flex items-center gap-3" style={{ background: 'rgba(245,158,11,0.07)', border: '1px dashed rgba(245,158,11,0.25)' }}>
+                  <span className="text-xl">🎰</span>
+                  <div className="flex-1">
+                    <p className="text-xs font-black text-amber-400">Free mein bhi kama sakte ho!</p>
+                    <p className="text-[10px] text-slate-600">Plans tab → Earn pe jaake Spin karo</p>
+                  </div>
+                </div>
+              </div>
+            );
+          })()}
         </div>
       );
     }
@@ -7773,9 +7964,10 @@ export const StudentDashboard: React.FC<Props> = ({
                 <div className="flex items-center gap-4 mb-4">
                   <div className="w-16 h-16 rounded-2xl flex items-center justify-center text-2xl font-black shrink-0 overflow-hidden shadow-lg"
                     style={{
-                      background: _aLvl.level >= 4 ? `${_aLvl.color}22` : user.subscriptionLevel === 'ULTRA' && user.isPremium ? 'rgba(88,28,135,0.6)' : user.subscriptionLevel === 'BASIC' && user.isPremium ? 'rgba(7,17,31,1)' : '#1e293b',
-                      border: `2px solid ${_aLvl.level >= 4 ? _aLvl.color + '60' : '#334155'}`,
-                      boxShadow: _aLvl.level >= 4 ? `0 0 18px ${_aLvl.glowColor}` : 'none',
+                      background: _aLvl.level >= 8 ? `${_aLvl.color}35` : _aLvl.level >= 4 ? `${_aLvl.color}22` : user.subscriptionLevel === 'ULTRA' && user.isPremium ? 'rgba(88,28,135,0.6)' : user.subscriptionLevel === 'BASIC' && user.isPremium ? 'rgba(7,17,31,1)' : '#1e293b',
+                      border: `${_aLvl.level >= 9 ? 3 : 2}px solid ${_aLvl.level >= 4 ? _aLvl.color + (_aLvl.level >= 9 ? 'cc' : _aLvl.level >= 8 ? '90' : '60') : '#334155'}`,
+                      boxShadow: _aLvl.level >= 11 ? `0 0 40px ${_aLvl.glowColor}, 0 0 80px ${_aLvl.glowColor}55, inset 0 0 20px ${_aLvl.color}20` : _aLvl.level >= 10 ? `0 0 30px ${_aLvl.glowColor}, 0 0 60px ${_aLvl.glowColor}44` : _aLvl.level >= 9 ? `0 0 24px ${_aLvl.glowColor}, 0 0 48px ${_aLvl.glowColor}33` : _aLvl.level >= 8 ? `0 0 22px ${_aLvl.glowColor}` : _aLvl.level >= 4 ? `0 0 18px ${_aLvl.glowColor}` : 'none',
+                      animation: _aLvl.level >= 10 ? 'topbar-glow-pulse 2s ease-in-out infinite' : 'none',
                     }}>
                     {settings?.appLogo
                       ? <img src={settings.appLogo} alt="logo" className="w-full h-full object-cover" />
@@ -7904,13 +8096,13 @@ export const StudentDashboard: React.FC<Props> = ({
                 {/* Stats row */}
                 <div className="grid grid-cols-3 gap-2 mb-3">
                   {[
-                    { val: ((user.credits ?? 0) + (user.bonusCredits ?? 0)).toLocaleString('en-IN'), label: (user.bonusCredits ?? 0) > 0 ? `Credits +🎁${user.bonusCredits}` : 'Credits', color: 'text-amber-400' },
-                    { val: user.streak > 0 ? `🔥 ${user.streak}` : '0', label: 'Streak', color: user.streak > 0 ? 'text-orange-400' : 'text-slate-500' },
-                    { val: user.createdAt && !isNaN(new Date(user.createdAt).getTime()) ? Math.floor((Date.now() - new Date(user.createdAt).getTime()) / (1000 * 60 * 60 * 24)) : 0, label: 'Days', color: 'text-slate-300' },
+                    { val: ((user.credits ?? 0) + (user.bonusCredits ?? 0)).toLocaleString('en-IN'), label: (user.bonusCredits ?? 0) > 0 ? `Credits +🎁${user.bonusCredits}` : 'Credits', color: 'text-amber-400', onClick: undefined },
+                    { val: user.streak > 0 ? `🔥 ${user.streak}` : '0', label: 'Streak', color: user.streak > 0 ? 'text-orange-400' : 'text-slate-500', onClick: () => setShowStreakPopup(true) },
+                    { val: user.createdAt && !isNaN(new Date(user.createdAt).getTime()) ? Math.floor((Date.now() - new Date(user.createdAt).getTime()) / (1000 * 60 * 60 * 24)) : 0, label: 'Days', color: 'text-slate-300', onClick: undefined },
                   ].map(s => (
-                    <div key={s.label} className="bg-white/4 rounded-xl py-2.5 px-2 text-center border border-white/6">
+                    <div key={s.label} onClick={s.onClick} className={`bg-white/4 rounded-xl py-2.5 px-2 text-center border border-white/6 ${s.onClick ? 'cursor-pointer active:scale-95 transition-transform hover:bg-white/8' : ''}`}>
                       <div className={`text-lg font-black leading-tight ${s.color}`}>{s.val}</div>
-                      <div className="text-[9px] font-bold text-slate-600 uppercase tracking-wide mt-0.5">{s.label}</div>
+                      <div className="text-[9px] font-bold text-slate-600 uppercase tracking-wide mt-0.5">{s.label}{s.onClick ? ' 👆' : ''}</div>
                     </div>
                   ))}
                 </div>
@@ -8011,18 +8203,6 @@ export const StudentDashboard: React.FC<Props> = ({
                 );
               })()}
 
-              {/* Daily Limits */}
-              <button onClick={() => { setLimitsViewPlan(_isUltraUser ? 'ULTRA' : _isBasicUser ? 'BASIC' : 'FREE'); setShowFeatureLimitsModal(true); }}
-                className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-white/4 active:bg-white/6 transition-colors border-b border-slate-800/80">
-                <div className="w-9 h-9 rounded-xl bg-emerald-500/15 flex items-center justify-center shrink-0">
-                  <BarChart2 size={16} className="text-emerald-400" />
-                </div>
-                <div className="flex-1 text-left min-w-0">
-                  <p className="text-sm font-bold text-white">Daily Limits & Usage</p>
-                  <p className="text-[11px] text-slate-500">MCQ · Notes · AI · Credits</p>
-                </div>
-                <ChevronRight size={14} className="text-slate-600 shrink-0" />
-              </button>
 
               {/* Leaderboard */}
               <button onClick={() => setShowLevelLeaderboard(true)}
@@ -8494,17 +8674,6 @@ export const StudentDashboard: React.FC<Props> = ({
                             {_dlHtmlLeft}/{_dlHtmlLimit} left
                           </span>
                         </div>
-                      </div>
-                      {/* Feature Limits & Daily Usage */}
-                      <div className="px-4 pt-1 pb-1">
-                        <button
-                          onClick={() => { setLimitsViewPlan(_isUltraUser ? 'ULTRA' : _isBasicUser ? 'BASIC' : 'FREE'); setShowFeatureLimitsModal(true); setShowDotsMenu(false); }}
-                          className="w-full flex items-center gap-2 p-2.5 rounded-xl bg-gradient-to-r from-emerald-50 to-teal-50 border border-emerald-200 text-emerald-700 hover:from-emerald-100 hover:to-teal-100 font-bold text-xs transition-all"
-                        >
-                          <span className="text-base">📊</span>
-                          <span className="flex-1 text-left">Daily Limits & Usage</span>
-                          <span className="text-[10px] text-emerald-400">→</span>
-                        </button>
                       </div>
                       {/* App Guide Link */}
                       <div className="px-4 pt-1 pb-1">
@@ -16860,16 +17029,317 @@ RULES:
         const nextLvl = getNextLevelInfo(totalScore);
         const progress = getLevelProgress(totalScore);
         return (
-          <div className="fixed inset-0 z-[9998] flex flex-col justify-end" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => setShowScorePanel(false)}>
+          <div className="fixed inset-0 z-[9998] flex flex-col justify-end" style={{ background: 'rgba(0,0,0,0.7)' }} onClick={() => { setShowScorePanel(false); setScorePanelTab('LEVEL'); }}>
             <div className="bg-[#0e0e0e] rounded-t-3xl max-h-[88vh] overflow-y-auto no-scrollbar w-full" onClick={e => e.stopPropagation()}>
               {/* Header */}
-              <div className="sticky top-0 bg-[#0e0e0e] pt-3 pb-2 px-5 flex items-center justify-between border-b border-white/6 z-10">
+              <div className="sticky top-0 bg-[#0e0e0e] pt-3 pb-2 px-5 z-10 border-b border-white/6">
                 <div className="w-10 h-1 bg-slate-700 rounded-full absolute left-1/2 -translate-x-1/2 top-1.5" />
-                <p className="text-sm font-black text-white mt-2">⚡ Activity Score</p>
-                <button onClick={() => setShowScorePanel(false)} className="w-7 h-7 flex items-center justify-center rounded-full bg-white/8 text-slate-400 mt-2">✕</button>
+                <div className="flex items-center justify-between mt-2 mb-2">
+                  <p className="text-sm font-black text-white">⚡ Activity Score</p>
+                  <button onClick={() => { setShowScorePanel(false); setScorePanelTab('LEVEL'); }} className="w-7 h-7 flex items-center justify-center rounded-full bg-white/8 text-slate-400">✕</button>
+                </div>
+                {/* Tab toggle — 3 tabs */}
+                <div className="flex gap-1.5">
+                  <button
+                    onClick={() => setScorePanelTab('LEVEL')}
+                    className={`flex-1 py-1.5 rounded-xl text-[10px] font-black transition-all ${scorePanelTab === 'LEVEL' ? 'bg-violet-600 text-white shadow-sm' : 'bg-white/6 text-slate-400 hover:bg-white/10'}`}
+                  >⚡ Level</button>
+                  <button
+                    onClick={() => setScorePanelTab('DAILY')}
+                    className={`flex-1 py-1.5 rounded-xl text-[10px] font-black transition-all ${scorePanelTab === 'DAILY' ? 'bg-emerald-600 text-white shadow-sm' : 'bg-white/6 text-slate-400 hover:bg-white/10'}`}
+                  >📊 Limits</button>
+                  <button
+                    onClick={() => setScorePanelTab('FEATURES')}
+                    className={`flex-1 py-1.5 rounded-xl text-[10px] font-black transition-all ${scorePanelTab === 'FEATURES' ? 'bg-sky-600 text-white shadow-sm' : 'bg-white/6 text-slate-400 hover:bg-white/10'}`}
+                  >🎯 Level System</button>
+                </div>
               </div>
 
               <div className="px-4 py-4 space-y-3">
+
+                {/* ── DAILY LIMITS TAB ── */}
+                {scorePanelTab === 'DAILY' && (() => {
+                  const _tier  = user.isPremium ? (user.subscriptionLevel === 'ULTRA' ? 'ULTRA' : 'BASIC') : 'FREE';
+                  const _ld = getLevelDailyLimitsWithOverride(lvl.level, settings) ?? getLevelDailyLimits(lvl.level);
+                  const _bonusBasic = _ld.bonusLoginCredits;
+                  const _bonusUltra = _bonusBasic > 0 ? _bonusBasic + 5 : 0;
+                  const _creditMax  = _ld.creditWriteMax;
+                  const _isUnlimNotes = _ld.notes.free >= UNLIMITED;
+
+                  type DLRow = { icon: string; label: string; sub?: string; free: string; freeSub?: string; basic: string; ultra: string };
+                  const _rows: DLRow[] = [
+                    {
+                      icon: '❓', label: 'MCQ\nPractice',
+                      free: `${_ld.mcq.free}/day`, freeSub: 'Hard block',
+                      basic: `${_ld.mcq.basic}/day`,
+                      ultra: `${_ld.mcq.ultra}/day`,
+                    },
+                    {
+                      icon: '🖼️', label: 'HTML\nDownloads',
+                      free: `${_ld.dl.free}/day`,
+                      basic: `${_ld.dl.basic}/day`,
+                      ultra: `${_ld.dl.ultra}/day`,
+                    },
+                    {
+                      icon: '✍️', label: 'Write Mode\n(Free)',
+                      free: '0 (credit only)',
+                      basic: `${_ld.write.basic}/day`,
+                      ultra: `${_ld.write.ultra}/day`,
+                    },
+                    {
+                      icon: '🎬', label: 'Video\nLectures',
+                      free: `${_ld.video.free}/day`,
+                      basic: `${_ld.video.basic}/day`,
+                      ultra: `${_ld.video.ultra}/day`,
+                    },
+                    {
+                      icon: '📄', label: 'PDF / Notes',
+                      free: `${_ld.pdf.free}/day`,
+                      basic: `${_ld.pdf.basic}/day`,
+                      ultra: `${_ld.pdf.ultra}/day`,
+                    },
+                    {
+                      icon: '📖', label: 'Notes\nReading', sub: _isUnlimNotes ? undefined : '∞ at L9',
+                      free: _isUnlimNotes ? '∞ Unlimited' : `${_ld.notes.free}/day`,
+                      basic: _isUnlimNotes ? '∞ Unlimited' : `${_ld.notes.basic}/day`,
+                      ultra: _isUnlimNotes ? '∞ Unlimited' : `${_ld.notes.ultra}/day`,
+                    },
+                    {
+                      icon: '🎧', label: 'Audio / TTS', sub: _isUnlimNotes ? undefined : '∞ at L9',
+                      free: _isUnlimNotes ? '∞ Unlimited' : `${_ld.tts.free}/day`,
+                      basic: _isUnlimNotes ? '∞ Unlimited' : `${_ld.tts.basic}/day`,
+                      ultra: _isUnlimNotes ? '∞ Unlimited' : `${_ld.tts.ultra}/day`,
+                    },
+                    {
+                      icon: '🪙', label: 'Login Bonus\nCR',
+                      free: '0 CR',
+                      basic: `+${_bonusBasic} CR`,
+                      ultra: `+${_bonusUltra} CR`,
+                    },
+                    {
+                      icon: '✏️', label: 'Write\n(Credits)', sub: '10 CR/unlock',
+                      free: `${_creditMax} max/day`,
+                      basic: `${_creditMax} max/day`,
+                      ultra: `${_creditMax} max/day`,
+                    },
+                  ];
+
+                  const _colStyle = (col: 'FREE'|'BASIC'|'ULTRA') => {
+                    const isMe = col === _tier;
+                    if (col === 'ULTRA') return { color: isMe ? '#a78bfa' : '#64748b', fontWeight: isMe ? 900 : 600, background: isMe ? '#7c3aed18' : 'transparent' };
+                    if (col === 'BASIC') return { color: isMe ? '#38bdf8' : '#64748b', fontWeight: isMe ? 900 : 600, background: isMe ? '#0ea5e918' : 'transparent' };
+                    return { color: isMe ? '#94a3b8' : '#475569', fontWeight: isMe ? 900 : 600, background: isMe ? '#47556918' : 'transparent' };
+                  };
+
+                  return (
+                    <>
+                      {/* Section Header */}
+                      <div className="rounded-2xl px-4 py-3" style={{ background: `${lvl.color}12`, border: `1px solid ${lvl.color}30` }}>
+                        <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: lvl.color }}>📋 DAILY LIMITS — LEVEL {lvl.level}</p>
+                        <p className="text-[8px] text-slate-500 mt-0.5">Level badhne par ye limits badhengi · L9 pe Notes & TTS Unlimited</p>
+                      </div>
+
+                      {/* Table */}
+                      <div className="rounded-2xl overflow-hidden border border-white/10">
+                        {/* Column headers */}
+                        <div className="grid border-b border-white/10" style={{ gridTemplateColumns: '2fr 1.2fr 1.2fr 1.2fr', background: 'rgba(255,255,255,0.04)' }}>
+                          <div className="px-2 py-2">
+                            <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">FEATURE</p>
+                          </div>
+                          {(['FREE','BASIC','ULTRA'] as const).map(col => {
+                            const isMe = col === _tier;
+                            const label = col === 'ULTRA' ? '⚡ ULTRA' : col === 'BASIC' ? '🔵 BASIC' : '🆓 FREE';
+                            const bg = isMe ? (col === 'ULTRA' ? '#7c3aed' : col === 'BASIC' ? '#0ea5e9' : '#475569') : 'transparent';
+                            const tc = isMe ? '#fff' : '#64748b';
+                            return (
+                              <div key={col} className="px-1 py-2 flex items-center justify-center" style={{ background: bg + (isMe ? '30' : '') }}>
+                                <p className="text-[8px] font-black uppercase tracking-widest text-center" style={{ color: tc }}>{label}</p>
+                              </div>
+                            );
+                          })}
+                        </div>
+
+                        {/* Data rows */}
+                        {_rows.map((row, idx) => (
+                          <div key={idx} className="grid border-b border-white/5 last:border-0" style={{ gridTemplateColumns: '2fr 1.2fr 1.2fr 1.2fr', background: idx % 2 === 0 ? 'rgba(255,255,255,0.015)' : 'transparent' }}>
+                            {/* Feature label */}
+                            <div className="px-2 py-2.5 flex items-center gap-1.5">
+                              <span className="text-sm shrink-0">{row.icon}</span>
+                              <div>
+                                {row.label.split('\n').map((ln, i) => (
+                                  <p key={i} className={`leading-tight ${i === 0 ? 'text-[9px] font-black text-slate-200' : 'text-[8px] font-bold text-slate-400'}`}>{ln}</p>
+                                ))}
+                                {row.sub && <p className="text-[7px] text-slate-600 mt-0.5">{row.sub}</p>}
+                              </div>
+                            </div>
+                            {/* FREE */}
+                            <div className="px-1 py-2.5 flex flex-col items-center justify-center" style={{ background: _tier === 'FREE' ? '#47556912' : 'transparent' }}>
+                              <p className="text-[8px] font-black text-center leading-tight" style={{ color: _tier === 'FREE' ? '#94a3b8' : '#475569' }}>{row.free}</p>
+                              {row.freeSub && <p className="text-[7px] text-slate-600 mt-0.5 text-center">{row.freeSub}</p>}
+                            </div>
+                            {/* BASIC */}
+                            <div className="px-1 py-2.5 flex items-center justify-center" style={{ background: _tier === 'BASIC' ? '#0ea5e912' : 'transparent' }}>
+                              <p className="text-[8px] font-black text-center leading-tight" style={{ color: _tier === 'BASIC' ? '#38bdf8' : '#475569' }}>{row.basic}</p>
+                            </div>
+                            {/* ULTRA */}
+                            <div className="px-1 py-2.5 flex items-center justify-center" style={{ background: _tier === 'ULTRA' ? '#7c3aed12' : 'transparent' }}>
+                              <p className="text-[8px] font-black text-center leading-tight" style={{ color: _tier === 'ULTRA' ? '#a78bfa' : '#475569' }}>{row.ultra}</p>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Upgrade nudge for free users */}
+                      {_tier === 'FREE' && (
+                        <div className="rounded-2xl px-4 py-3 flex items-center gap-3" style={{ background: 'linear-gradient(135deg, #7c3aed18, #4f46e518)', border: '1px solid #7c3aed30' }}>
+                          <span className="text-lg">⚡</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[10px] font-black text-violet-300">Basic / Ultra pe upgrade karo</p>
+                            <p className="text-[8px] text-slate-400 mt-0.5">Zyada limits + higher levels pe aur badhengi</p>
+                          </div>
+                        </div>
+                      )}
+                      <div className="h-4" />
+                    </>
+                  );
+                })()}
+
+                {/* ── FEATURES (LEVEL SYSTEM) TAB ── */}
+                {scorePanelTab === 'FEATURES' && (() => {
+                  const _fl = lvl;
+                  const animLabels = ['Koi nahi', 'Subtle shimmer ✨', 'Glow effect 🌟', 'Strong glow + sparks 💫', 'Legendary animation 🌈'];
+                  const animActive = _fl.animationIntensity > 0;
+                  const nextLvlF = LEVEL_INFO[_fl.level]; // next level info (LEVEL_INFO is 0-indexed)
+                  const _ld = getLevelDailyLimits(_fl.level);
+                  const _l1 = getLevelDailyLimits(1);
+                  const hasBonus = _ld.mcq.free > _l1.mcq.free;
+                  const _bonusCredits = getLevelDailyLimitsWithOverride(_fl.level, settings)?.bonusLoginCredits ?? 0;
+                  const _featureList = [
+                    {
+                      emoji: '🏷️',
+                      title: _fl.discount > 0 ? `${_fl.discount}% Store Discount` : 'Store Discount: Nahi',
+                      desc: _fl.discount > 0
+                        ? `Sabhi store purchases pe automatic ${_fl.discount}% off — coins, subscriptions sab`
+                        : 'Koi discount nahi — Level 3 se shuru hoga',
+                      color: _fl.discount > 0 ? _fl.color : '#475569',
+                      active: _fl.discount > 0,
+                    },
+                    {
+                      emoji: '✨',
+                      title: animActive ? `Top Bar Animation: ${animLabels[_fl.animationIntensity]}` : 'Top Bar Animation: Nahi',
+                      desc: animActive
+                        ? 'Aapke top bar pe dynamic animation effect dikhega — subscription se independent'
+                        : 'Koi top bar animation nahi — Level 3 se unlock hoga',
+                      color: animActive ? '#818cf8' : '#475569',
+                      active: animActive,
+                    },
+                    {
+                      emoji: '🎨',
+                      title: _fl.nameColor ? 'Colored Username 🔥' : 'Username Color: Normal',
+                      desc: _fl.nameColor
+                        ? 'Leaderboard, chat aur profile mein aapka naam vibrant color mein dikhega'
+                        : 'Naam ka koi special color nahi — Level 4 se unlock hoga',
+                      color: _fl.nameColor ?? '#475569',
+                      active: !!_fl.nameColor,
+                    },
+                    {
+                      emoji: '🏆',
+                      title: 'Level Leaderboard Entry',
+                      desc: 'Sabhi users ke saath global level leaderboard mein rank dikhegi',
+                      color: '#eab308',
+                      active: true,
+                    },
+                    {
+                      emoji: '📊',
+                      title: 'Activity Score Tracking',
+                      desc: 'MCQ, video, PDF, audio se daily score earn karo — level up karo',
+                      color: '#10b981',
+                      active: true,
+                    },
+                    {
+                      emoji: '🎁',
+                      title: 'Level-Up Celebration',
+                      desc: 'Level change hone pe special popup aur benefits card dikhega',
+                      color: '#f59e0b',
+                      active: true,
+                    },
+                    {
+                      emoji: '📈',
+                      title: `Daily Limits — 🆓${_ld.mcq.free} · 🔵${_ld.mcq.basic} · ⚡${_ld.mcq.ultra} MCQ/day`,
+                      desc: hasBonus
+                        ? `Free=${_ld.mcq.free}, Basic=${_ld.mcq.basic}, Ultra=${_ld.mcq.ultra}. Downloads: Free=${_ld.dl.free}, Basic=${_ld.dl.basic}, Ultra=${_ld.dl.ultra}/day. Video/PDF (Basic=${_ld.video.basic}, Ultra=${_ld.video.ultra} free/day).`
+                        : `Is level pe aapki daily MCQ limit: Free=${_ld.mcq.free}, Basic=${_ld.mcq.basic}, Ultra=${_ld.mcq.ultra}. Higher levels mein ye limits badhti jaayengi.`,
+                      color: hasBonus ? '#06b6d4' : '#475569',
+                      active: true,
+                    },
+                    ...(_fl.level >= 6 ? [{
+                      emoji: '💰',
+                      title: `Bonus Daily Login Credits: +${_bonusCredits} CR/day`,
+                      desc: `Roz login karne pe ${_bonusCredits} extra credits aapke plan bonus ke upar milenge — L6+ exclusive!`,
+                      color: '#f59e0b',
+                      active: true,
+                    }] : []),
+                    ...(_fl.level >= 5 ? [{
+                      emoji: '💎',
+                      title: 'Elite Status Badge',
+                      desc: 'Leaderboard mein special Elite/Legend badge ke saath dikhoge',
+                      color: _fl.color,
+                      active: true,
+                    }] : []),
+                  ];
+                  return (
+                    <>
+                      {/* Section header */}
+                      <div className="rounded-2xl px-4 py-3 flex items-center gap-3" style={{ background: `${_fl.color}15`, border: `1px solid ${_fl.color}35` }}>
+                        <span className="text-xl">🎯</span>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: _fl.color }}>SAARI FEATURES — LEVEL {_fl.level}</p>
+                          <p className="text-[8px] text-slate-500 mt-0.5">Level badhne par aur features unlock honge</p>
+                        </div>
+                        <span className="text-lg">{_fl.emoji}</span>
+                      </div>
+
+                      {/* Feature cards */}
+                      <div className="rounded-2xl overflow-hidden border border-white/8">
+                        {_featureList.map((feat, idx) => (
+                          <div key={idx} className={`px-4 py-3 flex items-start gap-3 ${idx < _featureList.length - 1 ? 'border-b border-white/5' : ''}`}
+                            style={{ background: idx % 2 === 0 ? 'rgba(255,255,255,0.02)' : 'transparent' }}>
+                            <span className="text-base w-6 text-center shrink-0 mt-0.5">{feat.emoji}</span>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-[10px] font-black leading-tight" style={{ color: feat.active ? feat.color : '#94a3b8' }}>{feat.title}</p>
+                              <p className="text-[8px] text-slate-500 mt-0.5 leading-relaxed">{feat.desc}</p>
+                            </div>
+                            <span className={`text-xs shrink-0 mt-0.5 font-black ${feat.active ? 'text-emerald-400' : 'text-slate-700'}`}>{feat.active ? '✓' : '✗'}</span>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Next level preview */}
+                      {nextLvlF && (
+                        <div className="rounded-2xl px-4 py-3 flex items-center gap-3 bg-white/4 border border-white/10">
+                          <span className="text-base">⚡</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[10px] font-black text-white">Level {nextLvlF.level} · {nextLvlF.label} →</p>
+                            <p className="text-[8px] text-slate-500 mt-0.5">{nextLvlF.minScore.toLocaleString('en-IN')} pts pe unlock · {nextLvlF.discount}% discount</p>
+                          </div>
+                          <span className="text-base">{nextLvlF.emoji}</span>
+                        </div>
+                      )}
+
+                      {/* Close CTA */}
+                      <button
+                        onClick={() => { setShowScorePanel(false); setScorePanelTab('LEVEL'); }}
+                        className="w-full py-3 rounded-2xl font-black text-sm text-white"
+                        style={{ background: `linear-gradient(135deg, ${_fl.color}cc, ${_fl.color}88)` }}
+                      >Samajh Gaya ✓</button>
+                      <div className="h-4" />
+                    </>
+                  );
+                })()}
+
+                {/* ── LEVEL SYSTEM TAB (default) ── */}
+                {scorePanelTab === 'LEVEL' && <React.Fragment>
+
                 {/* Level Hero Card */}
                 <div className="rounded-2xl p-4 text-center relative overflow-hidden"
                   style={{ background: `linear-gradient(135deg, ${lvl.color}20, ${lvl.color}08)`, border: `1px solid ${lvl.color}50`, boxShadow: `0 0 32px ${lvl.glowColor}` }}>
@@ -17035,6 +17505,8 @@ RULES:
                 </div>
 
                 <div className="h-4" />
+                </React.Fragment>}
+
               </div>
             </div>
           </div>
