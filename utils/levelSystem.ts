@@ -7,8 +7,8 @@ export interface LevelInfo {
   gradient: string;
   glowColor: string;
   discount: number;
-  animationIntensity: 0 | 1 | 2 | 3 | 4; // 0=none, 1=subtle, 2=medium, 3=strong, 4=legendary
-  nameColor?: string; // color for username display (levels 7+)
+  animationIntensity: 0 | 1 | 2 | 3 | 4;
+  nameColor?: string;
 }
 
 export const LEVEL_INFO: LevelInfo[] = [
@@ -28,33 +28,163 @@ export const LEVEL_INFO: LevelInfo[] = [
 export const MAX_LEVEL = 11;
 export const LEVEL_THRESHOLDS = LEVEL_INFO.map(l => l.minScore);
 
-// ── Level-based daily limit bonuses ────────────────────────────────────────
+// ── Per-tier limit structure ─────────────────────────────────────────────────
+export interface LevelTierLimits {
+  free: number;
+  basic: number;
+  ultra: number;
+}
+
+// Special sentinel value meaning "unlimited" in the level table
+export const UNLIMITED = 9999;
+
+// ── Unified daily limits per level ───────────────────────────────────────────
+// notes  = Chunk Notes Reading free sessions/day
+// tts    = Audio/TTS free sessions/day
+// No AI field (AI feature removed from limits)
+export interface LevelDailyLimits {
+  mcq:               LevelTierLimits;
+  dl:                LevelTierLimits;
+  pdf:               LevelTierLimits;
+  video:             LevelTierLimits;
+  notes:             LevelTierLimits;
+  tts:               LevelTierLimits;
+  write:             LevelTierLimits;
+  creditWriteMax:    number;
+  bonusLoginCredits: number;
+}
+
+// ── Helper to build one level row ────────────────────────────────────────────
+// MCQ:   base Free=50, Basic=70, Ultra=100; +30 per level (all tiers)
+// DL:    base Free=2,  Basic=5,  Ultra=10;  Free+2, Basic+3, Ultra+5 per level
+// PDF:   base Free=2,  Basic=3,  Ultra=5;   Free+2, Basic+3, Ultra+5 per level
+// Video: base Free=0,  Basic=2,  Ultra=5;   Free+1(from L2), Basic+2, Ultra+2 per level
+// Notes: Fixed Free=5, Basic=10, Ultra=15;  L9+ = UNLIMITED
+// TTS:   Same as Notes
+// Write: base Free=0,  Basic=5,  Ultra=10;  Basic+1, Ultra+1 per level from L4
+// bonusLoginCredits: 0,5,10,15,20,30,40,50,65,80,100
+
+const _BONUS_LOGIN = [0, 5, 10, 15, 20, 30, 40, 50, 65, 80, 100];
+const _CREDIT_WRITE_MAX = [100, 100, 100, 100, 100, 110, 120, 130, 140, 145, 150];
+
+const buildTable = (): Record<number, LevelDailyLimits> => {
+  const tbl: Record<number, LevelDailyLimits> = {};
+  for (let i = 1; i <= MAX_LEVEL; i++) {
+    const n = i - 1; // 0-indexed increment
+    const unlimitedNotes = i >= 9;
+    tbl[i] = {
+      mcq:   { free: 50  + n * 30, basic: 70  + n * 30, ultra: 100 + n * 30 },
+      dl:    { free: 2   + n * 2,  basic: 5   + n * 3,  ultra: 10  + n * 5  },
+      pdf:   { free: 2   + n * 2,  basic: 3   + n * 3,  ultra: 5   + n * 5  },
+      video: { free: Math.max(0, n), basic: 2 + n * 2, ultra: 5 + n * 2 },
+      notes: unlimitedNotes ? { free: UNLIMITED, basic: UNLIMITED, ultra: UNLIMITED } : { free: 5, basic: 10, ultra: 15 },
+      tts:   unlimitedNotes ? { free: UNLIMITED, basic: UNLIMITED, ultra: UNLIMITED } : { free: 5, basic: 10, ultra: 15 },
+      write: { free: 0, basic: Math.max(5, 5 + Math.max(0, n - 3)), ultra: Math.max(10, 10 + Math.max(0, n - 3)) },
+      creditWriteMax:    _CREDIT_WRITE_MAX[n],
+      bonusLoginCredits: _BONUS_LOGIN[n],
+    };
+  }
+  return tbl;
+};
+
+export const LEVEL_DAILY_LIMITS_TABLE = buildTable();
+
+// ── Get base limits (without admin override) ─────────────────────────────────
+export const getLevelDailyLimits = (level: number): LevelDailyLimits => {
+  const lvl = Math.min(MAX_LEVEL, Math.max(1, level));
+  return LEVEL_DAILY_LIMITS_TABLE[lvl] ?? LEVEL_DAILY_LIMITS_TABLE[1];
+};
+
+// ── Get limits with optional admin override ───────────────────────────────────
+// Admin can override per-level per-tier limits via settings.levelLimitsOverride
+export const getLevelDailyLimitsWithOverride = (
+  level: number,
+  settings?: { levelLimitsOverride?: Record<string, Partial<LevelDailyLimitsOverride>> } | null
+): LevelDailyLimits => {
+  const base = getLevelDailyLimits(level);
+  if (!settings?.levelLimitsOverride) return base;
+  const ov = settings.levelLimitsOverride[String(level)];
+  if (!ov) return base;
+
+  const mergeTier = (b: LevelTierLimits, o?: Partial<LevelTierLimits>): LevelTierLimits =>
+    o ? { free: o.free ?? b.free, basic: o.basic ?? b.basic, ultra: o.ultra ?? b.ultra } : b;
+
+  return {
+    mcq:               mergeTier(base.mcq,   ov.mcq),
+    dl:                mergeTier(base.dl,    ov.dl),
+    pdf:               mergeTier(base.pdf,   ov.pdf),
+    video:             mergeTier(base.video, ov.video),
+    notes:             mergeTier(base.notes, ov.notes),
+    tts:               mergeTier(base.tts,   ov.tts),
+    write:             mergeTier(base.write, ov.write),
+    creditWriteMax:    ov.creditWriteMax    ?? base.creditWriteMax,
+    bonusLoginCredits: ov.bonusLoginCredits ?? base.bonusLoginCredits,
+  };
+};
+
+// Type for admin override (all optional)
+export interface LevelDailyLimitsOverride {
+  mcq?:               Partial<LevelTierLimits>;
+  dl?:                Partial<LevelTierLimits>;
+  pdf?:               Partial<LevelTierLimits>;
+  video?:             Partial<LevelTierLimits>;
+  notes?:             Partial<LevelTierLimits>;
+  tts?:               Partial<LevelTierLimits>;
+  write?:             Partial<LevelTierLimits>;
+  creditWriteMax?:    number;
+  bonusLoginCredits?: number;
+}
+
+// ── Unified effective daily limit getter ─────────────────────────────────────
+export type DailyLimitFeature = 'mcq' | 'video' | 'pdf' | 'dl' | 'write' | 'notes' | 'tts';
+
+export const getEffectiveDailyLimit = (
+  feature: DailyLimitFeature,
+  level: number,
+  tier: 'FREE' | 'BASIC' | 'ULTRA',
+  settings?: { mcqLimitFree?: number; mcqLimitBasic?: number; mcqLimitUltra?: number; levelLimitsOverride?: Record<string, Partial<LevelDailyLimitsOverride>> } | null
+): number => {
+  const ld = getLevelDailyLimitsWithOverride(level, settings);
+  const tierKey: keyof LevelTierLimits = tier === 'FREE' ? 'free' : tier === 'BASIC' ? 'basic' : 'ultra';
+  const levelValue = ld[feature][tierKey];
+
+  // MCQ: admin's flat override (mcqLimitFree/Basic/Ultra) treated as L1 base → scale with level
+  if (feature === 'mcq' && settings && !settings.levelLimitsOverride?.[String(level)]?.mcq) {
+    const l1 = LEVEL_DAILY_LIMITS_TABLE[1].mcq[tierKey];
+    const adminBase =
+      tier === 'FREE'  ? (settings.mcqLimitFree  ?? 0) :
+      tier === 'BASIC' ? (settings.mcqLimitBasic ?? 0) :
+                         (settings.mcqLimitUltra ?? 0);
+    if (adminBase > 0) {
+      return adminBase + (levelValue - l1);
+    }
+  }
+  return levelValue;
+};
+
+// ── Backward-compat: LevelLimitBonus (derived from new table) ────────────────
 export interface LevelLimitBonus {
-  mcqBonus: number;           // Extra MCQ practice per day
-  writeFreeBonus: number;     // Extra free Write Mode sessions per day
-  dlBonus: number;            // Extra HTML downloads per day
-  videoFreeBonus: number;     // Extra free video sessions per day
-  pdfFreeBonus: number;       // Extra free PDF sessions per day
-  creditWriteMax: number;     // Max credit-paid Write Mode sessions per day
-  bonusLoginCredits: number;  // Extra CR on daily login
+  mcqBonus:          number;
+  writeFreeBonus:    number;
+  dlBonus:           number;
+  videoFreeBonus:    number;
+  pdfFreeBonus:      number;
+  creditWriteMax:    number;
+  bonusLoginCredits: number;
 }
 
 export const getLevelLimitBonus = (level: number): LevelLimitBonus => {
-  const tbl: Record<number, LevelLimitBonus> = {
-    1:  { mcqBonus: 0,  writeFreeBonus: 0,  dlBonus: 0,  videoFreeBonus: 0,  pdfFreeBonus: 0,  creditWriteMax: 100, bonusLoginCredits: 0  },
-    2:  { mcqBonus: 0,  writeFreeBonus: 0,  dlBonus: 0,  videoFreeBonus: 0,  pdfFreeBonus: 0,  creditWriteMax: 100, bonusLoginCredits: 0  },
-    3:  { mcqBonus: 1,  writeFreeBonus: 0,  dlBonus: 0,  videoFreeBonus: 0,  pdfFreeBonus: 0,  creditWriteMax: 100, bonusLoginCredits: 0  },
-    4:  { mcqBonus: 1,  writeFreeBonus: 1,  dlBonus: 1,  videoFreeBonus: 1,  pdfFreeBonus: 1,  creditWriteMax: 100, bonusLoginCredits: 10 },
-    5:  { mcqBonus: 2,  writeFreeBonus: 2,  dlBonus: 2,  videoFreeBonus: 2,  pdfFreeBonus: 2,  creditWriteMax: 100, bonusLoginCredits: 15 },
-    6:  { mcqBonus: 3,  writeFreeBonus: 3,  dlBonus: 3,  videoFreeBonus: 3,  pdfFreeBonus: 3,  creditWriteMax: 100, bonusLoginCredits: 20 },
-    7:  { mcqBonus: 5,  writeFreeBonus: 5,  dlBonus: 5,  videoFreeBonus: 5,  pdfFreeBonus: 5,  creditWriteMax: 100, bonusLoginCredits: 25 },
-    8:  { mcqBonus: 7,  writeFreeBonus: 7,  dlBonus: 7,  videoFreeBonus: 7,  pdfFreeBonus: 7,  creditWriteMax: 110, bonusLoginCredits: 35 },
-    9:  { mcqBonus: 10, writeFreeBonus: 10, dlBonus: 10, videoFreeBonus: 10, pdfFreeBonus: 10, creditWriteMax: 120, bonusLoginCredits: 50 },
-    10: { mcqBonus: 13, writeFreeBonus: 13, dlBonus: 13, videoFreeBonus: 13, pdfFreeBonus: 13, creditWriteMax: 130, bonusLoginCredits: 70 },
-    11: { mcqBonus: 15, writeFreeBonus: 15, dlBonus: 15, videoFreeBonus: 15, pdfFreeBonus: 15, creditWriteMax: 150, bonusLoginCredits: 100},
+  const cur = getLevelDailyLimits(level);
+  const l1  = getLevelDailyLimits(1);
+  return {
+    mcqBonus:          cur.mcq.free   - l1.mcq.free,
+    writeFreeBonus:    cur.write.basic - l1.write.basic,
+    dlBonus:           cur.dl.free    - l1.dl.free,
+    videoFreeBonus:    cur.video.basic - l1.video.basic,
+    pdfFreeBonus:      cur.pdf.basic  - l1.pdf.basic,
+    creditWriteMax:    cur.creditWriteMax,
+    bonusLoginCredits: cur.bonusLoginCredits,
   };
-  const lvl = Math.min(MAX_LEVEL, Math.max(1, level));
-  return tbl[lvl] ?? tbl[1];
 };
 
 export const getLevelInfo = (score: number): LevelInfo => {
@@ -67,7 +197,6 @@ export const getLevelInfo = (score: number): LevelInfo => {
 };
 
 export const getLevelFromScore = (score: number): number => getLevelInfo(score).level;
-
 export const getScoreDiscountFromScore = (score: number): number => getLevelInfo(score).discount;
 
 export const getScoreForLevel = (level: number): number => {
@@ -110,7 +239,6 @@ export const ACTIVITY_SCORES = {
   SUBSCRIPTION_ANY: 100,
 };
 
-// Score + bonusCredits per subscription tier/level
 export const SUBSCRIPTION_BONUS: Record<string, { score: number; bonusCredits: number }> = {
   'WEEKLY_BASIC':    { score: 100, bonusCredits: 30 },
   'WEEKLY_ULTRA':    { score: 100, bonusCredits: 50 },
@@ -124,29 +252,26 @@ export const SUBSCRIPTION_BONUS: Record<string, { score: number; bonusCredits: n
   'LIFETIME_ULTRA':  { score: 100, bonusCredits: 0 },
 };
 
-// Returns TopBarEffects config array based on level animation intensity
 export const getLevelTopBarEffects = (lvl: LevelInfo): Array<{id:string;enabled:boolean;color:string;speed?:number;opacity?:number}> => {
   const c = lvl.color;
   const g = lvl.glowColor;
   switch (lvl.animationIntensity) {
-    case 0: return []; // Level 1-2 — no effects
-    case 1: // Level 3-4 — very subtle shimmer only
-      return [
-        { id: 'shimmer-forward', enabled: true, color: c, speed: 3, opacity: 0.3 },
-      ];
-    case 2: // Level 5-7 — shimmer + glow
+    case 0: return [];
+    case 1:
+      return [{ id: 'shimmer-forward', enabled: true, color: c, speed: 3, opacity: 0.3 }];
+    case 2:
       return [
         { id: 'shimmer-forward', enabled: true, color: c, speed: 2, opacity: 0.5 },
         { id: 'glow-bottom',     enabled: true, color: g, speed: 1.5, opacity: 0.6 },
       ];
-    case 3: // Level 8-10 — shimmer + glow + sparkles
+    case 3:
       return [
         { id: 'shimmer-forward', enabled: true, color: c, speed: 1.5 },
         { id: 'shimmer-reverse', enabled: true, color: c, speed: 2 },
         { id: 'glow-both',       enabled: true, color: g, speed: 1 },
         { id: 'sparkle-top',     enabled: true, color: c, speed: 1 },
       ];
-    case 4: // Level 11 — LEGENDARY — all effects max
+    case 4:
       return [
         { id: 'shimmer-forward', enabled: true, color: c, speed: 1 },
         { id: 'shimmer-reverse', enabled: true, color: c, speed: 1.2 },

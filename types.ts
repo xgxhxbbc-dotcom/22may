@@ -587,6 +587,18 @@ export interface SystemSettings {
   mcqLimitFree?: number; // Daily Limit Free
   mcqLimitBasic?: number; // Daily Limit Basic
   mcqLimitUltra?: number; // Daily Limit Ultra
+  /** Admin override for per-level daily limits. Key = "1"–"11". */
+  levelLimitsOverride?: Record<string, {
+    mcq?:   { free?: number; basic?: number; ultra?: number };
+    dl?:    { free?: number; basic?: number; ultra?: number };
+    pdf?:   { free?: number; basic?: number; ultra?: number };
+    video?: { free?: number; basic?: number; ultra?: number };
+    notes?: { free?: number; basic?: number; ultra?: number };
+    tts?:   { free?: number; basic?: number; ultra?: number };
+    write?: { free?: number; basic?: number; ultra?: number };
+    creditWriteMax?:    number;
+    bonusLoginCredits?: number;
+  }>;
   /** Max books allowed in one Compare session. 0 = unlimited. */
   compareLimitFree?: number;   // default 2
   compareLimitBasic?: number;  // default 5

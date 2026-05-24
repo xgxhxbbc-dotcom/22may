@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
 import { SystemSettings, FeatureCategory } from '../types';
-import { DollarSign, Eye, EyeOff, Save, Search, Settings, Lock, Package, Trash2, Edit3, X, Plus, Crown, LayoutGrid, List, CheckSquare, Gamepad2, BrainCircuit, Activity, BarChart3, Star, Zap, PenTool, Banknote, Layers, Bell, Ticket, Flame, Video, GraduationCap, ShoppingBag, Home as HomeIcon, Navigation } from 'lucide-react';
+import { DollarSign, Eye, EyeOff, Save, Search, Settings, Lock, Package, Trash2, Edit3, X, Plus, Crown, LayoutGrid, List, CheckSquare, Gamepad2, BrainCircuit, Activity, BarChart3, Star, Zap, PenTool, Banknote, Layers, Bell, Ticket, Flame, Video, GraduationCap, ShoppingBag, Home as HomeIcon, Navigation, TrendingUp } from 'lucide-react';
 import { ALL_FEATURES } from '../utils/featureRegistry';
+import { getLevelDailyLimits, LEVEL_INFO, MAX_LEVEL } from '../utils/levelSystem';
 
 interface Props {
     settings: SystemSettings;
@@ -9,7 +10,8 @@ interface Props {
 }
 
 export const AdminPowerManager: React.FC<Props> = ({ settings, onUpdate }) => {
-    const [activeTab, setActiveTab] = useState<'PRICING' | 'DAILY_LIMITS' | 'VISIBILITY' | 'TOPBAR' | 'BOTTOMNAV' | 'HOMEGRID'>('PRICING');
+    const [activeTab, setActiveTab] = useState<'PRICING' | 'DAILY_LIMITS' | 'LEVEL_LIMITS' | 'VISIBILITY' | 'TOPBAR' | 'BOTTOMNAV' | 'HOMEGRID'>('PRICING');
+    const [selectedLevel, setSelectedLevel] = useState<number>(1);
     const [localSettings, setLocalSettings] = useState<SystemSettings>(settings);
 
     const updateSetting = (key: keyof SystemSettings, value: any) => {
@@ -54,6 +56,7 @@ export const AdminPowerManager: React.FC<Props> = ({ settings, onUpdate }) => {
                 {[
                     { id: 'PRICING', icon: DollarSign, label: 'Pricing & Costs' },
                     { id: 'DAILY_LIMITS', icon: BarChart3, label: 'Daily Limits' },
+                    { id: 'LEVEL_LIMITS', icon: TrendingUp, label: 'Level Limits' },
                     { id: 'VISIBILITY', icon: Eye, label: 'Modules' },
                     { id: 'TOPBAR', icon: Crown, label: 'Top Bar' },
                     { id: 'BOTTOMNAV', icon: Navigation, label: 'Bottom Nav' },
@@ -265,6 +268,146 @@ export const AdminPowerManager: React.FC<Props> = ({ settings, onUpdate }) => {
                     </div>
                 </div>
             )}
+
+            {/* TAB: LEVEL LIMITS */}
+            {activeTab === 'LEVEL_LIMITS' && (() => {
+                const lvlOverride = (localSettings.levelLimitsOverride || {}) as Record<string, any>;
+                const baseLD = getLevelDailyLimits(selectedLevel);
+                const ov = lvlOverride[String(selectedLevel)] || {};
+
+                const getVal = (feature: string, tier: 'free' | 'basic' | 'ultra'): number => {
+                    const ovFeature = ov[feature];
+                    if (ovFeature && ovFeature[tier] !== undefined) return ovFeature[tier];
+                    return (baseLD as any)[feature]?.[tier] ?? 0;
+                };
+                const getSingle = (key: string): number => {
+                    if (ov[key] !== undefined) return ov[key];
+                    return (baseLD as any)[key] ?? 0;
+                };
+
+                const updateLevelVal = (feature: string, tier: string, value: number) => {
+                    const newOv = { ...lvlOverride };
+                    if (!newOv[String(selectedLevel)]) newOv[String(selectedLevel)] = {};
+                    if (!newOv[String(selectedLevel)][feature]) newOv[String(selectedLevel)][feature] = {};
+                    newOv[String(selectedLevel)][feature][tier] = value;
+                    updateSetting('levelLimitsOverride', newOv);
+                };
+                const updateLevelSingle = (key: string, value: number) => {
+                    const newOv = { ...lvlOverride };
+                    if (!newOv[String(selectedLevel)]) newOv[String(selectedLevel)] = {};
+                    newOv[String(selectedLevel)][key] = value;
+                    updateSetting('levelLimitsOverride', newOv);
+                };
+                const resetLevel = () => {
+                    const newOv = { ...lvlOverride };
+                    delete newOv[String(selectedLevel)];
+                    updateSetting('levelLimitsOverride', newOv);
+                };
+                const hasOverride = !!lvlOverride[String(selectedLevel)];
+
+                const currentLvlInfo = LEVEL_INFO.find(l => l.level === selectedLevel)!;
+
+                type FeatureRow = { key: string; label: string; icon: string; hasTiers: boolean; tiers?: ('free'|'basic'|'ultra')[]; singleKey?: string; singleLabel?: string };
+                const featureRows: FeatureRow[] = [
+                    { key: 'mcq',   label: 'MCQ Practice',       icon: '❓', hasTiers: true,  tiers: ['free', 'basic', 'ultra'] },
+                    { key: 'dl',    label: 'HTML Downloads',      icon: '📥', hasTiers: true,  tiers: ['free', 'basic', 'ultra'] },
+                    { key: 'pdf',   label: 'PDF / Notes',         icon: '📄', hasTiers: true,  tiers: ['free', 'basic', 'ultra'] },
+                    { key: 'video', label: 'Video Lectures',      icon: '🎬', hasTiers: true,  tiers: ['free', 'basic', 'ultra'] },
+                    { key: 'notes', label: 'Notes Reading',       icon: '📖', hasTiers: true,  tiers: ['free', 'basic', 'ultra'] },
+                    { key: 'tts',   label: 'Audio / TTS',         icon: '🔊', hasTiers: true,  tiers: ['free', 'basic', 'ultra'] },
+                    { key: 'write', label: 'Write Mode (Free)',   icon: '✍️', hasTiers: true,  tiers: ['free', 'basic', 'ultra'] },
+                    { key: 'creditWriteMax',    label: 'Write Mode Max (Credit)',  icon: '💎', hasTiers: false, singleKey: 'creditWriteMax',    singleLabel: 'Max/Day' },
+                    { key: 'bonusLoginCredits', label: 'Daily Login Bonus CR',     icon: '💰', hasTiers: false, singleKey: 'bonusLoginCredits', singleLabel: 'Bonus CR' },
+                ];
+
+                const tierColors = { free: 'border-slate-300 text-slate-600', basic: 'border-sky-300 text-sky-600', ultra: 'border-violet-300 text-violet-600' };
+                const tierLabels = { free: '🆓 Free', basic: '🔵 Basic', ultra: '⚡ Ultra' };
+
+                return (
+                    <div className="space-y-4">
+                        <div className="bg-indigo-50 border border-indigo-200 rounded-xl p-3">
+                            <p className="text-[11px] font-black text-indigo-800 mb-1">📊 Level-wise Daily Limits Override</p>
+                            <p className="text-[10px] text-indigo-600">Har level aur subscription tier ka alag limit set karo. Default values level system se aate hain.</p>
+                        </div>
+
+                        {/* Level selector */}
+                        <div className="flex flex-wrap gap-2">
+                            {LEVEL_INFO.map(li => (
+                                <button key={li.level} onClick={() => setSelectedLevel(li.level)}
+                                    className={`px-3 py-1.5 rounded-xl text-xs font-black border-2 transition-all ${selectedLevel === li.level ? 'shadow-md text-white border-transparent' : 'bg-white border-slate-200 text-slate-600 hover:border-slate-300'}`}
+                                    style={selectedLevel === li.level ? { background: li.color, borderColor: li.color } : {}}>
+                                    {li.emoji} L{li.level}
+                                    {lvlOverride[String(li.level)] && <span className="ml-1 text-[8px]">✏️</span>}
+                                </button>
+                            ))}
+                        </div>
+
+                        {/* Selected level header */}
+                        <div className="flex items-center justify-between p-3 rounded-xl border-2"
+                            style={{ borderColor: `${currentLvlInfo.color}60`, background: `${currentLvlInfo.color}10` }}>
+                            <div className="flex items-center gap-2">
+                                <span className="text-2xl">{currentLvlInfo.emoji}</span>
+                                <div>
+                                    <p className="text-sm font-black" style={{ color: currentLvlInfo.color }}>Level {selectedLevel} · {currentLvlInfo.label}</p>
+                                    <p className="text-[10px] text-slate-500">Min Score: {currentLvlInfo.minScore.toLocaleString('en-IN')} pts</p>
+                                </div>
+                            </div>
+                            {hasOverride && (
+                                <button onClick={resetLevel} className="text-[10px] font-black text-red-500 border border-red-200 bg-red-50 px-2 py-1 rounded-lg hover:bg-red-100">
+                                    ↩ Reset to Default
+                                </button>
+                            )}
+                        </div>
+
+                        {/* Feature rows */}
+                        <div className="space-y-3">
+                            {featureRows.map(row => (
+                                <div key={row.key} className="bg-slate-50 border border-slate-200 rounded-xl p-3">
+                                    <div className="flex items-center gap-2 mb-2">
+                                        <span className="text-base">{row.icon}</span>
+                                        <p className="text-xs font-black text-slate-700">{row.label}</p>
+                                        {row.hasTiers && (
+                                            <span className="text-[8px] text-slate-400 font-medium ml-auto">
+                                                Default: {row.tiers!.map(t => `${t[0].toUpperCase()}=${(baseLD as any)[row.key]?.[t] ?? '—'}`).join(' / ')}
+                                            </span>
+                                        )}
+                                        {!row.hasTiers && (
+                                            <span className="text-[8px] text-slate-400 font-medium ml-auto">Default: {(baseLD as any)[row.singleKey!] ?? '—'}</span>
+                                        )}
+                                    </div>
+                                    {row.hasTiers ? (
+                                        <div className="grid grid-cols-3 gap-2">
+                                            {row.tiers!.map(tier => (
+                                                <div key={tier} className={`bg-white p-2 rounded-lg border ${tierColors[tier]} shadow-sm`}>
+                                                    <label className={`text-[9px] font-black uppercase block mb-1 ${tierColors[tier].split(' ')[1]}`}>{tierLabels[tier]}</label>
+                                                    <input type="number" min="0" max="9999"
+                                                        value={getVal(row.key, tier)}
+                                                        onChange={e => updateLevelVal(row.key, tier, Number(e.target.value))}
+                                                        className="w-full p-1.5 border border-slate-200 rounded font-bold text-sm text-center" />
+                                                    <p className="text-[7px] text-slate-400 text-center mt-0.5">9999 = Unlimited</p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    ) : (
+                                        <div className="max-w-[140px]">
+                                            <label className="text-[9px] font-black text-slate-500 uppercase block mb-1">{row.singleLabel}</label>
+                                            <input type="number" min="0"
+                                                value={getSingle(row.singleKey!)}
+                                                onChange={e => updateLevelSingle(row.singleKey!, Number(e.target.value))}
+                                                className="w-full p-1.5 border border-slate-200 rounded font-bold text-sm text-center" />
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* Copy from level */}
+                        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                            <p className="text-[10px] font-black text-amber-800">💡 Tip: 9999 enter karo = Unlimited. Changes turant save hote hain. Ek level change karne ke baad doosra level select karo.</p>
+                        </div>
+                    </div>
+                );
+            })()}
 
             {/* TAB 2: VISIBILITY */}
             {activeTab === 'VISIBILITY' && (

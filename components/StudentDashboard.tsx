@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { TopBarEffectsLayer } from "../utils/topBarEffects";
-import { getLevelInfo, getNextLevelInfo, getLevelProgress, LEVEL_INFO, ACTIVITY_SCORES, getLevelTopBarEffects, getLevelLimitBonus } from "../utils/levelSystem";
+import { getLevelInfo, getNextLevelInfo, getLevelProgress, LEVEL_INFO, ACTIVITY_SCORES, getLevelTopBarEffects, getLevelLimitBonus, getLevelDailyLimits, getLevelDailyLimitsWithOverride, getEffectiveDailyLimit, UNLIMITED } from "../utils/levelSystem";
 import { tryEarnScore, awardMilestone, getDailyScoreEarned, DAILY_SCORE_LIMIT, getDailyScoreLimit, getActiveBoost } from "../utils/scoreSystem";
 import { applyDeduction, getTotalCredits } from "../utils/creditSystem";
 import { LevelLeaderboard } from "./LevelLeaderboard";
@@ -17108,20 +17108,19 @@ RULES:
             color: '#f59e0b',
             active: true,
           },
-          // ── Limit bonuses ──
+          // ── Level-based Daily Limits (Free / Basic / Ultra) ──
           (() => {
-            const lb = getLevelLimitBonus(l.level);
-            const hasBonus = lb.mcqBonus > 0;
+            const ld = getLevelDailyLimits(l.level);
+            const l1 = getLevelDailyLimits(1);
+            const hasBonus = ld.mcq.free > l1.mcq.free;
             return {
               emoji: '📈',
-              title: hasBonus
-                ? `Daily Limit Bonus: +${lb.mcqBonus} MCQ · +${lb.writeFreeBonus} Write · +${lb.dlBonus} Downloads`
-                : 'Daily Limit Bonus: Nahi (Level 2 se milega)',
+              title: `Daily Limits — 🆓${ld.mcq.free} · 🔵${ld.mcq.basic} · ⚡${ld.mcq.ultra} MCQ/day`,
               desc: hasBonus
-                ? `MCQ Practice, Write Mode free sessions, HTML Downloads — sabke daily limits mein +${lb.mcqBonus} bonus. Video & PDF free sessions bhi +${lb.videoFreeBonus}.`
-                : 'Abhi tak koi limit bonus nahi. Level 2 mein +1, Level 3 mein +2, aur aage badhega.',
+                ? `Is level pe aapki daily MCQ limit: Free=${ld.mcq.free}, Basic=${ld.mcq.basic}, Ultra=${ld.mcq.ultra}. Downloads: Free=${ld.dl.free}, Basic=${ld.dl.basic}, Ultra=${ld.dl.ultra}/day. Video/PDF (Basic=${ld.video.basic}, Ultra=${ld.video.ultra} free/day).`
+                : `Is level pe aapki daily MCQ limit: Free=${ld.mcq.free}, Basic=${ld.mcq.basic}, Ultra=${ld.mcq.ultra}. Higher levels mein ye limits badhti jaayengi.`,
               color: hasBonus ? '#06b6d4' : undefined,
-              active: hasBonus,
+              active: true,
             };
           })(),
           // ── L6+ new perks ──
@@ -17219,6 +17218,122 @@ RULES:
                   </div>
                 )}
 
+                {/* ── Daily Limits Table (Free / Basic / Ultra) ── */}
+                {(() => {
+                  const ld = getLevelDailyLimitsWithOverride(l.level, settings);
+                  const fmt = (v: number, suffix = '/day') => v >= UNLIMITED ? '∞ Unlimited' : `${v}${suffix}`;
+                  type Row = { icon: string; label: string; free: string; basic: string; ultra: string; freeNote?: string; unlimitedAt?: number };
+                  const rows: Row[] = [
+                    {
+                      icon: '❓', label: 'MCQ Practice',
+                      free:  fmt(ld.mcq.free),
+                      basic: fmt(ld.mcq.basic),
+                      ultra: fmt(ld.mcq.ultra),
+                      freeNote: 'Hard block',
+                    },
+                    {
+                      icon: '📥', label: 'HTML Downloads',
+                      free:  fmt(ld.dl.free),
+                      basic: fmt(ld.dl.basic),
+                      ultra: fmt(ld.dl.ultra),
+                    },
+                    {
+                      icon: '✍️', label: 'Write Mode (Free)',
+                      free:  ld.write.free > 0 ? fmt(ld.write.free) : '0 (credit only)',
+                      basic: fmt(ld.write.basic),
+                      ultra: fmt(ld.write.ultra),
+                    },
+                    {
+                      icon: '🎬', label: 'Video Lectures',
+                      free:  ld.video.free > 0 ? fmt(ld.video.free) : 'Coins needed',
+                      basic: fmt(ld.video.basic),
+                      ultra: fmt(ld.video.ultra),
+                    },
+                    {
+                      icon: '📄', label: 'PDF / Notes',
+                      free:  fmt(ld.pdf.free),
+                      basic: fmt(ld.pdf.basic),
+                      ultra: fmt(ld.pdf.ultra),
+                    },
+                    {
+                      icon: '📖', label: 'Notes Reading',
+                      free:  fmt(ld.notes.free),
+                      basic: fmt(ld.notes.basic),
+                      ultra: fmt(ld.notes.ultra),
+                      unlimitedAt: 9,
+                    },
+                    {
+                      icon: '🔊', label: 'Audio / TTS',
+                      free:  fmt(ld.tts.free),
+                      basic: fmt(ld.tts.basic),
+                      ultra: fmt(ld.tts.ultra),
+                      unlimitedAt: 9,
+                    },
+                    {
+                      icon: '💰', label: 'Login Bonus CR',
+                      free:  '0 CR',
+                      basic: ld.bonusLoginCredits > 0 ? `+${ld.bonusLoginCredits} CR` : '+5 CR',
+                      ultra: ld.bonusLoginCredits > 0 ? `+${ld.bonusLoginCredits + 5} CR` : '+10 CR',
+                    },
+                    {
+                      icon: '✍️', label: 'Write (Credits)',
+                      free:  `${ld.creditWriteMax} max/day`,
+                      basic: `${ld.creditWriteMax} max/day`,
+                      ultra: `${ld.creditWriteMax} max/day`,
+                      freeNote: '10 CR/unlock',
+                    },
+                  ];
+                  return (
+                    <div className="rounded-2xl overflow-hidden border border-white/10">
+                      <div className="px-4 py-2.5 border-b border-white/6" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                        <p className="text-[10px] font-black text-white uppercase tracking-widest">📊 Daily Limits — Level {l.level}</p>
+                        <p className="text-[9px] text-slate-500 mt-0.5">
+                          {l.level >= 9
+                            ? '🟢 Notes & TTS is level pe Unlimited ho gayi hain!'
+                            : 'Level badhne par ye limits badhengi · L9 pe Notes & TTS Unlimited'}
+                        </p>
+                      </div>
+                      {/* Header */}
+                      <div className="grid grid-cols-4 border-b border-white/6" style={{ background: 'rgba(255,255,255,0.02)' }}>
+                        <div className="px-3 py-2"><p className="text-[8px] font-black text-slate-500 uppercase tracking-wider">Feature</p></div>
+                        <div className="px-2 py-2 text-center border-l border-white/6"><p className="text-[8px] font-black text-blue-400 uppercase tracking-wider">🆓 Free</p></div>
+                        <div className="px-2 py-2 text-center border-l border-white/6"><p className="text-[8px] font-black text-sky-400 uppercase tracking-wider">🔵 Basic</p></div>
+                        <div className="px-2 py-2 text-center border-l border-white/6"><p className="text-[8px] font-black text-violet-400 uppercase tracking-wider">⚡ Ultra</p></div>
+                      </div>
+                      {/* Rows */}
+                      {rows.map((row, i) => {
+                        const isUnlimitedRow = row.unlimitedAt && l.level >= row.unlimitedAt;
+                        return (
+                          <div key={i} className="grid grid-cols-4 border-b border-white/5 last:border-0"
+                            style={{ background: isUnlimitedRow ? 'rgba(16,185,129,0.05)' : i % 2 === 0 ? 'rgba(255,255,255,0.01)' : 'transparent' }}>
+                            <div className="px-3 py-2.5 flex items-center gap-1.5">
+                              <span className="text-sm">{row.icon}</span>
+                              <div>
+                                <p className="text-[9px] font-black text-slate-300 leading-tight">{row.label}</p>
+                                {row.unlimitedAt && l.level < row.unlimitedAt && (
+                                  <p className="text-[7px] text-emerald-600">∞ at L{row.unlimitedAt}</p>
+                                )}
+                              </div>
+                            </div>
+                            <div className="px-2 py-2.5 text-center border-l border-white/5 flex flex-col items-center justify-center">
+                              <p className={`text-[9px] font-black ${isUnlimitedRow ? 'text-emerald-400' : 'text-blue-300'}`}>{row.free}</p>
+                              {row.freeNote && <p className="text-[7px] text-slate-600 mt-0.5">{row.freeNote}</p>}
+                            </div>
+                            <div className="px-2 py-2.5 text-center border-l border-white/5 flex items-center justify-center"
+                              style={{ background: isUnlimitedRow ? 'rgba(16,185,129,0.08)' : 'rgba(14,165,233,0.06)' }}>
+                              <p className={`text-[9px] font-black ${isUnlimitedRow ? 'text-emerald-400' : 'text-sky-300'}`}>{row.basic}</p>
+                            </div>
+                            <div className="px-2 py-2.5 text-center border-l border-white/5 flex items-center justify-center"
+                              style={{ background: isUnlimitedRow ? 'rgba(16,185,129,0.08)' : 'rgba(139,92,246,0.06)' }}>
+                              <p className={`text-[9px] font-black ${isUnlimitedRow ? 'text-emerald-400' : 'text-violet-300'}`}>{row.ultra}</p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  );
+                })()}
+
                 {/* All Benefits */}
                 <div className="rounded-2xl overflow-hidden border border-white/10">
                   <div className="px-4 py-2.5 border-b border-white/6" style={{ background: 'rgba(255,255,255,0.03)' }}>
@@ -17292,26 +17407,26 @@ RULES:
         const paidWriteCount = parseInt(localStorage.getItem(`nst_paid_write_${user.id}_${todayStr}`) || '0', 10);
         const storeVisits    = parseInt(localStorage.getItem(`nst_store_visits_${user.id}_${todayStr}`) || '0', 10);
 
-        // ── Level bonus for this user ──
-        const _lvlBonusModal = getLevelLimitBonus(_userLevel);
+        // ── Level-based daily limits (unified system) ──
+        const _lvl = getLevelDailyLimits(_userLevel);
 
-        // ── Plan-wise limits from settings (+ level bonus) ──
-        const freeMcq   = (settings?.mcqLimitFree  ?? 50)  + _lvlBonusModal.mcqBonus;
-        const basicMcq  = (settings?.mcqLimitBasic ?? 70)  + _lvlBonusModal.mcqBonus;
-        const ultraMcq  = (settings?.mcqLimitUltra ?? 100) + _lvlBonusModal.mcqBonus;
+        // ── Plan-wise limits — level table + admin override for MCQ ──
+        const freeMcq   = getEffectiveDailyLimit('mcq', _userLevel, 'FREE',  settings);
+        const basicMcq  = getEffectiveDailyLimit('mcq', _userLevel, 'BASIC', settings);
+        const ultraMcq  = getEffectiveDailyLimit('mcq', _userLevel, 'ULTRA', settings);
 
-        const freeDl    = (settings?.htmlDownloadLimitFree  ?? 2)  + _lvlBonusModal.dlBonus;
-        const basicDl   = (settings?.htmlDownloadLimitBasic ?? 5)  + _lvlBonusModal.dlBonus;
-        const ultraDl   = (settings?.htmlDownloadLimitUltra ?? 10) + _lvlBonusModal.dlBonus;
+        const freeDl    = _lvl.dl.free;
+        const basicDl   = _lvl.dl.basic;
+        const ultraDl   = _lvl.dl.ultra;
 
-        const basicWriteFree = (settings?.basicHtmlDailyLimit ?? 5)  + _lvlBonusModal.writeFreeBonus;
-        const ultraWriteFree = (settings?.ultraHtmlDailyLimit ?? 10) + _lvlBonusModal.writeFreeBonus;
+        const basicWriteFree = _lvl.write.basic;
+        const ultraWriteFree = _lvl.write.ultra;
 
-        const basicVid  = (settings?.videoFreeLimitBasic ?? 5)  + _lvlBonusModal.videoFreeBonus;
-        const ultraVid  = (settings?.videoFreeLimitUltra ?? 10) + _lvlBonusModal.videoFreeBonus;
+        const basicVid  = _lvl.video.basic;
+        const ultraVid  = _lvl.video.ultra;
 
-        const basicPdf  = (settings?.pdfFreeLimitBasic ?? 5)  + _lvlBonusModal.pdfFreeBonus;
-        const ultraPdf  = (settings?.pdfFreeLimitUltra ?? 10) + _lvlBonusModal.pdfFreeBonus;
+        const basicPdf  = _lvl.pdf.basic;
+        const ultraPdf  = _lvl.pdf.ultra;
 
         const htmlCost  = settings?.htmlUnlockCost ?? 5;
         const wmMax     = isOwnPlan ? WM_PAID_DAILY_MAX : (settings?.writeModeMaxLimit ?? 100);
@@ -17746,17 +17861,17 @@ RULES:
               </div>
               <div className="grid grid-cols-3 divide-x divide-slate-100">
                 <div className="p-3 text-center">
-                  <p className="text-xs font-black text-blue-600">{settings?.mcqLimitFree ?? 50}/day</p>
+                  <p className="text-xs font-black text-blue-600">{freeMcq}/day</p>
                   <p className="text-[9px] text-slate-400 mt-1">Hard limit</p>
                   <p className="text-[9px] text-slate-400">MCQ+Q&A+Flash</p>
                 </div>
                 <div className="p-3 text-center">
-                  <p className="text-xs font-black text-green-600">{settings?.mcqLimitBasic ?? 70}/day</p>
+                  <p className="text-xs font-black text-green-600">{basicMcq}/day</p>
                   <p className="text-[9px] text-slate-400 mt-1">Phir 5 coins/30 Qs</p>
                   <p className="text-[9px] text-slate-400">MCQ+Q&A+Flash</p>
                 </div>
                 <div className="p-3 text-center">
-                  <p className="text-xs font-black text-violet-600">{settings?.mcqLimitUltra ?? 100}/day</p>
+                  <p className="text-xs font-black text-violet-600">{ultraMcq}/day</p>
                   <p className="text-[9px] text-slate-400 mt-1">Phir 5 coins/30 Qs</p>
                   <p className="text-[9px] text-slate-400">MCQ+Q&A+Flash</p>
                 </div>

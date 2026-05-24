@@ -15,6 +15,8 @@ import { FlashcardMcqView } from './FlashcardMcqView';
 import { McqSpeakButtons, getStoredTtsSpeed, setStoredTtsSpeed } from './McqSpeakButtons';
 import { recordAttempt as recordRevisionAttempt } from '../utils/revisionTrackerV2';
 import { addMistakes, removeMistakeByQuestion } from '../utils/mistakeBank';
+import { getLevelFromScore, getEffectiveDailyLimit } from '../utils/levelSystem';
+import { getUserTier } from '../utils/permissionUtils';
 
 // Normalize chapter data so handleStart sees `manualMcqData` regardless of
 // whether the admin/save layer used `manualMcqData` or `mcqData` (legacy).
@@ -323,9 +325,11 @@ export const McqView: React.FC<Props> = ({
               .reduce((sum, h) => sum + h.totalQuestions, 0);
 
           const mcqFeature = settings?.featureConfig?.['MCQ_FREE'];
-          let dailyLimit = mcqFeature?.limits?.free ?? settings?.mcqLimitFree ?? 50;
-          if (user.subscriptionLevel === 'BASIC') dailyLimit = mcqFeature?.limits?.basic ?? settings?.mcqLimitBasic ?? 70;
-          if (user.subscriptionLevel === 'ULTRA') dailyLimit = mcqFeature?.limits?.ultra ?? settings?.mcqLimitUltra ?? 100;
+          const _mcqUserLevel = getLevelFromScore(user.totalScore ?? 0);
+          const _mcqUserTier  = getUserTier(user);
+          let dailyLimit = mcqFeature?.limits?.free ?? getEffectiveDailyLimit('mcq', _mcqUserLevel, 'FREE', settings);
+          if (_mcqUserTier === 'BASIC') dailyLimit = mcqFeature?.limits?.basic ?? getEffectiveDailyLimit('mcq', _mcqUserLevel, 'BASIC', settings);
+          if (_mcqUserTier === 'ULTRA') dailyLimit = mcqFeature?.limits?.ultra ?? getEffectiveDailyLimit('mcq', _mcqUserLevel, 'ULTRA', settings);
 
           // FREE users: hard daily limit
           if (!user.subscriptionLevel && solvedToday >= dailyLimit) {
@@ -494,12 +498,13 @@ export const McqView: React.FC<Props> = ({
         [processedQuestions[i], processedQuestions[j]] = [processedQuestions[j], processedQuestions[i]];
     }
 
-    // Apply Tier Limits (Per Test Limit)
-    // Free: 50, Basic: 70, Ultra: 100
+    // Apply Tier Limits (Per Test Limit) — unified level+tier system
     const mcqFeature = settings?.featureConfig?.['MCQ_FREE'];
-    let questionLimit = mcqFeature?.limits?.free ?? settings?.mcqLimitFree ?? 50;
-    if (user.subscriptionLevel === 'BASIC') questionLimit = mcqFeature?.limits?.basic ?? settings?.mcqLimitBasic ?? 70;
-    if (user.subscriptionLevel === 'ULTRA') questionLimit = mcqFeature?.limits?.ultra ?? settings?.mcqLimitUltra ?? 100;
+    const _qlLevel = getLevelFromScore(user.totalScore ?? 0);
+    const _qlTier  = getUserTier(user);
+    let questionLimit = mcqFeature?.limits?.free ?? getEffectiveDailyLimit('mcq', _qlLevel, 'FREE', settings);
+    if (_qlTier === 'BASIC') questionLimit = mcqFeature?.limits?.basic ?? getEffectiveDailyLimit('mcq', _qlLevel, 'BASIC', settings);
+    if (_qlTier === 'ULTRA') questionLimit = mcqFeature?.limits?.ultra ?? getEffectiveDailyLimit('mcq', _qlLevel, 'ULTRA', settings);
 
     // Admin Override
     if (user.role === 'ADMIN') questionLimit = 999999;
@@ -540,15 +545,18 @@ export const McqView: React.FC<Props> = ({
           [indices[i], indices[j]] = [indices[j], indices[i]];
       }
 
-      // 3. Determine Limit based on Tier
+      // 3. Determine Limit based on Level + Tier (unified system)
       const mcqFeature = settings?.featureConfig?.['MCQ_FREE'];
-      let limit = mcqFeature?.limits?.free ?? settings?.mcqLimitFree ?? 50; // Default Free
+      const _pLevel = getLevelFromScore(user.totalScore ?? 0);
+      const _pTier  = getUserTier(user);
+      let limit = mcqFeature?.limits?.free ?? getEffectiveDailyLimit('mcq', _pLevel, 'FREE', settings);
 
       if (user.role === 'ADMIN') {
           limit = 9999;
-      } else if (user.subscriptionTier && user.subscriptionTier !== 'FREE') {
-          if (user.subscriptionLevel === 'ULTRA') limit = mcqFeature?.limits?.ultra ?? settings?.mcqLimitUltra ?? 100;
-          else limit = mcqFeature?.limits?.basic ?? settings?.mcqLimitBasic ?? 70; // Basic Limit
+      } else if (_pTier === 'ULTRA') {
+          limit = mcqFeature?.limits?.ultra ?? getEffectiveDailyLimit('mcq', _pLevel, 'ULTRA', settings);
+      } else if (_pTier === 'BASIC') {
+          limit = mcqFeature?.limits?.basic ?? getEffectiveDailyLimit('mcq', _pLevel, 'BASIC', settings);
       }
 
       // 4. Slice & Select
