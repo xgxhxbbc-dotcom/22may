@@ -1685,21 +1685,17 @@ const App: React.FC = () => {
                  setAlertConfig({isOpen: true, message: `Insufficient Credits! You need ${cost} Credits.`});
                  return;
              }
-             if (!state.user.isAutoDeductEnabled && !forcePay) {
+             { const _td = new Date().toISOString().split('T')[0]; const _sk = `nst_credit_skip_${state.user!.id}_${_td}`; if (!localStorage.getItem(_sk) && !forcePay) {
                  setCreditModal({
                      isOpen: true, cost, title: "Unlock Content",
                      onConfirm: (auto) => {
-                         if (auto) {
-                             const u = { ...state.user!, isAutoDeductEnabled: true };
-                             saveUserToLive(u);
-                             setState(p => ({...p, user: u}));
-                         }
+                         if (auto) { localStorage.setItem(_sk, '1'); }
                          setCreditModal(null);
                          handleContentGeneration(type, count, true, specificContent);
                      }
                  });
                  return;
-             }
+             }}
              const updatedUser = applyDeduction(state.user, cost) ?? state.user;
              if (!state.originalAdmin) {
                  localStorage.setItem('nst_current_user', JSON.stringify(updatedUser));
@@ -1783,23 +1779,19 @@ const App: React.FC = () => {
              }
 
              // CONFIRMATION CHECK
-             if (!state.user.isAutoDeductEnabled && !forcePay) {
+             { const _td = new Date().toISOString().split('T')[0]; const _sk = `nst_credit_skip_${state.user!.id}_${_td}`; if (!localStorage.getItem(_sk) && !forcePay) {
                  setCreditModal({
                      isOpen: true,
                      cost,
                      title: "Unlock AI Content",
                      onConfirm: (auto) => {
-                         if (auto) {
-                             const u = { ...state.user!, isAutoDeductEnabled: true };
-                             saveUserToLive(u);
-                             setState(p => ({...p, user: u}));
-                         }
+                         if (auto) { localStorage.setItem(_sk, '1'); }
                          setCreditModal(null);
                          handleContentGeneration(type, count, true);
                      }
                  });
                  return;
-             }
+             }}
 
              const updatedUser = applyDeduction(state.user, cost) ?? state.user;
              if (!state.originalAdmin) {
@@ -1999,23 +1991,19 @@ const App: React.FC = () => {
         if (state.user.credits >= cost) {
 
             // NEW: CONFIRMATION CHECK
-            if (!state.user.isAutoDeductEnabled && !forcePay) {
+            { const _td = new Date().toISOString().split('T')[0]; const _sk = `nst_credit_skip_${state.user!.id}_${_td}`; if (!localStorage.getItem(_sk) && !forcePay) {
                  setCreditModal({
                      isOpen: true,
                      cost,
                      title: "Unlock AI Content",
                      onConfirm: (auto) => {
-                         if (auto) {
-                             const u = { ...state.user!, isAutoDeductEnabled: true };
-                             saveUserToLive(u);
-                             setState(p => ({...p, user: u}));
-                         }
+                         if (auto) { localStorage.setItem(_sk, '1'); }
                          setCreditModal(null);
                          handleContentGeneration(type, count, true);
                      }
                  });
                  return;
-            }
+            }}
 
             // Deduct Credits
             const updatedUser = applyDeduction(state.user, cost) ?? state.user;
@@ -2943,7 +2931,7 @@ const App: React.FC = () => {
               title={creditModal.title}
               cost={creditModal.cost}
               userCredits={state.user.credits}
-              isAutoEnabledInitial={!!state.user.isAutoDeductEnabled}
+              isAutoEnabledInitial={!!localStorage.getItem(`nst_credit_skip_${state.user.id}_${new Date().toISOString().split('T')[0]}`)}
               onConfirm={creditModal.onConfirm}
               onCancel={() => setCreditModal(null)}
           />

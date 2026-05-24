@@ -874,13 +874,32 @@ export const StudentDashboard: React.FC<Props> = ({
           showAlert(`🚫 Daily Free MCQ Limit khatam! (${mcqLim}/${mcqLim}) — Kal dobara milega.`, 'INFO');
         }
       }
-      // ── Score earning per correct MCQ (daily limit 200 pts) ──────────────
-      if (isCorrect) {
-        const boost = getActiveBoost(freshUser);
+      // ── Score earning per MCQ (wrong=+1, correct=+2, 3-streak=+5 bonus) ────
+      const boost = getActiveBoost(freshUser);
+      const streakKey = `nst_mcq_streak_${today}_${freshUser.id}`;
+      const currentStreak = parseInt(localStorage.getItem(streakKey) || '0');
+
+      if (!isCorrect) {
+        // Wrong answer → +1 score, reset streak
+        localStorage.setItem(streakKey, '0');
         const earned = tryEarnScore(freshUser.id, 1, freshUser.subscriptionLevel, freshUser.isPremium, boost);
         if (earned > 0) {
-          const updatedScore = (freshUser.totalScore || 0) + earned;
-          handleUserUpdate({ ...freshUser, totalScore: updatedScore });
+          handleUserUpdate({ ...freshUser, totalScore: (freshUser.totalScore || 0) + earned });
+        }
+      } else {
+        // Correct answer → +2 score
+        const newStreak = currentStreak + 1;
+        localStorage.setItem(streakKey, newStreak.toString());
+        let baseEarned = tryEarnScore(freshUser.id, 2, freshUser.subscriptionLevel, freshUser.isPremium, boost);
+        let bonusEarned = 0;
+        // Every 3 consecutive correct → +5 bonus
+        if (newStreak % 3 === 0) {
+          bonusEarned = tryEarnScore(freshUser.id, 5, freshUser.subscriptionLevel, freshUser.isPremium, boost);
+          showAlert(`🔥 ${newStreak} Streak! +5 Bonus Score!`, 'SUCCESS');
+        }
+        const totalEarned = baseEarned + bonusEarned;
+        if (totalEarned > 0) {
+          handleUserUpdate({ ...freshUser, totalScore: (freshUser.totalScore || 0) + totalEarned });
         }
       }
       // Check if prize should be triggered
@@ -1159,6 +1178,7 @@ export const StudentDashboard: React.FC<Props> = ({
     previous: number;
     deducted: number;
     current: number;
+    type: 'ADD' | 'DEDUCT';
   } | null>(null);
   const creditToastTimerRef = React.useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -1437,6 +1457,7 @@ export const StudentDashboard: React.FC<Props> = ({
   const [showDotsMenu, setShowDotsMenu] = useState(false);
   const [showScorePanel, setShowScorePanel] = useState(false);
   const [scorePanelTab, setScorePanelTab] = useState<'LEVEL' | 'DAILY' | 'FEATURES'>('LEVEL');
+  const [scoreDailyTier, setScoreDailyTier] = useState<'FREE' | 'BASIC' | 'ULTRA' | null>(null);
   const [ttsProgressPercent, setTtsProgressPercent] = useState(0);
   const [ttsSessionKey, setTtsSessionKey] = useState<string | null>(null);
   const [ttsScoreSessionKey, setTtsScoreSessionKey] = useState<string | null>(null);
@@ -3920,7 +3941,14 @@ export const StudentDashboard: React.FC<Props> = ({
     if (newCredits < prevCredits) {
       const deducted = prevCredits - newCredits;
       if (creditToastTimerRef.current) clearTimeout(creditToastTimerRef.current);
-      setCreditDeductToast({ visible: true, previous: prevCredits, deducted, current: newCredits });
+      setCreditDeductToast({ visible: true, previous: prevCredits, deducted, current: newCredits, type: 'DEDUCT' });
+      creditToastTimerRef.current = setTimeout(() => {
+        setCreditDeductToast(null);
+      }, 2000);
+    } else if (newCredits > prevCredits) {
+      const added = newCredits - prevCredits;
+      if (creditToastTimerRef.current) clearTimeout(creditToastTimerRef.current);
+      setCreditDeductToast({ visible: true, previous: prevCredits, deducted: added, current: newCredits, type: 'ADD' });
       creditToastTimerRef.current = setTimeout(() => {
         setCreditDeductToast(null);
       }, 2000);
@@ -7941,7 +7969,7 @@ export const StudentDashboard: React.FC<Props> = ({
                     backgroundSize: '200% 100%', animation: 'shimmer-sweep 3s linear infinite' }} />
               )}
               {(() => {
-                const _pScore = (user.role === 'ADMIN' || user.role === 'SUB_ADMIN') ? 20000 : (user.totalScore || 0);
+                const _pScore = (user.role === 'ADMIN' || user.role === 'SUB_ADMIN') ? 9999999 : (user.totalScore || 0);
                 const _pLvl = getLevelInfo(_pScore);
                 const _pEffects = getLevelTopBarEffects(_pLvl);
                 return _pEffects.length > 0 ? (
@@ -7957,7 +7985,7 @@ export const StudentDashboard: React.FC<Props> = ({
               <div className="p-5 relative z-[2]">
                 {/* Avatar row */}
                 {(() => {
-                  const _aScore = (user.role === 'ADMIN' || user.role === 'SUB_ADMIN') ? 20000 : (user.totalScore || 0);
+                  const _aScore = (user.role === 'ADMIN' || user.role === 'SUB_ADMIN') ? 9999999 : (user.totalScore || 0);
                   const _aLvl = getLevelInfo(_aScore);
                   const nameColor = _aLvl.level >= 4 ? _aLvl.nameColor || _aLvl.color : undefined;
                   return (
@@ -8024,7 +8052,7 @@ export const StudentDashboard: React.FC<Props> = ({
                 {/* LEVEL BADGE */}
                 {(() => {
                   const rawScore = user.totalScore || 0;
-                  const totalScore = (user.role === 'ADMIN' || user.role === 'SUB_ADMIN') ? 20000 : rawScore;
+                  const totalScore = (user.role === 'ADMIN' || user.role === 'SUB_ADMIN') ? 9999999 : rawScore;
                   const lvl = getLevelInfo(totalScore);
                   const nextLvl = getNextLevelInfo(totalScore);
                   const progress = getLevelProgress(totalScore);
@@ -8204,6 +8232,19 @@ export const StudentDashboard: React.FC<Props> = ({
               })()}
 
 
+              {/* App Guide */}
+              <button onClick={() => setShowUserGuide(true)}
+                className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-white/4 active:bg-white/6 transition-colors border-b border-slate-800/80">
+                <div className="w-9 h-9 rounded-xl bg-indigo-500/15 flex items-center justify-center shrink-0">
+                  <span className="text-base">📖</span>
+                </div>
+                <div className="flex-1 text-left min-w-0">
+                  <p className="text-sm font-bold text-white">App Guide</p>
+                  <p className="text-[11px] text-slate-500">Har feature ka guide padhein</p>
+                </div>
+                <ChevronRight size={14} className="text-slate-600 shrink-0" />
+              </button>
+
               {/* Leaderboard */}
               <button onClick={() => setShowLevelLeaderboard(true)}
                 className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-white/4 active:bg-white/6 transition-colors border-b border-slate-800/80">
@@ -8231,6 +8272,27 @@ export const StudentDashboard: React.FC<Props> = ({
                   <ChevronRight size={14} className="text-slate-600 shrink-0" />
                 </button>
               )}
+
+              {/* Reset Settings */}
+              <button onClick={() => {
+                const keysToRemove: string[] = [];
+                for (let i = 0; i < localStorage.length; i++) {
+                  const key = localStorage.key(i);
+                  if (key && key.startsWith(`nst_credit_skip_${user.id}_`)) keysToRemove.push(key);
+                }
+                keysToRemove.forEach(k => localStorage.removeItem(k));
+                showAlert('Settings reset ho gayi! Credit popup dobara dikhega.', 'SUCCESS');
+              }}
+                className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-white/4 active:bg-white/6 transition-colors border-b border-slate-800/80">
+                <div className="w-9 h-9 rounded-xl bg-orange-500/15 flex items-center justify-center shrink-0">
+                  <RotateCcw size={16} className="text-orange-400" />
+                </div>
+                <div className="flex-1 text-left min-w-0">
+                  <p className="text-sm font-bold text-white">Reset Settings</p>
+                  <p className="text-[11px] text-slate-500">Sab settings default pe reset karo</p>
+                </div>
+                <ChevronRight size={14} className="text-slate-600 shrink-0" />
+              </button>
 
               {/* Logout */}
               {(settings?.isLogoutEnabled !== false || user.role === 'ADMIN' || isImpersonating) && (
@@ -8666,41 +8728,10 @@ export const StudentDashboard: React.FC<Props> = ({
                         </div>
                       </div>
 
-                      {/* Daily Downloads remaining pill */}
-                      <div className="px-4 pt-2 pb-1">
-                        <div className="flex items-center justify-between bg-slate-50 rounded-xl px-3 py-2 text-[10px] font-bold text-slate-600 border border-slate-100">
-                          <span>📥 HTML Downloads today</span>
-                          <span className={`font-black ${_dlHtmlLeft === 0 ? 'text-rose-600' : _dlHtmlLeft <= 2 ? 'text-amber-600' : 'text-emerald-600'}`}>
-                            {_dlHtmlLeft}/{_dlHtmlLimit} left
-                          </span>
-                        </div>
-                      </div>
-                      {/* App Guide Link */}
-                      <div className="px-4 pt-1 pb-1">
-                        <button
-                          onClick={() => { setShowUserGuide(true); setShowDotsMenu(false); }}
-                          className="w-full flex items-center gap-2 p-2.5 rounded-xl bg-gradient-to-r from-indigo-50 to-violet-50 border border-indigo-200 text-indigo-700 hover:from-indigo-100 hover:to-violet-100 font-bold text-xs transition-all"
-                        >
-                          <span className="text-base">📖</span>
-                          <span className="flex-1 text-left">App Guide — Har feature samjhein</span>
-                          <span className="text-[10px] text-indigo-400">→</span>
-                        </button>
-                      </div>
-                      {/* Rules Page Link */}
-                      <div className="px-4 pt-1 pb-1">
-                        <button
-                          onClick={() => { setShowRulesPage(true); setShowDotsMenu(false); }}
-                          className="w-full flex items-center gap-2 p-2.5 rounded-xl bg-gradient-to-r from-violet-50 to-indigo-50 border border-violet-200 text-violet-700 hover:from-violet-100 hover:to-indigo-100 font-bold text-xs transition-all"
-                        >
-                          <span className="text-base">📋</span>
-                          <span className="flex-1 text-left">Feature Rules — Free / Basic / Ultra</span>
-                          <span className="text-[10px] text-violet-400">→</span>
-                        </button>
-                      </div>
                       {/* Login History */}
-                      <div className="px-4 pt-1 pb-4">
+                      <div className="px-4 pt-2 pb-4">
                         <button
-                          onClick={() => { setShowLoginHistory(true); setShowDotsMenu(false); }}
+                          onClick={() => { onTabChange('HISTORY'); setShowDotsMenu(false); }}
                           className="w-full flex items-center gap-2 p-2.5 rounded-xl bg-gradient-to-r from-blue-50 to-sky-50 border border-blue-200 text-blue-700 hover:from-blue-100 hover:to-sky-100 font-bold text-xs transition-all"
                         >
                           <span className="text-base">🕐</span>
@@ -8729,7 +8760,7 @@ export const StudentDashboard: React.FC<Props> = ({
           <div className="flex items-center gap-1.5 shrink-0 max-w-[78%] overflow-hidden">
             {/* Level button — goes to Score/Level panel */}
             {(() => {
-              const _ls = user.role === 'ADMIN' || user.role === 'SUB_ADMIN' ? 20000 : (user.totalScore || 0);
+              const _ls = user.role === 'ADMIN' || user.role === 'SUB_ADMIN' ? 9999999 : (user.totalScore || 0);
               const _li = getLevelInfo(_ls);
               return (
                 <button
@@ -17024,7 +17055,7 @@ RULES:
 
       {/* ═══════════ SCORE / LEVEL PANEL ═══════════ */}
       {showScorePanel && (() => {
-        const totalScore = user.totalScore || 0;
+        const totalScore = (user.role === 'ADMIN' || user.role === 'SUB_ADMIN') ? 9999999 : (user.totalScore || 0);
         const lvl = getLevelInfo(totalScore);
         const nextLvl = getNextLevelInfo(totalScore);
         const progress = getLevelProgress(totalScore);
@@ -17112,7 +17143,8 @@ RULES:
 
                 {/* ── DAILY LIMITS TAB ── */}
                 {scorePanelTab === 'DAILY' && (() => {
-                  const _tier  = user.isPremium ? (user.subscriptionLevel === 'ULTRA' ? 'ULTRA' : 'BASIC') : 'FREE';
+                  const _userTier = (user.role === 'ADMIN' || user.role === 'SUB_ADMIN') ? 'ULTRA' : user.isPremium ? (user.subscriptionLevel === 'ULTRA' ? 'ULTRA' : 'BASIC') : 'FREE';
+                  const _tier = scoreDailyTier ?? _userTier;
                   const _ld = getLevelDailyLimitsWithOverride(lvl.level, settings) ?? getLevelDailyLimits(lvl.level);
                   const _bonusBasic = _ld.bonusLoginCredits;
                   const _bonusUltra = _bonusBasic > 0 ? _bonusBasic + 5 : 0;
@@ -17177,44 +17209,59 @@ RULES:
                     },
                   ];
 
-                  const _colStyle = (col: 'FREE'|'BASIC'|'ULTRA') => {
-                    const isMe = col === _tier;
-                    if (col === 'ULTRA') return { color: isMe ? '#a78bfa' : '#64748b', fontWeight: isMe ? 900 : 600, background: isMe ? '#7c3aed18' : 'transparent' };
-                    if (col === 'BASIC') return { color: isMe ? '#38bdf8' : '#64748b', fontWeight: isMe ? 900 : 600, background: isMe ? '#0ea5e918' : 'transparent' };
-                    return { color: isMe ? '#94a3b8' : '#475569', fontWeight: isMe ? 900 : 600, background: isMe ? '#47556918' : 'transparent' };
-                  };
+                  const _tierColor = _tier === 'ULTRA' ? '#a78bfa' : _tier === 'BASIC' ? '#38bdf8' : '#94a3b8';
+                  const _tierBg = _tier === 'ULTRA' ? '#7c3aed' : _tier === 'BASIC' ? '#0ea5e9' : '#475569';
+                  const todayStr = new Date().toISOString().split('T')[0];
+                  const mcqToday = parseInt(localStorage.getItem(`nst_mcq_daily_total_${todayStr}_${user.id}`) || '0', 10);
+                  const _todayVals: Record<number, string> = { 0: mcqToday.toString() };
 
                   return (
                     <>
+                      {/* 3 Tier Selector Buttons */}
+                      <div className="flex gap-1.5">
+                        {(['FREE', 'BASIC', 'ULTRA'] as const).map(t => {
+                          const isActive = _tier === t;
+                          const isMe = t === _userTier;
+                          const c = t === 'ULTRA' ? '#7c3aed' : t === 'BASIC' ? '#0ea5e9' : '#475569';
+                          const lbl = t === 'ULTRA' ? '⚡ Ultra' : t === 'BASIC' ? '🔵 Basic' : '🆓 Free';
+                          return (
+                            <button key={t} onClick={() => setScoreDailyTier(t === scoreDailyTier ? null : t)}
+                              className="flex-1 py-2 rounded-xl text-[10px] font-black transition-all flex flex-col items-center gap-0.5"
+                              style={{ background: isActive ? c + '28' : 'rgba(255,255,255,0.04)', border: `1px solid ${isActive ? c + '60' : 'rgba(255,255,255,0.08)'}`, color: isActive ? c : '#64748b' }}>
+                              <span>{lbl}</span>
+                              {isMe && <span style={{ fontSize: '7px', fontWeight: 900, letterSpacing: '0.06em', opacity: 0.75 }}>MY PLAN</span>}
+                            </button>
+                          );
+                        })}
+                      </div>
+
                       {/* Section Header */}
                       <div className="rounded-2xl px-4 py-3" style={{ background: `${lvl.color}12`, border: `1px solid ${lvl.color}30` }}>
-                        <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: lvl.color }}>📋 DAILY LIMITS — LEVEL {lvl.level}</p>
+                        <p className="text-[10px] font-black uppercase tracking-widest" style={{ color: lvl.color }}>📋 DAILY LIMITS — {_tier} — LEVEL {lvl.level}</p>
                         <p className="text-[8px] text-slate-500 mt-0.5">Level badhne par ye limits badhengi · L9 pe Notes & TTS Unlimited</p>
                       </div>
 
-                      {/* Table */}
+                      {/* Table — 3 columns: Feature | Limit | Today Used */}
                       <div className="rounded-2xl overflow-hidden border border-white/10">
                         {/* Column headers */}
-                        <div className="grid border-b border-white/10" style={{ gridTemplateColumns: '2fr 1.2fr 1.2fr 1.2fr', background: 'rgba(255,255,255,0.04)' }}>
+                        <div className="grid border-b border-white/10" style={{ gridTemplateColumns: '2fr 1.3fr 1fr', background: 'rgba(255,255,255,0.04)' }}>
                           <div className="px-2 py-2">
                             <p className="text-[8px] font-black text-slate-500 uppercase tracking-widest">FEATURE</p>
                           </div>
-                          {(['FREE','BASIC','ULTRA'] as const).map(col => {
-                            const isMe = col === _tier;
-                            const label = col === 'ULTRA' ? '⚡ ULTRA' : col === 'BASIC' ? '🔵 BASIC' : '🆓 FREE';
-                            const bg = isMe ? (col === 'ULTRA' ? '#7c3aed' : col === 'BASIC' ? '#0ea5e9' : '#475569') : 'transparent';
-                            const tc = isMe ? '#fff' : '#64748b';
-                            return (
-                              <div key={col} className="px-1 py-2 flex items-center justify-center" style={{ background: bg + (isMe ? '30' : '') }}>
-                                <p className="text-[8px] font-black uppercase tracking-widest text-center" style={{ color: tc }}>{label}</p>
-                              </div>
-                            );
-                          })}
+                          <div className="px-1 py-2 flex items-center justify-center" style={{ background: _tierBg + '28' }}>
+                            <p className="text-[8px] font-black uppercase tracking-widest text-center" style={{ color: _tierColor }}>LIMIT</p>
+                          </div>
+                          <div className="px-1 py-2 flex items-center justify-center">
+                            <p className="text-[8px] font-black text-emerald-400 uppercase tracking-widest text-center">AJ USE</p>
+                          </div>
                         </div>
 
                         {/* Data rows */}
-                        {_rows.map((row, idx) => (
-                          <div key={idx} className="grid border-b border-white/5 last:border-0" style={{ gridTemplateColumns: '2fr 1.2fr 1.2fr 1.2fr', background: idx % 2 === 0 ? 'rgba(255,255,255,0.015)' : 'transparent' }}>
+                        {_rows.map((row, idx) => {
+                          const limit = row[_tier.toLowerCase() as 'free' | 'basic' | 'ultra'];
+                          const todayVal = _todayVals[idx] ?? '—';
+                          return (
+                          <div key={idx} className="grid border-b border-white/5 last:border-0" style={{ gridTemplateColumns: '2fr 1.3fr 1fr', background: idx % 2 === 0 ? 'rgba(255,255,255,0.015)' : 'transparent' }}>
                             {/* Feature label */}
                             <div className="px-2 py-2.5 flex items-center gap-1.5">
                               <span className="text-sm shrink-0">{row.icon}</span>
@@ -17225,21 +17272,18 @@ RULES:
                                 {row.sub && <p className="text-[7px] text-slate-600 mt-0.5">{row.sub}</p>}
                               </div>
                             </div>
-                            {/* FREE */}
-                            <div className="px-1 py-2.5 flex flex-col items-center justify-center" style={{ background: _tier === 'FREE' ? '#47556912' : 'transparent' }}>
-                              <p className="text-[8px] font-black text-center leading-tight" style={{ color: _tier === 'FREE' ? '#94a3b8' : '#475569' }}>{row.free}</p>
-                              {row.freeSub && <p className="text-[7px] text-slate-600 mt-0.5 text-center">{row.freeSub}</p>}
+                            {/* Limit for selected tier */}
+                            <div className="px-1 py-2.5 flex flex-col items-center justify-center" style={{ background: _tierBg + '10' }}>
+                              <p className="text-[8px] font-black text-center leading-tight" style={{ color: _tierColor }}>{limit}</p>
+                              {row.freeSub && _tier === 'FREE' && idx === 0 && <p className="text-[7px] text-slate-600 mt-0.5 text-center">{row.freeSub}</p>}
                             </div>
-                            {/* BASIC */}
-                            <div className="px-1 py-2.5 flex items-center justify-center" style={{ background: _tier === 'BASIC' ? '#0ea5e912' : 'transparent' }}>
-                              <p className="text-[8px] font-black text-center leading-tight" style={{ color: _tier === 'BASIC' ? '#38bdf8' : '#475569' }}>{row.basic}</p>
-                            </div>
-                            {/* ULTRA */}
-                            <div className="px-1 py-2.5 flex items-center justify-center" style={{ background: _tier === 'ULTRA' ? '#7c3aed12' : 'transparent' }}>
-                              <p className="text-[8px] font-black text-center leading-tight" style={{ color: _tier === 'ULTRA' ? '#a78bfa' : '#475569' }}>{row.ultra}</p>
+                            {/* Today Used */}
+                            <div className="px-1 py-2.5 flex items-center justify-center">
+                              <p className="text-[8px] font-black text-center leading-tight text-emerald-400">{todayVal}</p>
                             </div>
                           </div>
-                        ))}
+                          );
+                        })}
                       </div>
 
                       {/* Upgrade nudge for free users */}
@@ -18838,34 +18882,39 @@ RULES:
         </div>
       )}
 
-      {/* CREDIT DEDUCTION TOAST — auto-dismiss only, no close button */}
-      {creditDeductToast?.visible && (
+      {/* CREDIT TOAST — auto-dismiss only, no close button */}
+      {creditDeductToast?.visible && (() => {
+        const isAdd = creditDeductToast.type === 'ADD';
+        const barColor = isAdd
+          ? 'bg-gradient-to-r from-emerald-400 via-teal-400 to-green-400'
+          : 'bg-gradient-to-r from-rose-500 via-orange-400 to-amber-400';
+        const iconBg = isAdd ? 'bg-emerald-500/20' : 'bg-rose-500/20';
+        const title = isAdd ? 'Credits Mile 🎉' : 'Credits Kate';
+        const midLabel = isAdd ? 'Mila' : 'Kata';
+        const midBg = isAdd ? 'bg-emerald-500/12 border border-emerald-500/20' : 'bg-rose-500/12 border border-rose-500/20';
+        const midColor = isAdd ? 'text-emerald-400' : 'text-rose-400';
+        const midSign = isAdd ? '+' : '−';
+        return (
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 z-[99999] w-[88vw] max-w-xs animate-in slide-in-from-bottom-4 fade-in duration-300 pointer-events-none">
           <div className="bg-[#111] border border-white/12 rounded-2xl shadow-2xl overflow-hidden">
-            {/* Auto-dismiss progress bar — shrinks over 2s */}
             <div className="h-1 w-full bg-white/5 relative">
-              <div
-                className="absolute left-0 top-0 h-full bg-gradient-to-r from-rose-500 via-orange-400 to-amber-400"
-                style={{ animation: 'credit-toast-bar 2s linear forwards' }}
-              />
+              <div className={`absolute left-0 top-0 h-full ${barColor}`} style={{ animation: 'credit-toast-bar 2s linear forwards' }} />
             </div>
             <div className="px-4 pt-3 pb-3">
-              {/* Header */}
               <div className="flex items-center gap-2 mb-2.5">
-                <div className="w-6 h-6 rounded-lg bg-rose-500/20 flex items-center justify-center shrink-0">
+                <div className={`w-6 h-6 rounded-lg ${iconBg} flex items-center justify-center shrink-0`}>
                   <span className="text-sm">🪙</span>
                 </div>
-                <p className="text-white font-black text-xs tracking-wide">Credits Kate</p>
+                <p className="text-white font-black text-xs tracking-wide">{title}</p>
               </div>
-              {/* Stats row */}
               <div className="grid grid-cols-3 gap-1.5">
                 <div className="bg-white/5 rounded-xl p-2 text-center">
                   <p className="text-[8px] text-slate-500 font-bold uppercase tracking-wide mb-0.5">Pehle</p>
                   <p className="text-white font-black text-xs">{creditDeductToast.previous.toLocaleString('en-IN')}</p>
                 </div>
-                <div className="bg-rose-500/12 border border-rose-500/20 rounded-xl p-2 text-center">
-                  <p className="text-[8px] text-rose-400 font-bold uppercase tracking-wide mb-0.5">Kata</p>
-                  <p className="text-rose-400 font-black text-xs">−{creditDeductToast.deducted.toLocaleString('en-IN')}</p>
+                <div className={`${midBg} rounded-xl p-2 text-center`}>
+                  <p className={`text-[8px] ${midColor} font-bold uppercase tracking-wide mb-0.5`}>{midLabel}</p>
+                  <p className={`${midColor} font-black text-xs`}>{midSign}{creditDeductToast.deducted.toLocaleString('en-IN')}</p>
                 </div>
                 <div className="bg-emerald-500/12 border border-emerald-500/20 rounded-xl p-2 text-center">
                   <p className="text-[8px] text-emerald-400 font-bold uppercase tracking-wide mb-0.5">Bacha</p>
@@ -18875,7 +18924,8 @@ RULES:
             </div>
           </div>
         </div>
-      )}
+        );
+      })()}
     </div>
   );
 };

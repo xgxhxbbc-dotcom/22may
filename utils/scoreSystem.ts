@@ -1,17 +1,17 @@
 /**
  * Score System — daily limits, subscription multipliers, activity milestones
- * Daily score limit: 200 pts (Free) / 250 pts (Basic 1.25×) / 350 pts (Ultra 1.75×)
+ * Daily score limit: 300 pts (Free) / 400 pts (Basic) / 500 pts (Ultra)
  * Milestones: 20%=5, 40%=10, 60%=15, 80%=20, 100%=25 base pts
  * Multipliers: Free=1x, Basic=1.2x (+20%), Ultra=1.5x (+50%)
  */
 
-export const DAILY_SCORE_LIMIT = 200;
+export const DAILY_SCORE_LIMIT = 400;
 
-/** Subscription daily score multipliers */
-const DAILY_LIMIT_MULTIPLIERS: Record<string, number> = {
-  FREE:  1.00,
-  BASIC: 1.25,
-  ULTRA: 1.75,
+/** Fixed daily score limits by tier (Free=400, Basic=1.25×=500, Ultra=1.75×=700) */
+const DAILY_TIER_LIMITS: Record<string, number> = {
+  FREE:  400,
+  BASIC: 500,
+  ULTRA: 700,
 };
 
 /** Dynamic daily score limit based on subscription + optional permanent limit boost */
@@ -20,8 +20,7 @@ export const getDailyScoreLimit = (
   isPremium?: boolean,
   scoreLimitBoostPercent?: number,
 ): number => {
-  const mult = isPremium ? (DAILY_LIMIT_MULTIPLIERS[subscriptionLevel ?? 'FREE'] ?? 1.0) : 1.0;
-  const base = Math.round(DAILY_SCORE_LIMIT * mult);
+  const base = isPremium ? (DAILY_TIER_LIMITS[subscriptionLevel ?? 'FREE'] ?? 300) : 300;
   if (scoreLimitBoostPercent && scoreLimitBoostPercent > 0) {
     return Math.round(base * (1 + scoreLimitBoostPercent / 100));
   }

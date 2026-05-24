@@ -25,12 +25,14 @@ import {
     type FlashcardSession, type NotesReadSession,
 } from '../utils/flashcardHistory';
 import { Layers, Clock } from 'lucide-react';
+import { getLoginHistory, formatLoginTime, formatDuration as formatLoginDuration, type LoginSession } from '../utils/loginHistory';
+import { getLevelInfo } from '../utils/levelSystem';
 
 interface Props {
     user: User;
     onUpdateUser: (u: User) => void;
     settings?: SystemSettings;
-    initialTab?: 'READING' | 'ACTIVITY' | 'MISTAKE' | 'OFFLINE' | 'SUB_HISTORY' | 'STARRED' | 'FLASHCARDS';
+    initialTab?: 'READING' | 'ACTIVITY' | 'MISTAKE' | 'OFFLINE' | 'SUB_HISTORY' | 'STARRED' | 'FLASHCARDS' | 'LOGIN_HISTORY';
     /** Resume a chapter from a "Continue Reading" entry — closes History and opens the chapter. */
     onResumeRecentChapter?: (entry: RecentChapterEntry) => void;
     /** Resume a homework note (Sar Sangrah / Speedy / etc). */
@@ -40,7 +42,9 @@ interface Props {
 }
 
 export const HistoryPage: React.FC<Props> = ({ user, onUpdateUser, settings, initialTab, onResumeRecentChapter, onResumeRecentHw, onResumeRecentLucent }) => {
-  const [activeTab, setActiveTab] = useState<'READING' | 'ACTIVITY' | 'MISTAKE' | 'OFFLINE' | 'SUB_HISTORY' | 'STARRED' | 'FLASHCARDS'>(initialTab || 'READING');
+  const [activeTab, setActiveTab] = useState<'READING' | 'ACTIVITY' | 'MISTAKE' | 'OFFLINE' | 'SUB_HISTORY' | 'STARRED' | 'FLASHCARDS' | 'LOGIN_HISTORY'>(initialTab || 'READING');
+  const [loginSessions, setLoginSessions] = useState<LoginSession[]>([]);
+  const _lvl = getLevelInfo((user.role === 'ADMIN' || user.role === 'SUB_ADMIN') ? 9999999 : (user.totalScore || 0));
 
   // ── MY MISTAKE STATE ─────────────────────────────────────────────
   const [mistakes, setMistakes] = useState<MistakeEntry[]>([]);
@@ -81,6 +85,12 @@ export const HistoryPage: React.FC<Props> = ({ user, onUpdateUser, settings, ini
   useEffect(() => {
     refreshReading();
   }, [activeTab, refreshReading]);
+
+  useEffect(() => {
+    if (activeTab === 'LOGIN_HISTORY') {
+      setLoginSessions(getLoginHistory(user.id).slice(0, 30));
+    }
+  }, [activeTab, user.id]);
   
   // SAVED NOTES STATE
   const [history, setHistory] = useState<LessonContent[]>([]);
@@ -462,6 +472,12 @@ export const HistoryPage: React.FC<Props> = ({ user, onUpdateUser, settings, ini
             >
                 Sub History
             </button>
+            <button
+                onClick={() => setActiveTab('LOGIN_HISTORY')}
+                className={`flex-none px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-1 ${activeTab === 'LOGIN_HISTORY' ? 'bg-white shadow text-blue-700' : 'text-slate-600 hover:text-slate-700'}`}
+            >
+                🕐 Login History
+            </button>
             {/* Important Notes tab removed — accessed from bottom-nav ⭐ Important tab */}
         </div>
 
@@ -675,8 +691,8 @@ export const HistoryPage: React.FC<Props> = ({ user, onUpdateUser, settings, ini
                                             {logs.map((log: any, i: number) => (
                                                 <div
                                                     key={i}
-                                                    // onClick removed to disable interaction
-                                                    className="bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex items-center justify-between opacity-90 transition-all group"
+                                                    className="p-4 rounded-xl border shadow-sm flex items-center justify-between opacity-90 transition-all group"
+                                                    style={{ background: i % 2 === 0 ? (_lvl.color + '08') : 'white', borderColor: i % 2 === 0 ? (_lvl.color + '25') : '#e2e8f0' }}
                                                 >
                                                     <div className="flex items-center gap-3">
                                                         <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white shadow-sm ${
@@ -770,6 +786,73 @@ export const HistoryPage: React.FC<Props> = ({ user, onUpdateUser, settings, ini
                 )}
             </div>
         )}
+
+        {activeTab === 'LOGIN_HISTORY' && (() => {
+            const levelColor = _lvl.color;
+            const levelBg = levelColor + '15';
+            const levelBorder = levelColor + '35';
+            return (
+            <div className="space-y-2">
+                {/* Header */}
+                <div className="rounded-2xl px-4 py-3 flex items-center gap-3 mb-1" style={{ background: levelBg, border: `1px solid ${levelBorder}` }}>
+                    <span className="text-xl">{_lvl.icon}</span>
+                    <div>
+                        <p className="text-sm font-black" style={{ color: levelColor }}>Login History</p>
+                        <p className="text-[11px] text-slate-500">Aapki recent {loginSessions.length} login sessions</p>
+                    </div>
+                </div>
+                {loginSessions.length === 0 ? (
+                    <div className="text-center py-10 text-slate-400">
+                        <p className="text-2xl mb-2">🕐</p>
+                        <p className="font-bold text-sm">Koi login history nahi mili</p>
+                    </div>
+                ) : loginSessions.map((s, i) => {
+                    const isCurrent = i === 0;
+                    const cardBg = isCurrent ? levelBg : (i % 2 === 0 ? 'rgba(248,250,252,1)' : 'white');
+                    const cardBorder = isCurrent ? levelBorder : '#e2e8f0';
+                    const loginDate = new Date(s.loginAt);
+                    const isValid = !isNaN(loginDate.getTime());
+                    return (
+                        <div key={s.id} className="rounded-2xl p-3.5 border transition-all"
+                            style={{ background: cardBg, borderColor: cardBorder }}>
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="flex items-center gap-2.5">
+                                    <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 text-sm font-black"
+                                        style={{ background: isCurrent ? levelColor + '25' : '#f1f5f9', color: isCurrent ? levelColor : '#64748b' }}>
+                                        {isCurrent ? '🟢' : `#${i + 1}`}
+                                    </div>
+                                    <div>
+                                        <div className="flex items-center gap-1.5">
+                                            {isCurrent && (
+                                                <span className="text-[9px] font-black px-1.5 py-0.5 rounded-full" style={{ background: levelColor + '20', color: levelColor }}>CURRENT</span>
+                                            )}
+                                            <p className="text-xs font-black text-slate-800">{isValid ? formatLoginTime(s.loginAt) : 'Unknown Time'}</p>
+                                        </div>
+                                        {s.logoutAt && (
+                                            <p className="text-[10px] text-slate-500 mt-0.5">Logout: {formatLoginTime(s.logoutAt)}</p>
+                                        )}
+                                        <p className="text-[10px] text-slate-400">
+                                            {isValid ? loginDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                                        </p>
+                                    </div>
+                                </div>
+                                <div className="text-right shrink-0">
+                                    {s.durationSec !== undefined ? (
+                                        <span className="text-[11px] font-black px-2 py-1 rounded-full" style={{ background: isCurrent ? levelColor + '20' : '#ede9fe', color: isCurrent ? levelColor : '#7c3aed' }}>
+                                            ⏱ {formatLoginDuration(s.durationSec)}
+                                        </span>
+                                    ) : (
+                                        <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full">Active</span>
+                                    )}
+                                </div>
+                            </div>
+                        </div>
+                    );
+                })}
+                <p className="text-center text-[10px] text-slate-400 pt-2">Local device storage • Last {loginSessions.length} sessions</p>
+            </div>
+            );
+        })()}
 
         {activeTab === 'MISTAKE' && (() => {
             const filteredMistakes = mistakes.filter(m =>

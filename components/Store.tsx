@@ -21,7 +21,7 @@ const DEFAULT_PACKAGES: CreditPackage[] = [
 ];
 
 export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) => {
-  const [tierType, setTierType] = useState<'BASIC' | 'ULTRA' | 'EARN' | 'CREDITS'>('BASIC');
+  const [tierType, setTierType] = useState<'BASIC' | 'ULTRA' | 'EARN' | 'CREDITS'>('EARN');
   const [selectedPlanId, setSelectedPlanId] = useState<string | null>(null);
 
   const packages = settings?.packages || DEFAULT_PACKAGES;
@@ -65,10 +65,7 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
 
   const activeEvent = isEventActive();
   const inCooldown = isCooldownPhase();
-  const showEventBanner = (activeEvent || inCooldown) && (
-    (isSubscribed && (event?.showToPremiumUsers ?? true)) ||
-    (!isSubscribed && (event?.showToFreeUsers ?? true))
-  );
+  const showEventBanner = activeEvent || inCooldown;
 
   const [timeLeft, setTimeLeft] = useState<{days: number, hours: number, minutes: number, seconds: number} | null>(null);
 
@@ -264,55 +261,6 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
           </div>
         )}
 
-        {/* SECTION LABEL */}
-        <div className="flex items-center gap-2 mb-5">
-          <span className="w-1 h-5 rounded-full bg-gradient-to-b from-cyan-400 to-indigo-500" />
-          <p className="text-[11px] font-black text-slate-400 uppercase tracking-[0.15em]">Choose Your Plan</p>
-        </div>
-
-        {/* TIER TOGGLE */}
-        <div className="bg-white/5 p-1 rounded-2xl border border-white/8 flex gap-1 mb-6 flex-wrap">
-          <button
-            onClick={() => setTierType('BASIC')}
-            className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
-              tierType === 'BASIC'
-                ? 'bg-gradient-to-r from-cyan-500 to-sky-500 text-white shadow-lg shadow-cyan-500/25'
-                : 'text-slate-500 hover:text-slate-300'
-            }`}
-          >
-            <Star size={12} /> Basic PRO
-          </button>
-          <button
-            onClick={() => setTierType('ULTRA')}
-            className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
-              tierType === 'ULTRA'
-                ? 'bg-gradient-to-r from-violet-500 to-purple-600 text-white shadow-lg shadow-purple-500/25'
-                : 'text-slate-500 hover:text-slate-300'
-            }`}
-          >
-            <Zap size={12} /> Ultra MAX
-          </button>
-          <button
-            onClick={() => setTierType('EARN')}
-            className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
-              tierType === 'EARN'
-                ? 'bg-gradient-to-r from-amber-500 to-orange-500 text-white shadow-lg shadow-amber-500/25'
-                : 'text-slate-500 hover:text-slate-300'
-            }`}
-          >
-            🎰 Earn
-          </button>
-          <button
-            onClick={() => setTierType('CREDITS')}
-            className={`flex-1 py-2.5 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
-              tierType === 'CREDITS'
-                ? 'bg-gradient-to-r from-yellow-500 to-amber-500 text-white shadow-lg shadow-yellow-500/25'
-                : 'text-slate-500 hover:text-slate-300'
-            }`}
-          >
-            🪙 Credits
-          </button>
-        </div>
 
         {/* EARN CONTENT */}
         {tierType === 'EARN' && (

@@ -15705,7 +15705,7 @@ Statement 2"
                               <input type="number" value={editUserScore} onChange={e => setEditUserScore(Number(e.target.value))} className="flex-1 p-2 border rounded-lg text-center font-bold" />
                               <button onClick={() => setEditUserScore(s => s + 50)} className="w-9 h-9 bg-green-100 text-green-600 rounded-lg font-black text-lg hover:bg-green-200">+</button>
                           </div>
-                          <p className="text-[10px] text-slate-500 mt-1">Current: {editingUser?.totalScore || 0} pts — Level {(() => { const s = editUserScore; return s >= 20000 ? '8 🏆' : s >= 10000 ? '7 👑' : s >= 5000 ? '6 🌟' : s >= 2000 ? '5 💎' : s >= 700 ? '4 🔥' : s >= 300 ? '3 ⚡' : s >= 100 ? '2 ✨' : '1 🌱'; })()}</p>
+                          <p className="text-[10px] text-slate-500 mt-1">Current: {editingUser?.totalScore || 0} pts — Score: {editUserScore.toLocaleString('en-IN')}</p>
                       </div>
 
                       {/* CREDITS */}
