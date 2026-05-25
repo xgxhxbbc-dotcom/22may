@@ -33,6 +33,12 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
   const nextTierInfo = getNextLevelInfo(totalScore);
   const scoreTierProgress = getLevelProgress(totalScore);
 
+  // storeDiscount: only active for Level 1–4 AND user has scored ≥ 100 points
+  const activeStoreDiscount =
+    (user.storeDiscount && user.storeDiscount > 0 && scoreTier.level <= 4 && totalScore >= 100)
+      ? user.storeDiscount
+      : 0;
+
   useEffect(() => {
     if (subscriptionPlans.length > 0 && !selectedPlanId) {
       const defaultPlan = subscriptionPlans.find(p => p.name.includes('Monthly')) || subscriptionPlans[0];
@@ -309,34 +315,6 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
         {/* CREDITS CONTENT */}
         {tierType === 'CREDITS' && (
           <div className="animate-in fade-in duration-200 space-y-3">
-            {/* Header */}
-            <div className="rounded-2xl px-4 py-3 flex items-center gap-3" style={{ background: 'linear-gradient(135deg, rgba(234,179,8,0.15), rgba(245,158,11,0.08))', border: '1px solid rgba(234,179,8,0.3)' }}>
-              <span className="text-2xl">🪙</span>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-black text-amber-300">Credit Packages</p>
-                <p className="text-[10px] text-slate-400 mt-0.5">Ek baar kharido, kabhi bhi use karo — Write mode, unlocks aur aur bhi</p>
-              </div>
-              <div className="text-right shrink-0">
-                <p className="text-xs font-black text-amber-400">{(user.credits || 0).toLocaleString('en-IN')} CR</p>
-                <p className="text-[9px] text-slate-500">Aapke paas</p>
-              </div>
-            </div>
-
-            {/* What are credits */}
-            <div className="grid grid-cols-3 gap-2">
-              {[
-                { emoji: '✍️', label: 'Write Mode', sub: '10 CR/use' },
-                { emoji: '🔓', label: 'Content Unlock', sub: 'Anytime' },
-                { emoji: '🎁', label: 'Login Bonus', sub: 'Daily free' },
-              ].map(item => (
-                <div key={item.label} className="rounded-xl p-2.5 text-center bg-white/4 border border-white/8">
-                  <p className="text-lg">{item.emoji}</p>
-                  <p className="text-[9px] font-black text-slate-200 mt-1 leading-tight">{item.label}</p>
-                  <p className="text-[8px] text-amber-500 mt-0.5">{item.sub}</p>
-                </div>
-              ))}
-            </div>
-
             {/* Credit packages */}
             <div className="space-y-2">
               {packages.map((pkg) => {
@@ -344,7 +322,7 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
                 let discountPercentVal = 0;
                 if (activeEvent && event?.discountPercent) discountPercentVal += event.discountPercent;
                 if (isSubscribed) discountPercentVal += 5;
-                if (user.storeDiscount) discountPercentVal += user.storeDiscount;
+                if (activeStoreDiscount > 0) discountPercentVal += activeStoreDiscount;
                 if (scoreDiscount > 0) discountPercentVal += scoreDiscount;
                 if (discountPercentVal > 0) {
                   if (discountPercentVal > 100) discountPercentVal = 100;
@@ -437,7 +415,7 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
                     {nextTierInfo.minScore - totalScore} aur → Level {nextTierInfo.level} {nextTierInfo.emoji} ({nextTierInfo.discount}% OFF)
                   </p>
                 ) : (
-                  <p className="text-[10px] text-amber-400">Max Level (Legend) — 30% discount unlocked! 🏆</p>
+                  <p className="text-[10px] text-amber-400">Max Level (Legend) — 20% discount unlocked! 🏆</p>
                 )}
                 <div className="mt-1.5 h-1 bg-white/10 rounded-full overflow-hidden">
                   <div className={`h-full bg-gradient-to-r ${scoreTier.gradient} rounded-full transition-all`}
@@ -449,40 +427,17 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
         </div>
 
         {/* PERSONAL DISCOUNT BANNER */}
-        {user.storeDiscount && user.storeDiscount > 0 && (
+        {activeStoreDiscount > 0 && (
           <div className="mb-5 p-3.5 rounded-2xl bg-gradient-to-r from-rose-900/50 to-pink-900/50 border border-rose-500/40 flex items-center gap-3 animate-in fade-in">
             <div className="w-9 h-9 bg-rose-500/25 rounded-xl flex items-center justify-center shrink-0">
               <Ticket size={16} className="text-rose-300" />
             </div>
             <div>
               <p className="text-sm font-black text-rose-300">Personal Discount Active! 🎉</p>
-              <p className="text-[11px] text-rose-400/80">{user.storeDiscount}% OFF sabhi plans pe — seedha apply ho gaya</p>
+              <p className="text-[11px] text-rose-400/80">{activeStoreDiscount}% OFF sabhi plans pe — Level 4 tak valid</p>
             </div>
           </div>
         )}
-
-        {/* FEATURES LIST */}
-        <div className="mb-6 bg-[#111] rounded-2xl border border-slate-800 p-4">
-          <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">
-            {tierType === 'BASIC' ? '★ PRO' : '⚡ MAX'} — Features
-          </p>
-          <div className="grid grid-cols-1 gap-2">
-            {featuresList.map((feat, i) => (
-              <div key={i} className="flex items-center gap-2.5">
-                <div className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${tierType === 'BASIC' ? 'bg-cyan-500/20' : 'bg-purple-500/20'}`}>
-                  <Check size={10} className={tierType === 'BASIC' ? 'text-cyan-400' : 'text-purple-400'} strokeWidth={3} />
-                </div>
-                <span className="text-sm text-slate-300 font-medium leading-snug">{feat}</span>
-              </div>
-            ))}
-            <div className="flex items-center gap-2.5">
-              <div className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${tierType === 'BASIC' ? 'bg-cyan-500/20' : 'bg-purple-500/20'}`}>
-                <Check size={10} className={tierType === 'BASIC' ? 'text-cyan-400' : 'text-purple-400'} strokeWidth={3} />
-              </div>
-              <span className="text-sm text-slate-300 font-medium leading-snug">Best learning experience guaranteed</span>
-            </div>
-          </div>
-        </div>
 
         {/* PRICING PLAN CARDS */}
         <div className="space-y-3 mb-6">
@@ -493,7 +448,7 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
             let discountPercentVal = 0;
             if (activeEvent && event?.discountPercent) discountPercentVal += event.discountPercent;
             if (isSubscribed) discountPercentVal += 5;
-            if (user.storeDiscount) discountPercentVal += user.storeDiscount;
+            if (activeStoreDiscount > 0) discountPercentVal += activeStoreDiscount;
             if (scoreDiscount > 0) discountPercentVal += scoreDiscount;
             if (discountPercentVal > 0) {
               if (discountPercentVal > 100) discountPercentVal = 100;
@@ -566,7 +521,7 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
               let discountPercentVal = 0;
               if (activeEvent && event?.discountPercent) discountPercentVal += event.discountPercent;
               if (isSubscribed) discountPercentVal += 5;
-              if (user.storeDiscount) discountPercentVal += user.storeDiscount;
+              if (activeStoreDiscount > 0) discountPercentVal += activeStoreDiscount;
               if (scoreDiscount > 0) discountPercentVal += scoreDiscount;
               if (discountPercentVal > 0) {
                 if (discountPercentVal > 100) discountPercentVal = 100;

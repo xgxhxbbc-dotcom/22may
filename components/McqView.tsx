@@ -19,6 +19,20 @@ import { getLevelFromScore, getEffectiveDailyLimit } from '../utils/levelSystem'
 import { getUserTier } from '../utils/permissionUtils';
 import { fireCreditNotify } from '../utils/creditNotify';
 
+// Detect [⚡ फ्लैशकार्ड योग्य (Flashcard Friendly)] marker in question text,
+// strip it, and set flashcard: true on the question object.
+const stripFlashcardMarker = (q: any): any => {
+  const raw: string = q.question || q.q || '';
+  // Match full bracket marker OR standalone ⚡ symbol
+  const hasMarker = /\[\s*⚡[^\]]*\]\s*|⚡\s*/.test(raw);
+  if (!hasMarker) return q;
+  const cleaned = raw
+    .replace(/\[\s*⚡[^\]]*\]\s*/gi, '')  // strip full [⚡ ...] bracket
+    .replace(/⚡\s*/g, '')                 // strip lone ⚡
+    .trim();
+  return { ...q, question: cleaned, flashcard: true };
+};
+
 // Normalize chapter data so handleStart sees `manualMcqData` regardless of
 // whether the admin/save layer used `manualMcqData` or `mcqData` (legacy).
 const normalizeChapterData = (raw: any): any => {
@@ -232,8 +246,13 @@ export const McqView: React.FC<Props> = ({
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, listMode, listStarted, listSubmitted]);
 
-  // Reset one-at-a-time index when listData or listMode changes
-  useEffect(() => { setListCurrentIdx(0); }, [listData, listMode]);
+  // Reset one-at-a-time index + answers when listData or listMode changes
+  useEffect(() => {
+    setListCurrentIdx(0);
+    setListAnswers({});
+    setListRevealed({});
+    setListSubmitted(false);
+  }, [listData, listMode]);
 
   // Load topics on mount if content exists locally or via minimal fetch.
   // Uses the same resilient/normalized lookup so topic chips show up even when
@@ -272,9 +291,14 @@ export const McqView: React.FC<Props> = ({
           setLoading(false);
           return;
       }
-      let qs = [...data.manualMcqData];
+      let qs = [...data.manualMcqData].map(stripFlashcardMarker);
       const activeFilter = topicFilter || selectedTopic;
       if (activeFilter) qs = qs.filter((q: any) => q.topic === activeFilter);
+      // For Q&A mode: show only flashcard-tagged questions (if any are tagged)
+      if (initialMode === 'qa') {
+          const tagged = qs.filter((q: any) => q.flashcard === true);
+          if (tagged.length > 0) qs = tagged;
+      }
       if (qs.length === 0) {
           setAlertConfig({ isOpen: true, title: 'No Questions', message: `No MCQs found for the topic "${activeFilter}".` });
           setLoading(false);
@@ -311,9 +335,12 @@ export const McqView: React.FC<Props> = ({
           setLoading(false);
           return;
       }
-      let qs = [...data.manualMcqData];
+      let qs = [...data.manualMcqData].map(stripFlashcardMarker);
       const activeFilter = topicFilter || selectedTopic;
       if (activeFilter) qs = qs.filter((q: any) => q.topic === activeFilter);
+      // Show only flashcard-tagged questions (if any are tagged)
+      const taggedFc = qs.filter((q: any) => q.flashcard === true);
+      if (taggedFc.length > 0) qs = taggedFc;
       // Shuffle so flashcard order varies
       for (let i = qs.length - 1; i > 0; i--) {
           const j = Math.floor(Math.random() * (i + 1));
@@ -1079,18 +1106,22 @@ export const McqView: React.FC<Props> = ({
           />
        ) : viewMode === 'INTERACTIVE_LIST' && listData ? (
           (() => {
-              const norm = listData.map((q: any) => ({
-                  question: q.question || q.q || '',
-                  options: Array.isArray(q.options) ? q.options : [],
-                  correctAnswer: typeof q.correctAnswerIndex === 'number'
-                      ? q.correctAnswerIndex
-                      : (typeof q.answerIndex === 'number'
-                          ? q.answerIndex
-                          : (typeof q.correctAnswer === 'number' ? q.correctAnswer : 0)),
-                  explanation: q.explanation || '',
-                  topic: q.topic || '',
-                  difficulty: q.difficulty || '',
-              }));
+              const norm = listData.map((q: any) => {
+                  const processed = stripFlashcardMarker(q);
+                  return {
+                      question: processed.question || processed.q || '',
+                      options: Array.isArray(processed.options) ? processed.options : [],
+                      correctAnswer: typeof processed.correctAnswerIndex === 'number'
+                          ? processed.correctAnswerIndex
+                          : (typeof processed.answerIndex === 'number'
+                              ? processed.answerIndex
+                              : (typeof processed.correctAnswer === 'number' ? processed.correctAnswer : 0)),
+                      explanation: processed.explanation || '',
+                      topic: processed.topic || '',
+                      difficulty: processed.difficulty || '',
+                      flashcard: processed.flashcard === true,
+                  };
+              });
               const totalQ = norm.length;
               const ci = Math.min(listCurrentIdx, Math.max(0, totalQ - 1));
               const cq = norm[ci] ?? null;
@@ -1106,7 +1137,7 @@ export const McqView: React.FC<Props> = ({
               const allAnswered = isMcq
                   ? mcqAttempted === totalQ && totalQ > 0
                   : Object.keys(listRevealed).length === totalQ && totalQ > 0;
-              const ttsRevealAnswer = listMode === 'qa' || cqAnswered;
+              const ttsRevealAnswer = listMode === 'qa' || (listSubmitted && cqSelected !== undefined);
 
               const persistSaved = (next: Record<number, boolean>) => {
                   const streamKey2 = (classLevel === '11' || classLevel === '12') && stream ? `-${stream}` : '';
@@ -1121,6 +1152,28 @@ export const McqView: React.FC<Props> = ({
                   setListTimerSeconds(0);
                   setListStarted(false);
                   setListCurrentIdx(0);
+              };
+              const handleSubmit = () => {
+                  setListSubmitted(true);
+                  // Auto-save wrong answers to My Mistake bank
+                  norm.forEach((q, i) => {
+                      if (listAnswers[i] !== undefined && listAnswers[i] !== q.correctAnswer) {
+                          try {
+                              addMistakes([{
+                                  question: q.question,
+                                  options: q.options || [],
+                                  correctAnswer: q.correctAnswer,
+                                  explanation: q.explanation,
+                                  topic: q.topic,
+                                  chapterTitle: chapter.title,
+                                  subjectName: subject.name,
+                                  classLevel: classLevel,
+                                  board: board,
+                                  source: 'MCQ',
+                              }]);
+                          } catch {}
+                      }
+                  });
               };
               return (
                   <div className="bg-slate-50 min-h-screen pb-24 animate-in fade-in slide-in-from-right-8">
@@ -1180,11 +1233,11 @@ export const McqView: React.FC<Props> = ({
                               </div>
                               <div className="bg-emerald-50 rounded-xl py-1.5 text-center">
                                   <div className="text-[9px] font-bold text-emerald-600 uppercase">✅ Sahi</div>
-                                  <div className="text-base font-black text-emerald-700">{right}</div>
+                                  <div className="text-base font-black text-emerald-700">{listSubmitted ? right : '?'}</div>
                               </div>
                               <div className="bg-rose-50 rounded-xl py-1.5 text-center">
                                   <div className="text-[9px] font-bold text-rose-600 uppercase">❌ Galat</div>
-                                  <div className="text-base font-black text-rose-700">{wrong}</div>
+                                  <div className="text-base font-black text-rose-700">{listSubmitted ? wrong : '?'}</div>
                               </div>
                               <div className="bg-indigo-50 rounded-xl py-1.5 text-center">
                                   <div className="text-[9px] font-bold text-indigo-600 uppercase">🏆 Score</div>
@@ -1222,6 +1275,9 @@ export const McqView: React.FC<Props> = ({
                                       {cq.topic && (
                                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 truncate min-w-0">{cq.topic}</span>
                                       )}
+                                      {(cq as any).flashcard && (
+                                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 shrink-0">🃏 FC</span>
+                                      )}
                                       <div className="ml-auto flex items-center gap-1.5 shrink-0">
                                           <McqSpeakButtons
                                               question={cq.question}
@@ -1258,10 +1314,12 @@ export const McqView: React.FC<Props> = ({
                                               const isCorrect = oi === cq.correctAnswer;
                                               const isSelected = cqSelected === oi;
                                               let cls = 'w-full text-left px-3 py-2.5 rounded-xl text-xs font-bold border-2 transition-all flex items-center gap-2 ';
-                                              if (cqAnswered) {
+                                              if (listSubmitted && cqSelected !== undefined) {
                                                   if (isCorrect) cls += 'bg-emerald-50 border-emerald-300 text-emerald-800';
                                                   else if (isSelected) cls += 'bg-rose-50 border-rose-300 text-rose-800';
                                                   else cls += 'bg-slate-50 border-slate-200 text-slate-400 opacity-60';
+                                              } else if (isSelected && !listSubmitted) {
+                                                  cls += 'bg-indigo-50 border-indigo-400 text-indigo-800';
                                               } else {
                                                   cls += 'bg-white border-slate-200 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 cursor-pointer';
                                               }
@@ -1269,43 +1327,19 @@ export const McqView: React.FC<Props> = ({
                                                   <button
                                                       type="button"
                                                       key={oi}
-                                                      disabled={cqAnswered}
+                                                      disabled={listSubmitted}
                                                       onClick={() => {
-                                                          if (cqAnswered) return;
+                                                          if (listSubmitted) return;
                                                           setListAnswers(prev => ({ ...prev, [ci]: oi }));
                                                           if (!listStarted) setListStarted(true);
-                                                          try {
-                                                              if (oi !== cq.correctAnswer) {
-                                                                  addMistakes([{
-                                                                      question: cq.question,
-                                                                      options: cq.options || [],
-                                                                      correctAnswer: cq.correctAnswer,
-                                                                      explanation: cq.explanation,
-                                                                      topic: cq.topic,
-                                                                      chapterTitle: chapter.title,
-                                                                      subjectName: subject.name,
-                                                                      classLevel: classLevel,
-                                                                      board: board,
-                                                                      source: 'MCQ',
-                                                                  }]);
-                                                              } else {
-                                                                  removeMistakeByQuestion(cq.question, cq.correctAnswer);
-                                                              }
-                                                          } catch {}
-                                                          if (ci < totalQ - 1) {
-                                                              if (autoNextTimerRef.current) clearTimeout(autoNextTimerRef.current);
-                                                              autoNextTimerRef.current = setTimeout(() => {
-                                                                  setListCurrentIdx(i => Math.min(i + 1, totalQ - 1));
-                                                              }, 1200);
-                                                          }
                                                       }}
                                                       className={cls}
                                                   >
-                                                      <span className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center text-[10px] font-black ${cqAnswered && isCorrect ? 'bg-emerald-500 text-white border-emerald-500' : cqAnswered && isSelected ? 'bg-rose-500 text-white border-rose-500' : 'border-slate-300 text-slate-500'}`}>
+                                                      <span className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center text-[10px] font-black ${listSubmitted && isCorrect ? 'bg-emerald-500 text-white border-emerald-500' : listSubmitted && isSelected && !isCorrect ? 'bg-rose-500 text-white border-rose-500' : isSelected && !listSubmitted ? 'bg-indigo-500 text-white border-indigo-500' : 'border-slate-300 text-slate-500'}`}>
                                                           {String.fromCharCode(65 + oi)}
                                                       </span>
                                                       <span className="flex-1">{opt}</span>
-                                                      {cqAnswered && isCorrect && <CheckCircle size={15} className="text-emerald-600 shrink-0" />}
+                                                      {listSubmitted && isCorrect && <CheckCircle size={15} className="text-emerald-600 shrink-0" />}
                                                   </button>
                                               );
                                           })}
@@ -1330,8 +1364,8 @@ export const McqView: React.FC<Props> = ({
                                       </div>
                                   )}
 
-                                  {/* Explanation after answering */}
-                                  {cqAnswered && cq.explanation && (
+                                  {/* Explanation — only after submit */}
+                                  {listSubmitted && cqSelected !== undefined && cq.explanation && (
                                       <div className="mt-2 p-3 rounded-xl bg-amber-50 border border-amber-200">
                                           <p className="text-[10px] font-black text-amber-700 uppercase tracking-wider mb-1">Explanation</p>
                                           <p className="text-xs text-slate-800 leading-relaxed">{cq.explanation}</p>
@@ -1339,80 +1373,72 @@ export const McqView: React.FC<Props> = ({
                                   )}
                               </div>
 
-                              {/* Navigation */}
-                              <div className="mt-3 flex gap-3">
-                                  {/* Back — always visible when not on first question */}
+                              {/* Navigation: Prev | Submit | Next */}
+                              <div className="mt-3 flex gap-2">
+                                  {/* Prev */}
                                   {ci > 0 ? (
                                       <button
                                           onClick={() => {
                                               if (autoNextTimerRef.current) clearTimeout(autoNextTimerRef.current);
                                               setListCurrentIdx(ci - 1);
                                           }}
-                                          className="py-3 px-5 rounded-2xl bg-white border-2 border-slate-200 text-slate-700 font-bold text-sm flex items-center justify-center gap-1.5 active:scale-95 transition"
+                                          className="py-3 px-4 rounded-2xl bg-white border-2 border-slate-200 text-slate-700 font-bold text-sm flex items-center justify-center gap-1 active:scale-95 transition"
                                       >
-                                          <ChevronDown size={15} className="rotate-90" /> Pichla
+                                          <ChevronDown size={15} className="rotate-90" /> Prev
                                       </button>
                                   ) : (
-                                      <div className="py-3 px-5 rounded-2xl bg-slate-50 border-2 border-slate-100 text-slate-300 font-bold text-sm flex items-center gap-1.5 select-none">
-                                          <ChevronDown size={15} className="rotate-90" /> Pichla
+                                      <div className="py-3 px-4 rounded-2xl bg-slate-50 border-2 border-slate-100 text-slate-300 font-bold text-sm flex items-center gap-1 select-none">
+                                          <ChevronDown size={15} className="rotate-90" /> Prev
                                       </div>
                                   )}
 
-                                  {/* Next / Restart */}
+                                  {/* Submit / Restart — always in centre */}
+                                  {listSubmitted ? (
+                                      <button
+                                          onClick={resetSession}
+                                          className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-black text-sm flex items-center justify-center gap-1.5 active:scale-95 transition shadow-md"
+                                      >
+                                          <RefreshCw size={14}/> Restart
+                                      </button>
+                                  ) : (
+                                      <button
+                                          onClick={handleSubmit}
+                                          disabled={mcqAttempted === 0}
+                                          className={`flex-1 py-3 rounded-2xl font-black text-sm flex items-center justify-center gap-1.5 active:scale-95 transition shadow-md ${
+                                              mcqAttempted > 0
+                                                  ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white'
+                                                  : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                          }`}
+                                      >
+                                          <CheckCircle size={14}/> Submit
+                                      </button>
+                                  )}
+
+                                  {/* Next */}
                                   {ci < totalQ - 1 ? (
                                       <button
                                           onClick={() => {
                                               if (autoNextTimerRef.current) clearTimeout(autoNextTimerRef.current);
                                               setListCurrentIdx(ci + 1);
                                           }}
-                                          className={`flex-1 py-3 rounded-2xl font-black text-sm flex items-center justify-center gap-1.5 active:scale-95 transition shadow-md ${
+                                          className={`py-3 px-4 rounded-2xl font-black text-sm flex items-center justify-center gap-1 active:scale-95 transition shadow-md ${
                                               cqAnswered || (listMode === 'qa' && listRevealed[ci])
                                                   ? 'bg-indigo-600 text-white'
                                                   : 'bg-slate-200 text-slate-500'
                                           }`}
                                       >
-                                          Agla <ChevronDown size={15} className="-rotate-90" />
+                                          Next <ChevronDown size={15} className="-rotate-90" />
                                       </button>
                                   ) : (
-                                      <button
-                                          onClick={resetSession}
-                                          className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition shadow-md"
-                                      >
-                                          <RefreshCw size={14}/> Phir se Karo
-                                      </button>
+                                      <div className="py-3 px-4 rounded-2xl bg-slate-50 border-2 border-slate-100 text-slate-300 font-bold text-sm flex items-center gap-1 select-none">
+                                          Next <ChevronDown size={15} className="-rotate-90" />
+                                      </div>
                                   )}
                               </div>
                           </div>
                       )}
 
-                      {/* All-answered summary */}
-                      {allAnswered && isMcq && (
-                          <div className="px-4 mt-2 pb-4">
-                              <div className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-2xl p-5 shadow-lg">
-                                  <p className="text-[10px] font-black uppercase tracking-wider opacity-80 mb-1">Final Score</p>
-                                  <p className="text-3xl font-black mb-1">{Math.round((right / Math.max(mcqAttempted, 1)) * 100)}%</p>
-                                  {listStarted && (
-                                      <p className="text-[10px] opacity-75 mb-3">⏱ {Math.floor(listTimerSeconds / 60).toString().padStart(2,'0')}:{(listTimerSeconds % 60).toString().padStart(2,'0')}</p>
-                                  )}
-                                  <div className="grid grid-cols-3 gap-2 text-center text-xs font-bold mb-3">
-                                      <div className="bg-white/15 rounded-xl py-2"><div className="text-[10px] opacity-80">Attempted</div><div className="text-base">{mcqAttempted}</div></div>
-                                      <div className="bg-white/15 rounded-xl py-2"><div className="text-[10px] opacity-80">✅ Sahi</div><div className="text-base">{right}</div></div>
-                                      <div className="bg-white/15 rounded-xl py-2"><div className="text-[10px] opacity-80">❌ Galat</div><div className="text-base">{wrong}</div></div>
-                                  </div>
-                                  {wrong > 0 && (
-                                      <div className="bg-white/20 rounded-xl px-3 py-2 text-[11px] font-bold text-center mb-3">
-                                          📌 {wrong} galat questions Mistakes page mein save ho gaye
-                                      </div>
-                                  )}
-                                  <button
-                                      onClick={resetSession}
-                                      className="w-full py-2.5 rounded-xl bg-white text-indigo-700 font-black text-xs flex items-center justify-center gap-2 active:scale-95"
-                                  >
-                                      <RefreshCw size={14}/> Phir se Try Karo
-                                  </button>
-                              </div>
-                          </div>
-                      )}
+                      {/* Result summary — only shown after submit */}
                   </div>
               );
           })()

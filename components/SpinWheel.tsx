@@ -50,6 +50,8 @@ const SpinWheelCore: React.FC<SpinWheelCoreProps> = ({ user, onUpdateUser, rewar
   const [rotation, setRotation] = useState(0);
   const [resultMessage, setResultMessage] = useState<React.ReactNode | null>(null);
   const [alertConfig, setAlertConfig] = useState<{isOpen: boolean, message: string}>({isOpen: false, message: ''});
+  const [fastMode, setFastMode] = useState(false);
+  const spinDuration = fastMode ? 2000 : 4000;
 
   const todayStr = new Date().toISOString().split('T')[0];
 
@@ -106,34 +108,54 @@ const SpinWheelCore: React.FC<SpinWheelCoreProps> = ({ user, onUpdateUser, rewar
     setTimeout(() => {
       setIsSpinning(false);
 
-      let msg: React.ReactNode;
-      const isWin = (wonReward.type === 'COINS' && Number(wonReward.value) > 0) || wonReward.type === 'SUBSCRIPTION';
+      const wonAmt = wonReward.type === 'COINS' ? Number(wonReward.value) : 0;
+      const netChange = wonAmt - cost;
+      const isGiftCode = wonReward.type === 'GIFT_CODE' && !!wonReward.giftCode;
+      const isWin = (wonReward.type === 'COINS' && wonAmt > 0) || wonReward.type === 'SUBSCRIPTION' || isGiftCode;
 
       if (isWin) {
         if (typeof (window as any).recordActivity === 'function') {
-          (window as any).recordActivity('GAME', `Spin Wheel (${typeName}): Won ${wonReward.label}`, Number(wonReward.value));
+          (window as any).recordActivity('GAME', `Spin Wheel (${typeName}): Won ${wonReward.label}`, wonAmt);
         }
-        msg = (
-          <div className="flex flex-col items-center animate-bounce">
-            <div className="text-4xl mb-2">🎉💎🎉</div>
-            <div className="text-xl font-black text-green-600">You won {wonReward.label}!</div>
-          </div>
-        );
-      } else {
-        msg = (
-          <div className="flex flex-col items-center">
-            <div className="text-4xl mb-2">😢</div>
-            <div className="text-lg font-bold text-slate-600">Better luck next time!</div>
-          </div>
-        );
       }
-      setResultMessage(msg);
 
+      const winLabel = isGiftCode
+        ? '🎁 Gift Code Jeeta! Mailbox dekho!'
+        : wonReward.type === 'SUBSCRIPTION'
+          ? '🏆 Subscription Jeeti!'
+          : `${wonReward.label} Jeeta!`;
+
+      setResultMessage(
+        <div className="flex flex-col items-center gap-2">
+          <div className="text-4xl">{isWin ? '🎉' : '😢'}</div>
+          <div className={`text-lg font-black ${isWin ? 'text-green-600' : 'text-slate-600'}`}>
+            {isWin ? winLabel : 'Better luck next time!'}
+          </div>
+          {cost > 0 && (
+            <div className="flex items-center gap-2 mt-1 bg-slate-50 rounded-xl px-4 py-2 border border-slate-100 w-full justify-center flex-wrap">
+              <span className="text-xs font-black text-rose-500">−{cost} CR</span>
+              <span className="text-slate-300 text-xs">spent</span>
+              {wonAmt > 0 && <>
+                <span className="text-slate-400 text-xs">→</span>
+                <span className="text-xs font-black text-emerald-600">+{wonAmt} CR</span>
+                <span className="text-slate-300 text-xs">won</span>
+              </>}
+              <span className="text-slate-400 text-xs">·</span>
+              <span className={`text-xs font-black ${netChange >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
+                Net: {netChange >= 0 ? '+' : ''}{netChange} CR
+              </span>
+            </div>
+          )}
+        </div>
+      );
+
+      const deductedUser = applyDeduction(user, cost) ?? user;
       const updatedUser: any = {
-        ...(applyDeduction(user, cost) ?? user),
+        ...deductedUser,
         [spinDateKey]: todayStr,
         [spinCountKey]: spinsUsed + 1,
         lastSpinTime: new Date().toISOString(),
+        totalScore: (user.totalScore || 0) + cost,
       };
 
       if (wonReward.type === 'COINS') {
@@ -174,7 +196,7 @@ const SpinWheelCore: React.FC<SpinWheelCoreProps> = ({ user, onUpdateUser, rewar
       }
 
       onUpdateUser(updatedUser);
-    }, 5000);
+    }, spinDuration);
   };
 
   return (
@@ -196,6 +218,13 @@ const SpinWheelCore: React.FC<SpinWheelCoreProps> = ({ user, onUpdateUser, rewar
           <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded uppercase border border-blue-200">
             {remainingSpins} Spins Left
           </span>
+          <button
+            onClick={() => setFastMode(f => !f)}
+            disabled={isSpinning}
+            className={`px-2 py-0.5 text-[10px] font-black rounded uppercase border transition-all ${fastMode ? 'bg-purple-600 text-white border-purple-700 shadow-sm' : 'bg-purple-50 text-purple-600 border-purple-200'}`}
+          >
+            ⚡ {fastMode ? '2× ON' : '2× OFF'}
+          </button>
         </div>
       </div>
 
@@ -212,7 +241,7 @@ const SpinWheelCore: React.FC<SpinWheelCoreProps> = ({ user, onUpdateUser, rewar
           className="w-full h-full rounded-full border-8 border-slate-800 bg-slate-800 shadow-2xl relative overflow-hidden"
           style={{
             transform: `rotate(${rotation}deg)`,
-            transitionDuration: isSpinning ? '5s' : '0s',
+            transitionDuration: isSpinning ? `${spinDuration / 1000}s` : '0s',
             transitionTimingFunction: 'cubic-bezier(0.25, 0.1, 0.25, 1)',
           }}
         >

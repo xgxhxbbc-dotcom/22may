@@ -2059,6 +2059,8 @@ export const StudentDashboard: React.FC<Props> = ({
   const [lucentMcqAnswers, setLucentMcqAnswers] = useState<Record<string, number>>({});
   // One-at-a-time index for interactive MCQ mode (per pageKey)
   const [lucentMcqCurrentIdx, setLucentMcqCurrentIdx] = useState<Record<string, number>>({});
+  // Submitted state per pageKey — colors/explanation only shown after submit
+  const [lucentMcqSubmitted, setLucentMcqSubmitted] = useState<Record<string, boolean>>({});
   const lucentAutoNextTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 'html' = styled HTML view (default), 'chunk' = ChunkedNotesReader tappable lines
   const [lucentNotesViewMode, setLucentNotesViewMode] = useState<'html' | 'chunk'>('chunk');
@@ -3431,39 +3433,14 @@ export const StudentDashboard: React.FC<Props> = ({
     }
   }, [user.id]);
 
-  // === WEEKLY LEVEL BONUS MAILBOX (L9/10/11) ===
-  useEffect(() => {
-    if (!user?.id) return;
-    const lvlForBonus = getLevelInfo(user.totalScore || 0).level;
-    if (lvlForBonus < 9) return;
-    const bonusMap: Record<number, number> = { 9: 500, 10: 700, 11: 1000 };
-    const bonusAmt = bonusMap[Math.min(lvlForBonus, 11)] ?? 500;
-    const weekStart = new Date();
-    weekStart.setDate(weekStart.getDate() - weekStart.getDay());
-    const weekKey = weekStart.toISOString().split('T')[0];
-    const sentKey = `nst_weekly_lvl_bonus_${user.id}_${weekKey}`;
-    if (localStorage.getItem(sentKey)) return;
-    const expiresAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString();
-    const bonusMsg: any = {
-      id: `wlvlbonus-${user.id}-${weekKey}`,
-      text: `🎁 Level ${lvlForBonus} Weekly Bonus!\n\nAapke level ki taraf se is hafte ka special reward aaya hai!\n\n💰 ${bonusAmt} Credits — 7 din mein expire ho jayenge\n\nYe credits Store, MCQ unlock, sabhi jagah use ho sakte hain!\n\nNeeche "Claim Karo" dabao.`,
-      date: new Date().toISOString(),
-      read: false,
-      type: 'GIFT',
-      gift: { type: 'CREDITS', value: bonusAmt },
-      expiresAt,
-      isClaimed: false,
-    };
-    const latestUser = (window as any).__dashUserRef?.current ?? user;
-    handleUserUpdate({ ...latestUser, inbox: [bonusMsg, ...(latestUser.inbox || [])] });
-    localStorage.setItem(sentKey, '1');
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [user?.id, user?.totalScore]);
+  // Weekly Level Bonus moved to App.tsx login/streak block (Sunday + streak increase only)
 
   // === STORE VISIT → INSTANT DISCOUNT (1 visit=5%, 5 visits=10%, 1hr expiry) ===
   useEffect(() => {
     if (activeTab !== 'STORE') return;
     if (!user?.id) return;
+    // Level 5+ users: no store visit discount, no tracking
+    if (getLevelInfo(user.totalScore || 0).level > 4) return;
     const todayStr = new Date().toISOString().split('T')[0];
     const key = `nst_store_visits_${user.id}_${todayStr}`;
     const discKey = `nst_sv_disc_${user.id}`;
@@ -8876,7 +8853,7 @@ export const StudentDashboard: React.FC<Props> = ({
               <div className="shrink-0 w-[60px]">
                 {((settings?.specialDiscountEvent?.enabled && isDiscountCooldown) ? topBarCreditFlip : false) ? (
                   <button
-                    onClick={() => { const todayStr = new Date().toISOString().split('T')[0]; const k = `nst_store_visits_${user.id}_${todayStr}`; try { localStorage.setItem(k, String(parseInt(localStorage.getItem(k) || '0', 10) + 1)); } catch {} onTabChange("STORE"); }}
+                    onClick={() => { if (getLevelInfo(user.totalScore || 0).level <= 4) { const todayStr = new Date().toISOString().split('T')[0]; const k = `nst_store_visits_${user.id}_${todayStr}`; try { localStorage.setItem(k, String(parseInt(localStorage.getItem(k) || '0', 10) + 1)); } catch {} } onTabChange("STORE"); }}
                     className={`keep-light-badge banner-premium-shimmer inline-flex items-center justify-center gap-1 w-full h-5 px-1 rounded-full shadow-sm text-[7px] font-black hover:scale-105 transition-all duration-500 ease-out whitespace-nowrap shrink-0 border animate-in fade-in zoom-in ${
                       user.subscriptionLevel === 'ULTRA' && user.isPremium
                         ? 'bg-gradient-to-r from-sky-500/25 to-cyan-400/15 text-white border-sky-300/40 shadow-[0_0_12px_rgba(56,189,248,0.25)]'
@@ -8891,7 +8868,7 @@ export const StudentDashboard: React.FC<Props> = ({
                   </button>
                 ) : ((settings?.specialDiscountEvent?.enabled && isDiscountLive) ? topBarCreditFlip : false) ? (
                   <button
-                    onClick={() => { const todayStr = new Date().toISOString().split('T')[0]; const k = `nst_store_visits_${user.id}_${todayStr}`; try { localStorage.setItem(k, String(parseInt(localStorage.getItem(k) || '0', 10) + 1)); } catch {} onTabChange("STORE"); }}
+                    onClick={() => { if (getLevelInfo(user.totalScore || 0).level <= 4) { const todayStr = new Date().toISOString().split('T')[0]; const k = `nst_store_visits_${user.id}_${todayStr}`; try { localStorage.setItem(k, String(parseInt(localStorage.getItem(k) || '0', 10) + 1)); } catch {} } onTabChange("STORE"); }}
                     className={`keep-light-badge banner-premium-shimmer inline-flex items-center justify-center gap-1 w-full h-5 px-1 rounded-full shadow-sm text-[7px] font-black hover:scale-105 transition-all duration-500 ease-out whitespace-nowrap shrink-0 border animate-in fade-in zoom-in ${
                       user.subscriptionLevel === 'ULTRA' && user.isPremium
                         ? 'bg-gradient-to-r from-sky-500/25 to-cyan-400/15 text-white border-sky-300/40 shadow-[0_0_12px_rgba(56,189,248,0.25)]'
@@ -8907,9 +8884,11 @@ export const StudentDashboard: React.FC<Props> = ({
                 ) : (
                   <button
                     onClick={() => {
-                      const todayStr = new Date().toISOString().split('T')[0];
-                      const key = `nst_store_visits_${user.id}_${todayStr}`;
-                      try { localStorage.setItem(key, String(parseInt(localStorage.getItem(key) || '0', 10) + 1)); } catch {}
+                      if (getLevelInfo(user.totalScore || 0).level <= 4) {
+                        const todayStr = new Date().toISOString().split('T')[0];
+                        const key = `nst_store_visits_${user.id}_${todayStr}`;
+                        try { localStorage.setItem(key, String(parseInt(localStorage.getItem(key) || '0', 10) + 1)); } catch {}
+                      }
                       onTabChange("STORE");
                     }}
                     className={`keep-light-badge banner-premium-shimmer inline-flex items-center justify-center gap-1 w-full h-5 px-1 rounded-full shadow-sm text-[7px] font-black hover:scale-105 transition-all duration-500 ease-out whitespace-nowrap shrink-0 border animate-in fade-in zoom-in ${
@@ -15198,7 +15177,10 @@ RULES:
                       if (!cq) return null;
                       const ansKey = `${pageKey}_${ci}`;
                       const selected = lucentMcqAnswers[ansKey];
-                      const isAnswered = selected !== undefined;
+                      const isSelected = selected !== undefined;
+                      const isSubmitted = lucentMcqSubmitted[pageKey] === true;
+                      // Colors/explanation only shown after Submit
+                      const isAnswered = isSelected && isSubmitted;
                       const isCorrect = isAnswered && selected === cq.correctAnswer;
 
                       // Stats
@@ -15208,7 +15190,30 @@ RULES:
                         return (s !== undefined && s === q2.correctAnswer) ? acc + 1 : acc;
                       }, 0);
                       const wrong = attempted - right;
-                      const allDone = attempted === totalQ;
+
+                      const handleLucentSubmit = () => {
+                        setLucentMcqSubmitted(prev => ({ ...prev, [pageKey]: true }));
+                        // Auto-save wrong answers to My Mistake
+                        mcqs.forEach((q2: any, i: number) => {
+                          const ans = lucentMcqAnswers[`${pageKey}_${i}`];
+                          if (ans !== undefined && ans !== q2.correctAnswer) {
+                            try {
+                              addMistakes([{
+                                question: q2.question,
+                                options: q2.options || [],
+                                correctAnswer: q2.correctAnswer,
+                                explanation: q2.explanation || '',
+                                topic: q2.topic || '',
+                                chapterTitle: '',
+                                subjectName: '',
+                                classLevel: user.classLevel || '',
+                                board: user.board || '',
+                                source: 'Competition',
+                              }]);
+                            } catch {}
+                          }
+                        });
+                      };
 
                       return (
                         <div>
@@ -15220,15 +15225,15 @@ RULES:
                             </div>
                             <div className="bg-emerald-50 rounded-xl py-2 text-center">
                               <div className="text-[9px] font-bold text-emerald-600 uppercase">✅ Sahi</div>
-                              <div className="text-sm font-black text-emerald-700">{right}</div>
+                              <div className="text-sm font-black text-emerald-700">{isSubmitted ? right : '?'}</div>
                             </div>
                             <div className="bg-rose-50 rounded-xl py-2 text-center">
                               <div className="text-[9px] font-bold text-rose-600 uppercase">❌ Galat</div>
-                              <div className="text-sm font-black text-rose-700">{wrong}</div>
+                              <div className="text-sm font-black text-rose-700">{isSubmitted ? wrong : '?'}</div>
                             </div>
                             <div className="bg-indigo-50 rounded-xl py-2 text-center">
                               <div className="text-[9px] font-bold text-indigo-600 uppercase">🏆 Score</div>
-                              <div className="text-sm font-black text-indigo-700">{right}</div>
+                              <div className="text-sm font-black text-indigo-700">{isSubmitted ? right : '?'}</div>
                             </div>
                           </div>
 
@@ -15242,28 +15247,6 @@ RULES:
                             </div>
                           </div>
 
-                          {/* All-done result card */}
-                          {allDone && (
-                            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-2xl p-4 mb-3 text-center">
-                              <p className="text-[10px] font-black uppercase tracking-wider opacity-80 mb-1">Final Score</p>
-                              <p className="text-2xl font-black mb-2">{Math.round((right / totalQ) * 100)}%</p>
-                              <p className="text-xs opacity-80 mb-3">{right}/{totalQ} sahi</p>
-                              <button
-                                onClick={() => {
-                                  if (lucentAutoNextTimerRef.current) clearTimeout(lucentAutoNextTimerRef.current);
-                                  setLucentMcqAnswers(prev => {
-                                    const n = { ...prev };
-                                    mcqs.forEach((_, i) => delete n[`${pageKey}_${i}`]);
-                                    return n;
-                                  });
-                                  setLucentMcqCurrentIdx(prev => ({ ...prev, [pageKey]: 0 }));
-                                }}
-                                className="px-5 py-2 bg-white/20 hover:bg-white/30 rounded-xl font-black text-sm active:scale-95 transition"
-                              >
-                                🔄 Phir se Karo
-                              </button>
-                            </div>
-                          )}
 
                           {/* Single question card */}
                           <div className="bg-white border border-purple-100 rounded-2xl p-4 shadow-sm">
@@ -15305,15 +15288,8 @@ RULES:
                                     key={oi}
                                     disabled={isAnswered}
                                     onClick={() => {
-                                      if (isAnswered) return;
+                                      if (isSubmitted) return;
                                       setLucentMcqAnswers(prev => ({ ...prev, [ansKey]: oi }));
-                                      // auto-next after 1.2s (if not last question)
-                                      if (ci < totalQ - 1) {
-                                        if (lucentAutoNextTimerRef.current) clearTimeout(lucentAutoNextTimerRef.current);
-                                        lucentAutoNextTimerRef.current = setTimeout(() => {
-                                          setLucentMcqCurrentIdx(prev => ({ ...prev, [pageKey]: Math.min((prev[pageKey] ?? 0) + 1, totalQ - 1) }));
-                                        }, 1200);
-                                      }
                                     }}
                                     className={cls}
                                   >
@@ -15337,36 +15313,65 @@ RULES:
                             )}
                           </div>
 
-                          {/* Back / Next buttons */}
-                          <div className="mt-3 flex gap-3">
+                          {/* Navigation: Prev | Submit | Next */}
+                          <div className="mt-3 flex gap-2">
+                            {/* Prev */}
                             {ci > 0 ? (
                               <button
-                                onClick={() => {
-                                  if (lucentAutoNextTimerRef.current) clearTimeout(lucentAutoNextTimerRef.current);
-                                  setLucentMcqCurrentIdx(prev => ({ ...prev, [pageKey]: ci - 1 }));
-                                }}
-                                className="py-3 px-5 rounded-2xl bg-white border-2 border-slate-200 text-slate-700 font-bold text-sm flex items-center gap-1.5 active:scale-95 transition"
+                                onClick={() => setLucentMcqCurrentIdx(prev => ({ ...prev, [pageKey]: ci - 1 }))}
+                                className="py-3 px-4 rounded-2xl bg-white border-2 border-slate-200 text-slate-700 font-bold text-sm flex items-center justify-center gap-1 active:scale-95 transition"
                               >
-                                ← Pichla
+                                <ChevronLeft size={15} /> Prev
                               </button>
                             ) : (
-                              <div className="py-3 px-5 rounded-2xl bg-slate-50 border-2 border-slate-100 text-slate-300 font-bold text-sm select-none">← Pichla</div>
+                              <div className="py-3 px-4 rounded-2xl bg-slate-50 border-2 border-slate-100 text-slate-300 font-bold text-sm flex items-center gap-1 select-none">
+                                <ChevronLeft size={15} /> Prev
+                              </div>
                             )}
-                            {ci < totalQ - 1 ? (
+
+                            {/* Submit / Restart */}
+                            {isSubmitted ? (
                               <button
                                 onClick={() => {
-                                  if (lucentAutoNextTimerRef.current) clearTimeout(lucentAutoNextTimerRef.current);
-                                  setLucentMcqCurrentIdx(prev => ({ ...prev, [pageKey]: ci + 1 }));
+                                  setLucentMcqAnswers(prev => {
+                                    const n = { ...prev };
+                                    mcqs.forEach((_: any, i: number) => delete n[`${pageKey}_${i}`]);
+                                    return n;
+                                  });
+                                  setLucentMcqSubmitted(prev => { const n = { ...prev }; delete n[pageKey]; return n; });
+                                  setLucentMcqCurrentIdx(prev => ({ ...prev, [pageKey]: 0 }));
                                 }}
-                                className={`flex-1 py-3 rounded-2xl font-black text-sm flex items-center justify-center gap-1.5 active:scale-95 transition shadow-md ${
-                                  isAnswered ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'
-                                }`}
+                                className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-black text-sm flex items-center justify-center gap-1.5 active:scale-95 transition shadow-md"
                               >
-                                Agla →
+                                <RefreshCw size={14} /> Restart
                               </button>
                             ) : (
-                              <div className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-black text-sm flex items-center justify-center shadow-md">
-                                🎯 Sab Ho Gaya!
+                              <button
+                                onClick={handleLucentSubmit}
+                                disabled={attempted === 0}
+                                className={`flex-1 py-3 rounded-2xl font-black text-sm flex items-center justify-center gap-1.5 active:scale-95 transition shadow-md ${
+                                  attempted > 0
+                                    ? 'bg-gradient-to-r from-emerald-500 to-teal-500 text-white'
+                                    : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                }`}
+                              >
+                                <CheckCircle size={14} /> Submit
+                              </button>
+                            )}
+
+                            {/* Next */}
+                            {ci < totalQ - 1 ? (
+                              <button
+                                onClick={() => setLucentMcqCurrentIdx(prev => ({ ...prev, [pageKey]: ci + 1 }))}
+                                className={`py-3 px-4 rounded-2xl font-black text-sm flex items-center justify-center gap-1 active:scale-95 transition shadow-md ${
+                                  isSelected ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'
+                                }`}
+                              >
+                                Next <ChevronRight size={15} />
+                              </button>
+                            ) : (
+                              <div className="py-3 px-4 rounded-2xl bg-slate-50 border-2 border-slate-100 text-slate-300 font-bold text-sm flex items-center gap-1 select-none">
+                                Next <ChevronRight size={15} />
                               </div>
                             )}
                           </div>
@@ -18027,7 +18032,7 @@ RULES:
                     <div className="rounded-2xl p-3.5 bg-amber-900/20 border border-amber-500/30 flex flex-col justify-center text-center">
                       <p className="text-2xl mb-1">🏆</p>
                       <p className="text-[10px] font-black text-amber-400 leading-tight">Max Level!</p>
-                      <p className="text-[8px] text-amber-500/60 mt-0.5">30% discount active</p>
+                      <p className="text-[8px] text-amber-500/60 mt-0.5">20% discount active</p>
                     </div>
                   )}
 

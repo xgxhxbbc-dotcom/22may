@@ -501,6 +501,33 @@ const App: React.FC = () => {
                   localStorage.setItem('nst_streak_popup_date', today);
                   setStreakLoginPopup({ newStreak: updatedUser.streak, prevStreak: prev, isNewRecord: updatedUser.streak > prevLongest && prevLongest > 0 });
               }
+              // === WEEKLY LEVEL BONUS (L9/10/11) — sirf Sunday + streak badhne pe, sirf ek baar per week ===
+              if (now.getDay() === 0) { // 0 = Sunday
+                  const _lvl = getLevelInfo(updatedUser.totalScore || 0).level;
+                  if (_lvl >= 9) {
+                      const _weekKey = now.toISOString().split('T')[0]; // Sunday ki date = week key
+                      const _lvlBonusLS = `nst_weekly_lvl_bonus_${state.user.id}_${_weekKey}`;
+                      const _lvlBonusId = `wlvlbonus-${state.user.id}-${_weekKey}`;
+                      const _alreadyLvl = (updatedUser.inbox || []).some((m: any) => m.id === _lvlBonusId);
+                      if (!localStorage.getItem(_lvlBonusLS) && !_alreadyLvl) {
+                          localStorage.setItem(_lvlBonusLS, '1');
+                          const _bonusMap: Record<number, number> = { 9: 500, 10: 700, 11: 1000 };
+                          const _bonusAmt = _bonusMap[Math.min(_lvl, 11)] ?? 500;
+                          const _bonusMsg: any = {
+                              id: _lvlBonusId,
+                              text: `🎁 Level ${_lvl} Weekly Bonus!\n\nAapke level ki taraf se is hafte ka special reward aaya hai!\n\n💰 ${_bonusAmt} Credits — 7 din mein expire ho jayenge\n\nYe credits Store, MCQ unlock, sabhi jagah use ho sakte hain!\n\nNeeche "Claim Karo" dabao.`,
+                              date: new Date().toISOString(),
+                              read: false,
+                              type: 'GIFT',
+                              gift: { type: 'CREDITS', value: _bonusAmt },
+                              expiresAt: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+                              isClaimed: false,
+                          };
+                          updatedUser.inbox = [_bonusMsg, ...(updatedUser.inbox || [])];
+                          hasUpdates = true;
+                      }
+                  }
+              }
           } else {
               // Streak Broken or First Login: Reset
               const prev = updatedUser.streak || 0;
