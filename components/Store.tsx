@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { User, CreditPackage, SystemSettings } from '../types';
-import { Crown, Sparkles, Check, Zap, MessageSquare, Lock, Timer, Ticket, ShieldCheck, Star, ChevronRight, Flame, TrendingUp } from 'lucide-react';
+import { Sparkles, Check, MessageSquare, Lock, Ticket, ShieldCheck, Star, ChevronRight, Flame, BadgeCheck } from 'lucide-react';
 import { getLevelInfo, getNextLevelInfo, getLevelProgress, getScoreDiscountFromScore } from '../utils/levelSystem';
 
 interface Props {
@@ -167,6 +167,11 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
     return null;
   };
 
+  const isPro = tierType === 'BASIC';
+  const planAccent = isPro
+    ? { from: 'from-cyan-500', via: 'via-sky-400', to: 'to-cyan-500', ring: 'rgba(6,182,212,0.8)', glow: 'rgba(6,182,212,0.12)', border: 'border-cyan-500', text: 'text-cyan-300', bg: 'bg-cyan-500/20', badge: 'bg-cyan-500/25 text-cyan-300 border-cyan-500/40', selectedBg: 'from-cyan-950 to-sky-950' }
+    : { from: 'from-violet-500', via: 'via-purple-500', to: 'to-violet-600', ring: 'rgba(139,92,246,0.8)', glow: 'rgba(139,92,246,0.12)', border: 'border-purple-500', text: 'text-purple-300', bg: 'bg-purple-500/20', badge: 'bg-purple-500/25 text-purple-300 border-purple-500/40', selectedBg: 'from-violet-950 to-purple-950' };
+
   return (
     <div className="animate-in fade-in duration-300 pb-28 bg-black text-white font-sans">
 
@@ -224,41 +229,47 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
 
 
       {/* MAIN CONTENT */}
-      <div className="px-4 pt-6">
+      <div className="px-4 pt-5">
 
-        {/* CHOOSE YOUR PLAN — 4 TAB BUTTONS */}
+        {/* PLAN TYPE SELECTOR — Premium tab switcher */}
         <div className="mb-5">
           <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">Choose Your Plan</p>
           <div className="grid grid-cols-4 gap-2">
             {[
-              { id: 'BASIC' as const, label: 'PRO', icon: '☆' },
-              { id: 'ULTRA' as const, label: 'MAX', icon: '⚡' },
-              { id: 'CREDITS' as const, label: 'Credits', icon: '🪙' },
-              { id: 'EARN' as const, label: 'Earn', icon: '🎰' },
-            ].map(tab => (
-              <button
-                key={tab.id}
-                onClick={() => setTierType(tab.id)}
-                className={`py-2 px-1 rounded-xl text-[11px] font-black transition-all flex flex-col items-center gap-0.5 ${
-                  tierType === tab.id
-                    ? tab.id === 'BASIC'
-                      ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-500/50'
-                      : tab.id === 'ULTRA'
-                      ? 'bg-purple-500/20 text-purple-300 border border-purple-500/50'
-                      : tab.id === 'EARN'
-                      ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/50'
-                      : 'bg-amber-500/20 text-amber-300 border border-amber-500/50'
-                    : 'bg-white/5 text-slate-400 border border-white/8 hover:bg-white/10'
-                }`}
-              >
-                <span className="text-base leading-none">{tab.icon}</span>
-                <span className="leading-tight text-center">{tab.label}</span>
-              </button>
-            ))}
+              { id: 'BASIC' as const, label: 'PRO', icon: '⭐', desc: 'Basic' },
+              { id: 'ULTRA' as const, label: 'MAX', icon: '⚡', desc: 'Ultra' },
+              { id: 'CREDITS' as const, label: 'Credits', icon: '🪙', desc: 'Buy' },
+              { id: 'EARN' as const, label: 'Earn', icon: '🎰', desc: 'Free' },
+            ].map(tab => {
+              const isActive = tierType === tab.id;
+              return (
+                <button
+                  key={tab.id}
+                  onClick={() => setTierType(tab.id)}
+                  className={`relative py-2.5 px-1 rounded-2xl text-[11px] font-black transition-all flex flex-col items-center gap-0.5 overflow-hidden ${
+                    isActive
+                      ? tab.id === 'BASIC'
+                        ? 'bg-gradient-to-b from-cyan-500/30 to-cyan-600/10 text-cyan-300 border border-cyan-500/60 shadow-[0_0_12px_rgba(6,182,212,0.25)]'
+                        : tab.id === 'ULTRA'
+                        ? 'bg-gradient-to-b from-purple-500/30 to-purple-600/10 text-purple-300 border border-purple-500/60 shadow-[0_0_12px_rgba(139,92,246,0.25)]'
+                        : tab.id === 'EARN'
+                        ? 'bg-gradient-to-b from-emerald-500/30 to-emerald-600/10 text-emerald-300 border border-emerald-500/60 shadow-[0_0_12px_rgba(16,185,129,0.25)]'
+                        : 'bg-gradient-to-b from-amber-500/30 to-amber-600/10 text-amber-300 border border-amber-500/60 shadow-[0_0_12px_rgba(245,158,11,0.25)]'
+                      : 'bg-white/5 text-slate-400 border border-white/8 hover:bg-white/8'
+                  }`}
+                >
+                  {isActive && (
+                    <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(105deg,transparent 40%,rgba(255,255,255,0.04) 50%,transparent 60%)', animation: 'shimmer-sweep 2.5s linear infinite' }} />
+                  )}
+                  <span className="text-lg leading-none">{tab.icon}</span>
+                  <span className="leading-tight text-center font-black">{tab.label}</span>
+                </button>
+              );
+            })}
           </div>
         </div>
 
-        {/* SPECIAL DISCOUNT EVENT BANNER — always visible on all tabs */}
+        {/* SPECIAL DISCOUNT EVENT BANNER */}
         {showEventBanner && (
           <div className={`mb-5 p-4 rounded-2xl border animate-in fade-in ${
             activeEvent
@@ -315,7 +326,6 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
         {/* CREDITS CONTENT */}
         {tierType === 'CREDITS' && (
           <div className="animate-in fade-in duration-200 space-y-3">
-            {/* Credit packages */}
             <div className="space-y-2">
               {packages.map((pkg) => {
                 let finalPrice = pkg.price;
@@ -374,7 +384,6 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
               })}
             </div>
 
-            {/* Trust badges */}
             <div className="flex justify-center gap-4 mb-8 mt-2">
               {[
                 { icon: <ShieldCheck size={12} />, text: 'Secure Payment' },
@@ -391,6 +400,7 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
         )}
 
         {tierType !== 'EARN' && tierType !== 'CREDITS' && (<>
+
         {/* SCORE LEVEL BANNER */}
         <div className="mb-4 rounded-2xl overflow-hidden border border-white/10">
           <div className={`bg-gradient-to-r ${scoreTier.gradient} p-0.5`}>
@@ -439,8 +449,52 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
           </div>
         )}
 
+        {/* PLAN HERO CARD — PRO or MAX */}
+        <div className={`mb-4 rounded-2xl p-4 relative overflow-hidden border`}
+          style={{
+            background: isPro
+              ? 'linear-gradient(135deg, rgba(8,145,178,0.18) 0%, rgba(6,182,212,0.08) 50%, rgba(2,132,199,0.12) 100%)'
+              : 'linear-gradient(135deg, rgba(109,40,217,0.18) 0%, rgba(139,92,246,0.08) 50%, rgba(124,58,237,0.12) 100%)',
+            border: isPro ? '1px solid rgba(6,182,212,0.35)' : '1px solid rgba(139,92,246,0.35)',
+          }}
+        >
+          <div className="absolute -top-8 -right-8 w-32 h-32 rounded-full pointer-events-none" style={{ background: isPro ? 'rgba(6,182,212,0.08)' : 'rgba(139,92,246,0.08)', filter: 'blur(20px)' }} />
+          <div className="relative z-10 flex items-center justify-between mb-3">
+            <div>
+              <div className="flex items-center gap-2 mb-1">
+                <span className={`text-[10px] font-black uppercase tracking-widest px-2.5 py-1 rounded-full border ${planAccent.badge}`}>
+                  {isPro ? '⭐ PRO' : '⚡ MAX'}
+                </span>
+                {isSubscribed && (
+                  <span className="text-[9px] font-black text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full flex items-center gap-1">
+                    <BadgeCheck size={9} /> Active
+                  </span>
+                )}
+              </div>
+              <p className={`text-xl font-black ${planAccent.text}`}>{isPro ? 'Pro Plan' : 'Max Plan'}</p>
+              <p className="text-[11px] text-slate-500 mt-0.5">{isPro ? 'Sabse zyada popular choice' : 'Ultimate learning experience'}</p>
+            </div>
+            <div className={`w-14 h-14 rounded-2xl flex items-center justify-center text-2xl`}
+              style={{ background: isPro ? 'rgba(6,182,212,0.15)' : 'rgba(139,92,246,0.15)', border: isPro ? '1px solid rgba(6,182,212,0.3)' : '1px solid rgba(139,92,246,0.3)' }}>
+              {isPro ? '⭐' : '⚡'}
+            </div>
+          </div>
+
+          {/* Features List */}
+          <div className="grid grid-cols-1 gap-1.5 relative z-10">
+            {featuresList.map((f, i) => (
+              <div key={i} className="flex items-center gap-2.5">
+                <div className={`w-4 h-4 rounded-full flex items-center justify-center shrink-0 ${planAccent.bg}`}>
+                  <Check size={9} className={planAccent.text} strokeWidth={3} />
+                </div>
+                <span className="text-[12px] text-slate-300 font-medium leading-snug">{f}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
         {/* PRICING PLAN CARDS */}
-        <div className="space-y-3 mb-6">
+        <div className="space-y-2.5 mb-5">
           {subscriptionPlans.map((plan, idx) => {
             const isSelected = selectedPlanId === plan.id;
             const original = tierType === 'BASIC' ? plan.basicOriginalPrice : plan.ultraOriginalPrice;
@@ -464,7 +518,7 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
                 onClick={() => setSelectedPlanId(plan.id)}
                 className={`w-full p-4 rounded-2xl border text-left transition-all relative overflow-hidden ${
                   isSelected
-                    ? tierType === 'BASIC'
+                    ? isPro
                       ? 'bg-gradient-to-r from-cyan-950 to-sky-950 border-cyan-500 shadow-[0_0_0_1px_rgba(6,182,212,0.8),0_0_20px_rgba(6,182,212,0.12)]'
                       : 'bg-gradient-to-r from-violet-950 to-purple-950 border-purple-500 shadow-[0_0_0_1px_rgba(139,92,246,0.8),0_0_20px_rgba(139,92,246,0.12)]'
                     : 'bg-[#111] border-slate-800 hover:border-slate-700 hover:bg-[#1a1a1a]'
@@ -478,15 +532,16 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
                     POPULAR
                   </div>
                 )}
+                {isSelected && (
+                  <div className="absolute top-0 right-0 text-black text-[8px] font-black px-2.5 py-1 rounded-bl-xl rounded-tr-xl"
+                    style={{ background: isPro ? 'rgba(6,182,212,1)' : 'rgba(139,92,246,1)' }}>
+                    ✓ SELECTED
+                  </div>
+                )}
                 <div className="flex justify-between items-start relative z-10">
                   <div className="flex-1">
                     <div className="flex items-center gap-2 mb-1">
                       <span className={`text-sm font-black ${isSelected ? 'text-white' : 'text-slate-200'}`}>{plan.name}</span>
-                      {isSelected && (
-                        <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${tierType === 'BASIC' ? 'bg-cyan-500/30 text-cyan-300' : 'bg-purple-500/30 text-purple-300'}`}>
-                          Selected ✓
-                        </span>
-                      )}
                     </div>
                     <div className="flex items-baseline gap-2">
                       <span className="text-2xl font-black text-white">₹{price.toLocaleString('en-IN')}</span>
@@ -531,7 +586,7 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
               initiatePurchase({ ...selectedPlan, finalPrice });
             }}
             className={`w-full py-4 rounded-2xl font-black text-sm tracking-widest uppercase shadow-xl transition-all hover:scale-[1.02] active:scale-[0.98] relative overflow-hidden group mb-3 ${
-              tierType === 'BASIC'
+              isPro
                 ? 'bg-gradient-to-r from-cyan-500 via-sky-400 to-cyan-500 text-white shadow-cyan-500/30'
                 : 'bg-gradient-to-r from-violet-500 via-purple-500 to-violet-600 text-white shadow-purple-500/30'
             }`}
@@ -539,19 +594,19 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
             <span className="absolute inset-0 bg-white/15 translate-x-[-100%] group-hover:translate-x-[100%] transition-transform duration-700 skew-x-12 pointer-events-none" />
             <span className="relative flex items-center justify-center gap-2">
               <Sparkles size={15} />
-              Get {tierType === 'BASIC' ? 'PRO' : 'MAX'} — Abhi Unlock Karo
+              Get {isPro ? 'PRO' : 'MAX'} — Abhi Unlock Karo
             </span>
           </button>
         )}
 
         {/* TRUST BADGES */}
-        <div className="flex justify-center gap-4 mb-8 mt-2">
+        <div className="flex justify-center gap-5 mb-8 mt-2">
           {[
-            { icon: <ShieldCheck size={12} />, text: 'Secure Payment' },
-            { icon: <Flame size={12} />, text: 'Instant Access' },
-            { icon: <Star size={12} />, text: 'Premium Support' },
+            { icon: <ShieldCheck size={13} />, text: 'Secure Payment' },
+            { icon: <Flame size={13} />, text: 'Instant Access' },
+            { icon: <Star size={13} />, text: 'Premium Support' },
           ].map(badge => (
-            <div key={badge.text} className="flex items-center gap-1 text-[10px] text-slate-600 font-bold">
+            <div key={badge.text} className="flex items-center gap-1.5 text-[10px] text-slate-600 font-bold">
               {badge.icon}
               <span>{badge.text}</span>
             </div>

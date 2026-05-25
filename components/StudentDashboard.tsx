@@ -1864,6 +1864,7 @@ export const StudentDashboard: React.FC<Props> = ({
     return () => document.removeEventListener('keydown', handleVolumeKey);
   }, [lucentNoteViewer, lucentPageIndex]);
   const [hwAnswers, setHwAnswers] = useState<Record<string, number>>({});
+  const [hwPendingAnswers, setHwPendingAnswers] = useState<Record<string, number>>({});
 
   // ---- COMPETITION CUSTOM MCQ HUB (admin + student created practice MCQs) ----
   const [showCompMcqHub, setShowCompMcqHub] = useState(false);
@@ -2055,6 +2056,7 @@ export const StudentDashboard: React.FC<Props> = ({
   const [flashcardMcqs, setFlashcardMcqs] = useState<{ items: any[]; title: string; subtitle: string; subject?: string } | null>(null);
   const [hwMcqMode, setHwMcqMode] = useState<Record<string, 'interactive' | 'reveal'>>({});
   const [hwMcqCurrentIdx, setHwMcqCurrentIdx] = useState<Record<string, number>>({});
+  const [hwShowAnalysis, setHwShowAnalysis] = useState<string | null>(null);
   // Per-question selected option for Lucent interactive-mode MCQs (key = `${pageKey}_${qi}`)
   const [lucentMcqAnswers, setLucentMcqAnswers] = useState<Record<string, number>>({});
   // One-at-a-time index for interactive MCQ mode (per pageKey)
@@ -5050,198 +5052,322 @@ export const StudentDashboard: React.FC<Props> = ({
                         );
                       }
 
-                      // ── INTERACTIVE MCQ MODE: one-at-a-time ──
-                      const ci = hwMcqCurrentIdx[hwKey] ?? 0;
-                      const mcq = mcqs[ci];
-                      if (!mcq) return null;
-                      const ansKey = `${hwKey}_${ci}`;
-                      const selected = hwAnswers[ansKey];
-                      const isAnswered = selected !== undefined;
-
+                      // ── INTERACTIVE MCQ MODE: ALL QUESTIONS AT ONCE ──
                       const attempted = mcqs.reduce((acc, _, i) => hwAnswers[`${hwKey}_${i}`] !== undefined ? acc + 1 : acc, 0);
                       const right = mcqs.reduce((acc, m, i) => {
                         const s = hwAnswers[`${hwKey}_${i}`];
                         return s !== undefined && s === m.correctAnswer ? acc + 1 : acc;
                       }, 0);
                       const wrong = attempted - right;
+                      const submitThreshold = Math.min(20, totalQ);
+                      const allSubmitted = attempted >= submitThreshold;
+                      // Scoring: Sahi = 2 pts, Galat = 1 pt
+                      const totalScore = right * 2 + wrong * 1;
+
+                      // ── REVIEW MODE (shown after all submitted) ──
+                      if (allSubmitted && hwShowAnalysis === hwKey) {
+                        const pct = Math.round((right / totalQ) * 100);
+                        const grade = pct >= 80 ? { label: 'Excellent! 🌟', color: 'from-emerald-500 to-green-600', ring: 'ring-emerald-200' }
+                                    : pct >= 60 ? { label: 'Good Job! 👍', color: 'from-blue-500 to-indigo-600', ring: 'ring-blue-200' }
+                                    : pct >= 40 ? { label: 'Keep Practising 💪', color: 'from-amber-500 to-orange-500', ring: 'ring-amber-200' }
+                                    : { label: 'Need More Practice 📚', color: 'from-rose-500 to-red-600', ring: 'ring-rose-200' };
+                        return (
+                          <div>
+                            {/* Score card */}
+                            <div className={`rounded-2xl bg-gradient-to-r ${grade.color} p-4 text-white mb-4 ring-4 ${grade.ring}`}>
+                              <p className="text-[10px] font-black uppercase tracking-widest opacity-80 mb-1">📊 Result</p>
+                              <div className="flex items-end gap-3">
+                                <span className="text-5xl font-black leading-none">{pct}%</span>
+                                <span className="text-base font-bold opacity-90 mb-1">{right}/{totalQ} Sahi</span>
+                              </div>
+                              <p className="text-sm font-black mt-1 opacity-90">{grade.label}</p>
+                              <div className="grid grid-cols-3 gap-2 mt-3">
+                                <div className="bg-white/20 rounded-xl py-2 text-center">
+                                  <div className="text-[9px] font-black uppercase opacity-80">Total</div>
+                                  <div className="text-lg font-black">{totalQ}</div>
+                                </div>
+                                <div className="bg-white/20 rounded-xl py-2 text-center">
+                                  <div className="text-[9px] font-black uppercase opacity-80">✅ Sahi</div>
+                                  <div className="text-lg font-black">{right}</div>
+                                </div>
+                                <div className="bg-white/20 rounded-xl py-2 text-center">
+                                  <div className="text-[9px] font-black uppercase opacity-80">❌ Galat</div>
+                                  <div className="text-lg font-black">{wrong}</div>
+                                </div>
+                              </div>
+                            </div>
+                            {/* Per-question review */}
+                            <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest text-center mb-3">📋 Har Question ka Review</p>
+                            <div className="space-y-3">
+                              {mcqs.map((mq, qi) => {
+                                const sel = hwAnswers[`${hwKey}_${qi}`];
+                                const isCorrect = sel !== undefined && sel === mq.correctAnswer;
+                                return (
+                                  <div key={qi} className={`rounded-2xl border-2 overflow-hidden ${isCorrect ? 'border-emerald-300 bg-emerald-50' : 'border-rose-300 bg-rose-50'}`}>
+                                    {/* Question header */}
+                                    <div className={`px-4 py-2 flex items-center gap-2 ${isCorrect ? 'bg-emerald-100' : 'bg-rose-100'}`}>
+                                      <span className="text-lg">{isCorrect ? '✅' : '❌'}</span>
+                                      <span className={`text-[10px] font-black uppercase tracking-wider ${isCorrect ? 'text-emerald-700' : 'text-rose-700'}`}>
+                                        Q{qi + 1} — {isCorrect ? 'Sahi' : 'Galat'}
+                                      </span>
+                                    </div>
+                                    <div className="px-4 py-3 space-y-2">
+                                      <p className="text-[13px] font-bold text-slate-800 leading-snug">{mq.question}</p>
+                                      {/* Options */}
+                                      <div className="space-y-1.5">
+                                        {mq.options.map((opt, oi) => {
+                                          const isCorrectOpt = oi === mq.correctAnswer;
+                                          const isUserPick = oi === sel;
+                                          let optCls = 'w-full text-left text-[12px] px-3 py-2 rounded-xl border-2 font-medium flex items-center gap-2 ';
+                                          if (isCorrectOpt) optCls += 'bg-green-100 border-green-400 text-green-800 font-black';
+                                          else if (isUserPick && !isCorrectOpt) optCls += 'bg-red-100 border-red-400 text-red-800';
+                                          else optCls += 'bg-white border-slate-200 text-slate-400 opacity-60';
+                                          return (
+                                            <div key={oi} className={optCls}>
+                                              <span className="font-black shrink-0">{String.fromCharCode(65+oi)}.</span>
+                                              <span className="flex-1">{opt}</span>
+                                              {isCorrectOpt && <span className="text-green-600 font-black text-xs shrink-0">✓ Sahi</span>}
+                                              {isUserPick && !isCorrectOpt && <span className="text-red-600 font-black text-xs shrink-0">✗ Tumhara</span>}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                      {/* Explanation / Notes */}
+                                      {mq.explanation && (
+                                        <div className="bg-amber-50 border border-amber-200 rounded-xl px-3 py-2 mt-1">
+                                          <p className="text-[11px] text-amber-800 leading-relaxed"><span className="font-black">💡 Note:</span> {mq.explanation}</p>
+                                        </div>
+                                      )}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                            {/* Bottom actions */}
+                            <div className="mt-4 flex gap-2">
+                              <button
+                                onClick={() => {
+                                  setHwShowAnalysis(null);
+                                  setHwAnswers(prev => {
+                                    const next = { ...prev };
+                                    mcqs.forEach((_m, qi) => { delete next[`${hwKey}_${qi}`]; });
+                                    return next;
+                                  });
+                                  setHwPendingAnswers({});
+                                }}
+                                className={`flex-1 text-[13px] font-black ${theme.text} ${theme.bgSoft} py-3 rounded-2xl active:scale-95 transition-all`}
+                              >🔄 Phir se Try Karo</button>
+                              {effectiveNextHw && (
+                                <button
+                                  onClick={() => goToHw(effectiveNextHw)}
+                                  className={`flex-1 text-[13px] font-black text-white ${theme.btn} py-3 rounded-2xl active:scale-95 transition-all flex items-center justify-center gap-1`}
+                                >Next Topic <ChevronRight size={14} /></button>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // ── PRACTICE MODE: one question at a time ──
+                      // Show score card if all submitted
+                      if (allSubmitted) {
+                        const pct = Math.round((right / totalQ) * 100);
+                        const grade = pct >= 80 ? { label: 'Excellent! 🌟', color: 'from-emerald-500 to-green-600', ring: 'ring-emerald-200' }
+                                    : pct >= 60 ? { label: 'Good Job! 👍', color: 'from-blue-500 to-indigo-600', ring: 'ring-blue-200' }
+                                    : pct >= 40 ? { label: 'Keep Practising 💪', color: 'from-amber-500 to-orange-500', ring: 'ring-amber-200' }
+                                    : { label: 'Need More Practice 📚', color: 'from-rose-500 to-red-600', ring: 'ring-rose-200' };
+                        return (
+                          <div>
+                            {/* Score card */}
+                            <div className={`rounded-2xl bg-gradient-to-br ${grade.color} p-5 text-white ring-4 ${grade.ring} mb-4`}>
+                              <p className="text-[10px] font-black uppercase tracking-widest opacity-80">📊 Result — {attempted} Questions</p>
+                              <div className="flex items-end gap-3 mt-1">
+                                <span className="text-5xl font-black leading-none">{pct}%</span>
+                                <div className="mb-1">
+                                  <div className="text-base font-bold opacity-90">{right}/{attempted} Sahi</div>
+                                  <div className="text-xs font-black opacity-80 bg-white/20 rounded-lg px-2 py-0.5 mt-0.5">🏆 Score: {totalScore} pts</div>
+                                </div>
+                              </div>
+                              <p className="text-sm font-black mt-1 opacity-90">{grade.label}</p>
+                              <div className="grid grid-cols-4 gap-1.5 mt-3">
+                                <div className="bg-white/20 rounded-xl py-2 text-center">
+                                  <div className="text-[8px] font-black uppercase opacity-80">Attempted</div>
+                                  <div className="text-base font-black">{attempted}</div>
+                                </div>
+                                <div className="bg-white/20 rounded-xl py-2 text-center">
+                                  <div className="text-[8px] font-black uppercase opacity-80">✅ Sahi</div>
+                                  <div className="text-base font-black">{right}</div>
+                                </div>
+                                <div className="bg-white/20 rounded-xl py-2 text-center">
+                                  <div className="text-[8px] font-black uppercase opacity-80">❌ Galat</div>
+                                  <div className="text-base font-black">{wrong}</div>
+                                </div>
+                                <div className="bg-white/20 rounded-xl py-2 text-center">
+                                  <div className="text-[8px] font-black uppercase opacity-80">🏆 Score</div>
+                                  <div className="text-base font-black">{totalScore}</div>
+                                </div>
+                              </div>
+                              <div className="mt-2 text-[9px] opacity-70 text-center">✅ Sahi = 2 pts &nbsp;·&nbsp; ❌ Galat = 1 pt</div>
+                            </div>
+                            {/* Action buttons */}
+                            <div className="flex flex-col gap-2">
+                              <button
+                                onClick={() => setHwShowAnalysis(hwKey)}
+                                className="w-full py-3.5 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg active:scale-95 transition"
+                              >📋 Review Dekho — Har Question ka Detail</button>
+                              <div className="flex gap-2">
+                                <button
+                                  onClick={() => {
+                                    setHwAnswers(prev => {
+                                      const next = { ...prev };
+                                      mcqs.forEach((_m, qi) => { delete next[`${hwKey}_${qi}`]; });
+                                      return next;
+                                    });
+                                    setHwPendingAnswers({});
+                                    setHwMcqCurrentIdx(prev => ({ ...prev, [hwKey]: 0 }));
+                                  }}
+                                  className={`flex-1 text-[13px] font-black ${theme.text} ${theme.bgSoft} py-3 rounded-2xl active:scale-95 transition-all`}
+                                >🔄 Phir se Try Karo</button>
+                                {effectiveNextHw && (
+                                  <button
+                                    onClick={() => goToHw(effectiveNextHw)}
+                                    className={`flex-1 text-[13px] font-black text-white ${theme.btn} py-3 rounded-2xl active:scale-95 transition-all flex items-center justify-center gap-1`}
+                                  >Next Topic <ChevronRight size={14} /></button>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        );
+                      }
+
+                      // One-at-a-time question view
+                      const ci = hwMcqCurrentIdx[hwKey] ?? 0;
+                      const mcq = mcqs[ci];
+                      if (!mcq) return null;
+                      const ansKey = `${hwKey}_${ci}`;
+                      const selected = hwAnswers[ansKey];
+                      const isAnswered = selected !== undefined;
+                      const pendingOpt = hwPendingAnswers[ansKey];
 
                       return (
                         <div>
-                          {/* Stats bar */}
-                          <div className="grid grid-cols-4 gap-1.5 mb-3">
-                            <div className="bg-slate-100 rounded-xl py-2 text-center">
-                              <div className="text-[9px] font-bold text-slate-500 uppercase">Tried</div>
-                              <div className="text-sm font-black text-slate-800">{attempted}</div>
-                            </div>
-                            <div className="bg-emerald-50 rounded-xl py-2 text-center">
-                              <div className="text-[9px] font-bold text-emerald-600 uppercase">✅ Sahi</div>
-                              <div className="text-sm font-black text-emerald-700">{right}</div>
-                            </div>
-                            <div className="bg-rose-50 rounded-xl py-2 text-center">
-                              <div className="text-[9px] font-bold text-rose-600 uppercase">❌ Galat</div>
-                              <div className="text-sm font-black text-rose-700">{wrong}</div>
-                            </div>
-                            <div className="bg-indigo-50 rounded-xl py-2 text-center">
-                              <div className="text-[9px] font-bold text-indigo-600 uppercase">🏆</div>
-                              <div className="text-sm font-black text-indigo-700">{right}</div>
-                            </div>
-                          </div>
                           {/* Progress */}
-                          <div className="flex items-center gap-2 mb-3">
-                            <span className="text-[11px] font-black text-slate-600 shrink-0"><span className="text-indigo-600">{ci + 1}</span>/{totalQ}</span>
+                          <div className="flex items-center gap-2 mb-2">
+                            <span className="text-[11px] font-black text-slate-600 shrink-0">
+                              <span className="text-indigo-600">{ci + 1}</span>/{totalQ}
+                            </span>
                             <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
                               <div className="h-full bg-indigo-500 transition-all rounded-full" style={{ width: `${((ci + 1) / Math.max(1, totalQ)) * 100}%` }} />
                             </div>
                           </div>
-                          {/* Single question card */}
+                          {/* Threshold indicator */}
+                          {attempted < submitThreshold ? (
+                            <div className="mb-3 flex items-center gap-2 bg-amber-50 border border-amber-200 rounded-xl px-3 py-1.5">
+                              <span className="text-amber-500 text-sm">🔒</span>
+                              <div className="flex-1">
+                                <div className="h-1.5 bg-amber-100 rounded-full overflow-hidden">
+                                  <div className="h-full bg-amber-400 transition-all rounded-full" style={{ width: `${(attempted / submitThreshold) * 100}%` }} />
+                                </div>
+                              </div>
+                              <span className="text-[10px] font-black text-amber-600 shrink-0">{attempted}/{submitThreshold} — {submitThreshold - attempted} aur karo</span>
+                            </div>
+                          ) : (
+                            <div className="mb-3 flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-1.5">
+                              <span className="text-emerald-500 text-sm">✅</span>
+                              <span className="text-[10px] font-black text-emerald-600 flex-1">{attempted} questions done — Result ready hai!</span>
+                            </div>
+                          )}
+                          {/* Question card */}
                           <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
                             <div className="flex items-start justify-between gap-2 mb-3">
-                              <p className="text-sm font-bold text-slate-800 leading-snug flex-1"><span className="text-indigo-600 font-black">Q{ci + 1}.</span> {mcq.question}</p>
+                              <p className="text-sm font-bold text-slate-800 leading-snug flex-1">
+                                <span className="text-indigo-600 font-black">Q{ci + 1}.</span> {mcq.question}
+                              </p>
                               <McqSpeakButtons question={mcq.question} options={mcq.options} correctAnswer={mcq.correctAnswer} className="shrink-0" mode="all" />
                             </div>
                             <div className="space-y-2">
                               {mcq.options.map((opt, oi) => {
-                                const isOpt = mcq.correctAnswer === oi;
-                                const isSel = selected === oi;
+                                const isPending = pendingOpt === oi;
                                 let cls = 'w-full text-left text-sm px-4 py-2.5 rounded-xl border-2 transition-all font-medium flex items-center gap-2 ';
                                 if (isAnswered) {
-                                  cls += isOpt ? 'bg-green-50 border-green-400 text-green-800 font-bold'
-                                    : isSel ? 'bg-red-50 border-red-400 text-red-800'
-                                    : 'bg-slate-50 border-slate-200 text-slate-400 opacity-60';
+                                  cls += 'bg-slate-50 border-slate-200 text-slate-400 opacity-70 cursor-default';
+                                } else if (isPending) {
+                                  cls += 'bg-indigo-50 border-indigo-500 text-indigo-800 font-bold';
                                 } else {
-                                  cls += 'bg-slate-50 border-slate-200 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50';
+                                  cls += 'bg-slate-50 border-slate-200 text-slate-700 active:bg-indigo-50 active:border-indigo-300';
                                 }
                                 return (
                                   <button key={oi} disabled={isAnswered} onClick={() => {
                                     if (isAnswered) return;
-                                    setHwAnswers(prev => ({ ...prev, [ansKey]: oi }));
-                                    trackDailyMcqAnswer(oi === mcq.correctAnswer);
-                                    if (!isOpt) {
-                                      const cText = (mcq.options[mcq.correctAnswer] || '').replace(/<[^>]+>/g,' ').trim();
-                                      stopSpeech();
-                                      speakText(`Galat. Sahi: Option ${String.fromCharCode(65+mcq.correctAnswer)}, ${cText}.`, null, 1.0, 'hi-IN').catch(()=>{});
-                                    }
-                                    if (ci < totalQ - 1) {
-                                      if (lucentAutoNextTimerRef.current) clearTimeout(lucentAutoNextTimerRef.current);
-                                      lucentAutoNextTimerRef.current = setTimeout(() => {
-                                        setHwMcqCurrentIdx(prev => ({ ...prev, [hwKey]: Math.min((prev[hwKey] ?? 0) + 1, totalQ - 1) }));
-                                      }, 1200);
-                                    }
+                                    setHwPendingAnswers(prev => ({ ...prev, [ansKey]: oi }));
                                   }} className={cls}>
                                     <span className="font-black shrink-0">{String.fromCharCode(65+oi)}.</span>
                                     <span className="flex-1">{opt}</span>
-                                    {isAnswered && isOpt && <span>✅</span>}
-                                    {isAnswered && isSel && !isOpt && <span>❌</span>}
+                                    {!isAnswered && isPending && <span className="w-3 h-3 rounded-full bg-indigo-500 shrink-0" />}
+                                    {isAnswered && <span className="text-slate-400 text-xs shrink-0">Submitted</span>}
                                   </button>
                                 );
                               })}
                             </div>
-                            {isAnswered && mcq.explanation && (
-                              <p className="text-xs text-slate-600 mt-3 bg-amber-50 border border-amber-200 rounded-xl p-3 leading-relaxed">
-                                <span className="font-black text-amber-700">💡 Explanation:</span> {mcq.explanation}
-                              </p>
+                            {/* Submit button */}
+                            {!isAnswered && pendingOpt !== undefined && (
+                              <button
+                                onClick={() => {
+                                  const isCorrect = mcq.correctAnswer === pendingOpt;
+                                  setHwAnswers(prev => ({ ...prev, [ansKey]: pendingOpt }));
+                                  setHwPendingAnswers(prev => { const n = { ...prev }; delete n[ansKey]; return n; });
+                                  trackDailyMcqAnswer(isCorrect);
+                                  // Auto advance to next unanswered question
+                                  if (lucentAutoNextTimerRef.current) clearTimeout(lucentAutoNextTimerRef.current);
+                                  lucentAutoNextTimerRef.current = setTimeout(() => {
+                                    setHwMcqCurrentIdx(prev => {
+                                      const next = Math.min((prev[hwKey] ?? 0) + 1, totalQ - 1);
+                                      return { ...prev, [hwKey]: next };
+                                    });
+                                  }, 600);
+                                }}
+                                className="mt-3 w-full py-3 rounded-2xl bg-gradient-to-r from-indigo-600 to-indigo-700 text-white font-black text-base flex items-center justify-center gap-2 shadow-lg active:scale-95 transition"
+                              >✔ Submit</button>
+                            )}
+                            {isAnswered && (
+                              <div className="mt-3 px-3 py-2 rounded-xl text-[11px] font-black bg-slate-100 text-slate-500 text-center">
+                                ✅ Submitted — next question par jao
+                              </div>
                             )}
                           </div>
-                          {/* Back / Next */}
+                          {/* Navigation */}
                           <div className="mt-3 flex gap-3">
                             {ci > 0 ? (
                               <button onClick={() => { if (lucentAutoNextTimerRef.current) clearTimeout(lucentAutoNextTimerRef.current); setHwMcqCurrentIdx(prev => ({ ...prev, [hwKey]: ci - 1 })); }}
-                                className="py-3 px-5 rounded-2xl bg-white border-2 border-slate-200 text-slate-700 font-bold text-sm flex items-center gap-1.5 active:scale-95 transition">← Pichla</button>
+                                className="py-3 px-5 rounded-2xl bg-white border-2 border-slate-200 text-slate-700 font-bold text-sm flex items-center gap-1.5 active:scale-95 transition">← Previous</button>
                             ) : (
-                              <div className="py-3 px-5 rounded-2xl bg-slate-50 border-2 border-slate-100 text-slate-300 font-bold text-sm select-none">← Pichla</div>
+                              <div className="py-3 px-5 rounded-2xl bg-slate-50 border-2 border-slate-100 text-slate-300 font-bold text-sm select-none">← Previous</div>
                             )}
                             {ci < totalQ - 1 ? (
-                              <button onClick={() => { if (lucentAutoNextTimerRef.current) clearTimeout(lucentAutoNextTimerRef.current); setHwMcqCurrentIdx(prev => ({ ...prev, [hwKey]: ci + 1 })); }}
-                                className={`flex-1 py-3 rounded-2xl font-black text-sm flex items-center justify-center gap-1.5 active:scale-95 transition shadow-md ${isAnswered ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'}`}>
-                                Agla →
+                              <button onClick={() => {
+                                if (lucentAutoNextTimerRef.current) clearTimeout(lucentAutoNextTimerRef.current);
+                                // Auto-submit pending answer if any
+                                if (!isAnswered && pendingOpt !== undefined) {
+                                  const isCorrect = mcq.correctAnswer === pendingOpt;
+                                  setHwAnswers(prev => ({ ...prev, [ansKey]: pendingOpt }));
+                                  setHwPendingAnswers(prev => { const n = { ...prev }; delete n[ansKey]; return n; });
+                                  trackDailyMcqAnswer(isCorrect);
+                                }
+                                setHwMcqCurrentIdx(prev => ({ ...prev, [hwKey]: ci + 1 }));
+                              }}
+                                className="flex-1 py-3 rounded-2xl font-black text-sm flex items-center justify-center gap-1.5 active:scale-95 transition shadow-md bg-slate-700 text-white">
+                                {!isAnswered && pendingOpt !== undefined ? '✔ Submit & Next →' : 'Next →'}
                               </button>
                             ) : (
-                              <div className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-black text-sm flex items-center justify-center shadow-md">🎯 Sab Ho Gaya!</div>
+                              <div className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-indigo-500 to-purple-600 text-white font-black text-sm flex items-center justify-center shadow-md opacity-60">
+                                Last Question
+                              </div>
                             )}
                           </div>
                         </div>
                       );
                     })()}
                   </div>
-                  {/* Score Summary — appears at the bottom of the MCQ list. Updates live as the
-                      student answers; hides while nothing is attempted to avoid a "0/0" empty state. */}
-                  {(() => {
-                    const total = activeHw.parsedMcqs!.length;
-                    let attempted = 0, correct = 0;
-                    activeHw.parsedMcqs!.forEach((mcq, qi) => {
-                      const sel = hwAnswers[`${hwKey}_${qi}`];
-                      if (sel !== undefined) {
-                        attempted++;
-                        if (sel === mcq.correctAnswer) correct++;
-                      }
-                    });
-                    if (attempted === 0) return null;
-                    const wrong = attempted - correct;
-                    const pct = Math.round((correct / total) * 100);
-                    const allDone = attempted === total;
-                    const grade = pct >= 80 ? { label: 'Excellent! 🌟', color: 'from-emerald-500 to-green-500', text: 'text-emerald-700', ring: 'ring-emerald-200' }
-                                : pct >= 60 ? { label: 'Good 👍', color: 'from-blue-500 to-indigo-500', text: 'text-blue-700', ring: 'ring-blue-200' }
-                                : pct >= 40 ? { label: 'Keep practising 💪', color: 'from-amber-500 to-orange-500', text: 'text-amber-700', ring: 'ring-amber-200' }
-                                : { label: 'Need more practice 📚', color: 'from-rose-500 to-red-500', text: 'text-rose-700', ring: 'ring-rose-200' };
-                    return (
-                      <div className={`mt-5 bg-white rounded-3xl border-2 ring-4 ${grade.ring} ${theme.border} shadow-lg overflow-hidden`}>
-                        <div className={`bg-gradient-to-r ${grade.color} px-5 py-3 text-white`}>
-                          <div className="flex items-center justify-between">
-                            <p className="text-[10px] font-black uppercase tracking-widest opacity-90">📊 Score Summary</p>
-                            {allDone && <span className="text-[10px] font-black bg-white/25 px-2 py-0.5 rounded-full">Complete</span>}
-                          </div>
-                          <div className="flex items-end gap-2 mt-1">
-                            <span className="text-4xl font-black leading-none">{pct}%</span>
-                            <span className="text-sm font-bold opacity-90 mb-1">({correct}/{total})</span>
-                          </div>
-                          <p className="text-xs font-bold opacity-90 mt-1">{grade.label}</p>
-                        </div>
-                        <div className="grid grid-cols-3 divide-x divide-slate-100">
-                          <div className="px-3 py-3 text-center">
-                            <p className="text-[9px] font-black text-slate-500 uppercase tracking-wider">Attempted</p>
-                            <p className="text-lg font-black text-slate-800 mt-0.5">{attempted}<span className="text-xs text-slate-400">/{total}</span></p>
-                          </div>
-                          <div className="px-3 py-3 text-center">
-                            <p className="text-[9px] font-black text-emerald-600 uppercase tracking-wider">✓ Sahi</p>
-                            <p className="text-lg font-black text-emerald-700 mt-0.5">{correct}</p>
-                          </div>
-                          <div className="px-3 py-3 text-center">
-                            <p className="text-[9px] font-black text-rose-600 uppercase tracking-wider">✗ Galat</p>
-                            <p className="text-lg font-black text-rose-700 mt-0.5">{wrong}</p>
-                          </div>
-                        </div>
-                        {!allDone && (
-                          <div className="px-4 py-2 bg-slate-50 border-t border-slate-100">
-                            <p className="text-[11px] font-bold text-slate-500 text-center">{total - attempted} question{total - attempted === 1 ? '' : 's'} left — try them all!</p>
-                          </div>
-                        )}
-                        {allDone && (
-                          <div className="px-4 py-3 bg-slate-50 border-t border-slate-100 flex gap-2">
-                            <button
-                              onClick={() => {
-                                setHwAnswers(prev => {
-                                  const next = { ...prev };
-                                  activeHw.parsedMcqs!.forEach((_m, qi) => { delete next[`${hwKey}_${qi}`]; });
-                                  return next;
-                                });
-                              }}
-                              className={`flex-1 text-[12px] font-black ${theme.text} ${theme.bgSoft} py-2 rounded-xl active:scale-95 transition-all`}
-                            >
-                              🔄 Phir se Try Karo
-                            </button>
-                            {effectiveNextHw && (
-                              <button
-                                onClick={() => goToHw(effectiveNextHw)}
-                                className={`flex-1 text-[12px] font-black text-white ${theme.btn} ${theme.btnHover} py-2 rounded-xl active:scale-95 transition-all flex items-center justify-center gap-1`}
-                              >
-                                Next Topic <ChevronRight size={14} />
-                              </button>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })()}
                 </div>
               )}
 
@@ -7895,7 +8021,7 @@ export const StudentDashboard: React.FC<Props> = ({
                     </div>
                   </div>
                 )}
-                {!_discActive && _svDisc && (
+                {!_discActive && _svDisc && getLevelInfo(user.totalScore || 0).level <= 4 && (
                   <div className="mx-4 mt-2 mb-1 px-3 py-2 rounded-xl flex items-center gap-2" style={{ background: 'rgba(100,116,139,0.1)', border: '1px solid rgba(100,116,139,0.2)' }}>
                     <span>⏰</span>
                     <p className="text-[10px] font-bold text-slate-500">Store visit discount khatam ho gaya — dobara visit karo!</p>

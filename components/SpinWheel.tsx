@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { User, SystemSettings, SpinReward, SpinGameType } from '../types';
 import { Trophy, Zap, Star, Lock, ChevronRight } from 'lucide-react';
 import { CustomAlert } from './CustomDialogs';
@@ -51,7 +51,13 @@ const SpinWheelCore: React.FC<SpinWheelCoreProps> = ({ user, onUpdateUser, rewar
   const [resultMessage, setResultMessage] = useState<React.ReactNode | null>(null);
   const [alertConfig, setAlertConfig] = useState<{isOpen: boolean, message: string}>({isOpen: false, message: ''});
   const [fastMode, setFastMode] = useState(false);
-  const spinDuration = fastMode ? 2000 : 4000;
+  const [spinCount, setSpinCount] = useState(1);
+  const [spinInputVal, setSpinInputVal] = useState('1');
+  const [autoMode, setAutoMode] = useState(false);
+  const autoRef = useRef(false);
+  const userRef = useRef(user);
+  useEffect(() => { userRef.current = user; }, [user]);
+  const spinDuration = fastMode ? 600 : 3000;
 
   const todayStr = new Date().toISOString().split('T')[0];
 
@@ -70,7 +76,6 @@ const SpinWheelCore: React.FC<SpinWheelCoreProps> = ({ user, onUpdateUser, rewar
   const SEGMENT_COUNT = normalizedRewards.length;
   const SEGMENT_ANGLE = 360 / SEGMENT_COUNT;
 
-  // Per-type daily spin tracking
   const spinDateKey = `dailySpinDate_${spinKey}`;
   const spinCountKey = `dailySpinCount_${spinKey}`;
 
@@ -80,243 +85,395 @@ const SpinWheelCore: React.FC<SpinWheelCoreProps> = ({ user, onUpdateUser, rewar
   const remainingSpins = Math.max(0, dailyLimit - spinsUsed);
   const canSpin = remainingSpins > 0;
 
-  const handleSpin = () => {
-    if (!canSpin || isSpinning) return;
-    if (cost > 0 && user.credits < cost) {
-      setAlertConfig({isOpen: true, message: `Insufficient Credits! You need ${cost} Credits to spin.`});
+  const stopAuto = () => {
+    autoRef.current = false;
+    setAutoMode(false);
+  };
+
+  const doSpin = (currentUser: User, currentSpinsUsed: number, count: number, isAuto: boolean) => {
+    const spinsToRun = Math.min(count, dailyLimit - currentSpinsUsed, 99);
+    if (spinsToRun <= 0) { stopAuto(); return; }
+
+    const totalCost = cost * spinsToRun;
+    if (totalCost > 0 && getTotalCredits(currentUser) < totalCost) {
+      setAlertConfig({ isOpen: true, message: `Insufficient Credits! You need ${totalCost} CR to spin ${spinsToRun}×.` });
+      stopAuto();
       return;
     }
+
     try {
-      const _sk = `nst_spin_daily_${user.id}_${todayStr}`;
-      localStorage.setItem(_sk, String(parseInt(localStorage.getItem(_sk)||'0',10)+1));
+      const _sk = `nst_spin_daily_${currentUser.id}_${todayStr}`;
+      localStorage.setItem(_sk, String(parseInt(localStorage.getItem(_sk)||'0',10) + spinsToRun));
     } catch {}
+
     setIsSpinning(true);
     setResultMessage(null);
 
-    const winningIndex = pickWeightedRandom(normalizedRewards);
-    const wonReward = normalizedRewards[winningIndex];
+    const wonRewards: SpinReward[] = [];
+    for (let i = 0; i < spinsToRun; i++) wonRewards.push(normalizedRewards[pickWeightedRandom(normalizedRewards)]);
+
+    const lastWon = wonRewards[wonRewards.length - 1];
+    const extraSpins = 360 * 5;
+    const lastIdx = normalizedRewards.indexOf(lastWon);
+    const segmentOffset = Math.floor(Math.random() * (SEGMENT_ANGLE - 4)) + 2;
+    setRotation(prev => prev + extraSpins + (360 - (lastIdx * SEGMENT_ANGLE)) + segmentOffset);
 
     if (typeof (window as any).recordActivity === 'function') {
-      (window as any).recordActivity('GAME', `Spin Wheel (${typeName}): Played`, cost);
+      (window as any).recordActivity('GAME', `Spin Wheel (${typeName}): ${spinsToRun}× Played`, totalCost);
     }
-
-    const extraSpins = 360 * 6;
-    const segmentOffset = Math.floor(Math.random() * (SEGMENT_ANGLE - 4)) + 2;
-    const finalRotation = extraSpins + (360 - (winningIndex * SEGMENT_ANGLE)) + segmentOffset;
-    setRotation(prev => prev + finalRotation);
 
     setTimeout(() => {
       setIsSpinning(false);
 
-      const wonAmt = wonReward.type === 'COINS' ? Number(wonReward.value) : 0;
-      const netChange = wonAmt - cost;
-      const isGiftCode = wonReward.type === 'GIFT_CODE' && !!wonReward.giftCode;
-      const isWin = (wonReward.type === 'COINS' && wonAmt > 0) || wonReward.type === 'SUBSCRIPTION' || isGiftCode;
+      let totalWon = 0;
+      let updatedUser: any = { ...applyDeduction(currentUser, totalCost) ?? currentUser };
+      updatedUser[spinDateKey] = todayStr;
+      updatedUser[spinCountKey] = currentSpinsUsed + spinsToRun;
+      updatedUser.lastSpinTime = new Date().toISOString();
+      updatedUser.totalScore = (currentUser.totalScore || 0) + totalCost;
 
-      if (isWin) {
-        if (typeof (window as any).recordActivity === 'function') {
-          (window as any).recordActivity('GAME', `Spin Wheel (${typeName}): Won ${wonReward.label}`, wonAmt);
+      wonRewards.forEach(wonReward => {
+        if (wonReward.type === 'COINS') {
+          const v = Number(wonReward.value);
+          totalWon += v;
+          updatedUser.credits = (updatedUser.credits || 0) + v;
+        } else if (wonReward.type === 'SUBSCRIPTION') {
+          const parts = String(wonReward.value).split('_');
+          const tier = parts[0] as any;
+          const level = parts[1] as any || 'BASIC';
+          let days = 7;
+          if (tier === 'MONTHLY') days = 30;
+          if (tier === 'YEARLY') days = 365;
+          if (tier === 'LIFETIME') days = 36500;
+          updatedUser.subscriptionTier = tier;
+          updatedUser.subscriptionLevel = level;
+          updatedUser.subscriptionEndDate = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
+          updatedUser.isPremium = true;
+          updatedUser.grantedByAdmin = true;
+        } else if (wonReward.type === 'GIFT_CODE' && wonReward.giftCode) {
+          const expiryMs = (wonReward.expiryHours || 48) * 60 * 60 * 1000;
+          const codeMsg = {
+            id: `giftcode-${Date.now()}`, text: `🎁 ${wonReward.label} — Code: ${wonReward.giftCode}`,
+            date: new Date().toISOString(), read: false, type: 'REWARD' as const,
+            isClaimed: false, expiresAt: new Date(Date.now() + expiryMs).toISOString(),
+            gift: { type: 'CREDITS' as const, value: 0 },
+          };
+          updatedUser.inbox = [codeMsg, ...(updatedUser.inbox || [])];
         }
-      }
+      });
 
-      const winLabel = isGiftCode
-        ? '🎁 Gift Code Jeeta! Mailbox dekho!'
-        : wonReward.type === 'SUBSCRIPTION'
-          ? '🏆 Subscription Jeeti!'
-          : `${wonReward.label} Jeeta!`;
+      const netChange = totalWon - totalCost;
+      const isWin = totalWon > 0;
 
-      setResultMessage(
-        <div className="flex flex-col items-center gap-2">
-          <div className="text-4xl">{isWin ? '🎉' : '😢'}</div>
-          <div className={`text-lg font-black ${isWin ? 'text-green-600' : 'text-slate-600'}`}>
-            {isWin ? winLabel : 'Better luck next time!'}
-          </div>
-          {cost > 0 && (
-            <div className="flex items-center gap-2 mt-1 bg-slate-50 rounded-xl px-4 py-2 border border-slate-100 w-full justify-center flex-wrap">
-              <span className="text-xs font-black text-rose-500">−{cost} CR</span>
-              <span className="text-slate-300 text-xs">spent</span>
-              {wonAmt > 0 && <>
-                <span className="text-slate-400 text-xs">→</span>
-                <span className="text-xs font-black text-emerald-600">+{wonAmt} CR</span>
-                <span className="text-slate-300 text-xs">won</span>
-              </>}
-              <span className="text-slate-400 text-xs">·</span>
-              <span className={`text-xs font-black ${netChange >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>
-                Net: {netChange >= 0 ? '+' : ''}{netChange} CR
-              </span>
+      if (spinsToRun === 1) {
+        const wonReward = wonRewards[0];
+        const isGiftCode = wonReward.type === 'GIFT_CODE' && !!wonReward.giftCode;
+        const isSub = wonReward.type === 'SUBSCRIPTION';
+        const winLabel = isGiftCode ? '🎁 Gift Code Jeeta!' : isSub ? '🏆 Subscription Jeeti!' : `${wonReward.label} Jeeta!`;
+        setResultMessage(
+          <div className="flex flex-col items-center gap-2">
+            <div className="text-4xl">{isWin || isSub || isGiftCode ? '🎉' : '😢'}</div>
+            <div className={`text-lg font-black ${isWin || isSub || isGiftCode ? 'text-green-600' : 'text-slate-600'}`}>
+              {isWin || isSub || isGiftCode ? winLabel : 'Better luck next time!'}
             </div>
-          )}
-        </div>
-      );
-
-      const deductedUser = applyDeduction(user, cost) ?? user;
-      const updatedUser: any = {
-        ...deductedUser,
-        [spinDateKey]: todayStr,
-        [spinCountKey]: spinsUsed + 1,
-        lastSpinTime: new Date().toISOString(),
-        totalScore: (user.totalScore || 0) + cost,
-      };
-
-      if (wonReward.type === 'COINS') {
-        updatedUser.credits += Number(wonReward.value);
-      } else if (wonReward.type === 'SUBSCRIPTION') {
-        const parts = String(wonReward.value).split('_');
-        const tier = parts[0] as any;
-        const level = parts[1] as any || 'BASIC';
-        let days = 7;
-        if (tier === 'MONTHLY') days = 30;
-        if (tier === 'YEARLY') days = 365;
-        if (tier === 'LIFETIME') days = 36500;
-        updatedUser.subscriptionTier = tier;
-        updatedUser.subscriptionLevel = level;
-        updatedUser.subscriptionEndDate = new Date(Date.now() + days * 24 * 60 * 60 * 1000).toISOString();
-        updatedUser.isPremium = true;
-        updatedUser.grantedByAdmin = true;
-      } else if (wonReward.type === 'GIFT_CODE' && wonReward.giftCode) {
-        const expiryMs = (wonReward.expiryHours || 48) * 60 * 60 * 1000;
-        const expiresAt = new Date(Date.now() + expiryMs).toISOString();
-        const codeMsg = {
-          id: `giftcode-${Date.now()}`,
-          text: `🎁 ${wonReward.label} — Aapka Gift Code: ${wonReward.giftCode}`,
-          date: new Date().toISOString(),
-          read: false,
-          type: 'REWARD' as const,
-          isClaimed: false,
-          expiresAt,
-          gift: { type: 'CREDITS' as const, value: 0 },
-        };
-        updatedUser.inbox = [codeMsg, ...(updatedUser.inbox || [])];
-        msg = (
-          <div className="flex flex-col items-center animate-bounce">
-            <div className="text-4xl mb-2">🎁🎉🎁</div>
-            <div className="text-xl font-black text-green-600">Gift Code jeeta! Mailbox check karo!</div>
+            {cost > 0 && (
+              <div className="flex items-center gap-2 mt-1 bg-slate-50 rounded-xl px-4 py-2 border border-slate-100 w-full justify-center flex-wrap">
+                <span className="text-xs font-black text-rose-500">−{cost} CR</span>
+                <span className="text-slate-300 text-xs">spent</span>
+                {totalWon > 0 && <><span className="text-slate-400 text-xs">→</span><span className="text-xs font-black text-emerald-600">+{totalWon} CR</span><span className="text-slate-300 text-xs">won</span></>}
+                <span className="text-slate-400 text-xs">·</span>
+                <span className={`text-xs font-black ${netChange >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>Net: {netChange >= 0 ? '+' : ''}{netChange} CR</span>
+              </div>
+            )}
+          </div>
+        );
+      } else {
+        const breakdown = wonRewards.map((r, i) => {
+          const v = r.type === 'COINS' ? Number(r.value) : 0;
+          return <div key={i} className="flex items-center justify-between text-[11px]"><span className="text-slate-600">Spin {i+1}:</span><span className={`font-black ${v > 0 ? 'text-emerald-600' : 'text-slate-400'}`}>{v > 0 ? `+${v} CR` : r.label}</span></div>;
+        });
+        setResultMessage(
+          <div className="flex flex-col gap-2 w-full">
+            <div className="text-center text-2xl">{isWin ? '🎉' : '😢'}</div>
+            <div className="bg-slate-50 rounded-xl p-3 space-y-1 border border-slate-100">{breakdown}</div>
+            <div className="flex justify-between items-center pt-1 border-t border-slate-100">
+              {cost > 0 && <span className="text-xs font-black text-rose-500">−{totalCost} CR spent</span>}
+              <span className={`text-sm font-black ml-auto ${netChange >= 0 ? 'text-emerald-600' : 'text-rose-500'}`}>Net: {netChange >= 0 ? '+' : ''}{netChange} CR</span>
+            </div>
           </div>
         );
       }
 
       onUpdateUser(updatedUser);
+
+      if (autoRef.current) {
+        const newSpinsUsed = currentSpinsUsed + spinsToRun;
+        const newRemaining = dailyLimit - newSpinsUsed;
+        if (newRemaining > 0 && getTotalCredits(updatedUser) >= cost) {
+          setTimeout(() => {
+            if (autoRef.current) doSpin(updatedUser, newSpinsUsed, 1, true);
+          }, 600);
+        } else {
+          stopAuto();
+        }
+      }
     }, spinDuration);
   };
 
+  const clampCount = (v: number) => Math.max(1, Math.min(99, Math.min(v, remainingSpins)));
+  const applySpinCount = (v: number) => {
+    const clamped = clampCount(v);
+    setSpinCount(clamped);
+    setSpinInputVal(String(clamped));
+  };
+
+  const handleSpin = () => {
+    if (!canSpin || isSpinning) return;
+    doSpin(user, spinsUsed, spinCount, false);
+  };
+
+  const toggleAuto = () => {
+    if (autoMode) {
+      stopAuto();
+    } else {
+      if (!canSpin || isSpinning) return;
+      autoRef.current = true;
+      setAutoMode(true);
+      doSpin(user, spinsUsed, 1, true);
+    }
+  };
+
+  const totalCostPreview = cost * spinCount;
+
+  /* ── SVG Wheel ── */
+  const cx = 150, cy = 150, r = 138;
+  const segmentPaths = normalizedRewards.map((seg, idx) => {
+    const startAngle = (idx * SEGMENT_ANGLE - 90) * (Math.PI / 180);
+    const endAngle = ((idx + 1) * SEGMENT_ANGLE - 90) * (Math.PI / 180);
+    const x1 = cx + r * Math.cos(startAngle);
+    const y1 = cy + r * Math.sin(startAngle);
+    const x2 = cx + r * Math.cos(endAngle);
+    const y2 = cy + r * Math.sin(endAngle);
+    const largeArc = SEGMENT_ANGLE > 180 ? 1 : 0;
+    const midAngle = ((idx + 0.5) * SEGMENT_ANGLE - 90) * (Math.PI / 180);
+    const textR = r * 0.62;
+    const tx = cx + textR * Math.cos(midAngle);
+    const ty = cy + textR * Math.sin(midAngle);
+    const textRot = (idx + 0.5) * SEGMENT_ANGLE;
+    const fontSize = SEGMENT_COUNT <= 6 ? 13 : SEGMENT_COUNT <= 10 ? 11 : 9;
+    return { seg, idx, d: `M${cx},${cy} L${x1},${y1} A${r},${r},0,${largeArc},1,${x2},${y2}Z`, tx, ty, textRot, fontSize };
+  });
+
   return (
-    <div className="flex flex-col items-center justify-center py-4 animate-in fade-in zoom-in duration-500">
+    <div className="flex flex-col items-center justify-center py-3 animate-in fade-in zoom-in duration-500 px-4">
       <CustomAlert
         isOpen={alertConfig.isOpen}
         message={alertConfig.message}
-        onClose={() => setAlertConfig({...alertConfig, isOpen: false})}
+        onClose={() => { setAlertConfig({...alertConfig, isOpen: false}); stopAuto(); }}
       />
 
-      <div className="text-center mb-6 relative">
-        <h2 className="text-2xl font-black text-slate-800 flex items-center justify-center gap-2">
-          <span className="text-3xl">{typeEmoji || '🎰'}</span> {typeName}
+      {/* Header */}
+      <div className="text-center mb-4">
+        <h2 className="text-xl font-black text-slate-800 flex items-center justify-center gap-2">
+          <span className="text-2xl">{typeEmoji || '🎰'}</span> {typeName}
         </h2>
-        <div className="flex items-center justify-center gap-2 mt-2">
-          <span className={`px-2 py-0.5 text-[10px] font-bold rounded uppercase border ${cost === 0 ? 'bg-green-100 text-green-700 border-green-200' : 'bg-orange-100 text-orange-700 border-orange-200'}`}>
-            {cost === 0 ? 'Free Entry' : `Cost: ${cost} CR`}
+        <div className="flex items-center justify-center gap-2 mt-1.5 flex-wrap">
+          <span className={`px-2 py-0.5 text-[10px] font-bold rounded-full border ${cost === 0 ? 'bg-green-100 text-green-700 border-green-200' : 'bg-orange-100 text-orange-700 border-orange-200'}`}>
+            {cost === 0 ? '🆓 Free' : `💰 ${cost} CR / spin`}
           </span>
-          <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded uppercase border border-blue-200">
-            {remainingSpins} Spins Left
+          <span className="px-2 py-0.5 bg-blue-100 text-blue-700 text-[10px] font-bold rounded-full border border-blue-200">
+            🎯 {remainingSpins}/{dailyLimit} baaki aaj
           </span>
           <button
             onClick={() => setFastMode(f => !f)}
             disabled={isSpinning}
-            className={`px-2 py-0.5 text-[10px] font-black rounded uppercase border transition-all ${fastMode ? 'bg-purple-600 text-white border-purple-700 shadow-sm' : 'bg-purple-50 text-purple-600 border-purple-200'}`}
-          >
-            ⚡ {fastMode ? '2× ON' : '2× OFF'}
-          </button>
+            className={`px-2 py-0.5 text-[10px] font-black rounded-full border transition-all ${fastMode ? 'bg-purple-600 text-white border-purple-700' : 'bg-purple-50 text-purple-600 border-purple-200'}`}
+          >⚡ {fastMode ? 'Fast ON' : 'Fast'}</button>
         </div>
       </div>
 
-      <div className="relative w-72 h-72 mb-8">
-        <div className="absolute -inset-4 rounded-full bg-gradient-to-b from-slate-200 to-slate-50 border-4 border-slate-300 shadow-xl flex items-center justify-center">
-          <div className="w-full h-full rounded-full border-4 border-dashed border-slate-300 opacity-50 animate-spin-slow" style={{ animationDuration: '20s' }}></div>
+      {/* Professional SVG Wheel */}
+      <div className="relative mb-5" style={{ width: 300, height: 300 }}>
+        {/* Outer decorative glow ring */}
+        <div className={`absolute inset-0 rounded-full transition-all duration-300 ${isSpinning ? 'shadow-[0_0_40px_10px_rgba(251,191,36,0.5)]' : 'shadow-[0_0_20px_4px_rgba(251,191,36,0.2)]'}`} />
+
+        {/* Pointer */}
+        <div className="absolute top-[-2px] left-1/2 -translate-x-1/2 z-30" style={{ filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.5))' }}>
+          <svg width="32" height="38" viewBox="0 0 32 38">
+            <polygon points="16,36 2,2 30,2" fill="#dc2626" stroke="white" strokeWidth="2.5" strokeLinejoin="round"/>
+            <polygon points="16,36 2,2 30,2" fill="url(#pointerGrad)"/>
+            <defs>
+              <linearGradient id="pointerGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0%" stopColor="#ef4444"/>
+                <stop offset="100%" stopColor="#991b1b"/>
+              </linearGradient>
+            </defs>
+          </svg>
         </div>
-        <div className="absolute -top-6 left-1/2 -translate-x-1/2 z-20 w-10 h-12">
-          <div className="w-full h-full bg-red-600 rounded-lg shadow-lg relative border-2 border-white">
-            <div className="absolute bottom-[-10px] left-1/2 -translate-x-1/2 w-0 h-0 border-l-[10px] border-l-transparent border-r-[10px] border-r-transparent border-t-[14px] border-t-red-600"></div>
-          </div>
-        </div>
+
+        {/* Spinning wheel */}
         <div
-          className="w-full h-full rounded-full border-8 border-slate-800 bg-slate-800 shadow-2xl relative overflow-hidden"
+          className="absolute inset-0 rounded-full"
           style={{
             transform: `rotate(${rotation}deg)`,
             transitionDuration: isSpinning ? `${spinDuration / 1000}s` : '0s',
-            transitionTimingFunction: 'cubic-bezier(0.25, 0.1, 0.25, 1)',
+            transitionTimingFunction: 'cubic-bezier(0.17, 0.67, 0.12, 0.99)',
           }}
         >
-          {normalizedRewards.map((seg, idx) => {
-            const rot = idx * SEGMENT_ANGLE;
-            return (
-              <div
-                key={seg.id || idx}
-                className="absolute top-0 left-1/2 w-[50%] h-[50%] origin-bottom-left"
-                style={{ transform: `rotate(${rot}deg) skewY(-${90 - SEGMENT_ANGLE}deg)`, transformOrigin: '0% 100%' }}
-              >
-                <div
-                  className="absolute inset-0 w-full h-full border-r border-slate-900/10"
-                  style={{ backgroundColor: seg.color || '#3b82f6', transform: `skewY(${90 - SEGMENT_ANGLE}deg)`, transformOrigin: '0% 100%' }}
-                >
-                  <div
-                    className="absolute top-[15%] left-[50%] -translate-x-1/2 font-black text-lg"
-                    style={{ color: '#ffffff', transform: `rotate(${SEGMENT_ANGLE/2}deg)`, textShadow: '0px 1px 2px rgba(0,0,0,0.5)' }}
-                  >
-                    <span className="text-sm whitespace-nowrap block rotate-90 mt-4">{seg.label}</span>
-                  </div>
-                </div>
-              </div>
-            );
-          })}
-        </div>
-        <div className="absolute inset-0 m-auto w-16 h-16 bg-gradient-to-br from-white to-slate-200 rounded-full shadow-[0_0_15px_rgba(0,0,0,0.2)] flex items-center justify-center z-10 border-4 border-slate-100">
-          <div className="w-10 h-10 rounded-full bg-slate-800 flex items-center justify-center shadow-inner">
-            <Trophy className="text-yellow-400 drop-shadow-md" size={18} fill="currentColor" />
-          </div>
+          <svg viewBox="0 0 300 300" width="300" height="300" style={{ display: 'block' }}>
+            <defs>
+              <filter id="wheelShadow">
+                <feDropShadow dx="0" dy="0" stdDeviation="6" floodOpacity="0.3"/>
+              </filter>
+              <linearGradient id="goldRing" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#fef3c7"/>
+                <stop offset="25%" stopColor="#f59e0b"/>
+                <stop offset="50%" stopColor="#fde68a"/>
+                <stop offset="75%" stopColor="#d97706"/>
+                <stop offset="100%" stopColor="#fef3c7"/>
+              </linearGradient>
+              <linearGradient id="hubGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#fde68a"/>
+                <stop offset="100%" stopColor="#f59e0b"/>
+              </linearGradient>
+              <linearGradient id="hubInner" x1="0%" y1="0%" x2="100%" y2="100%">
+                <stop offset="0%" stopColor="#1e293b"/>
+                <stop offset="100%" stopColor="#0f172a"/>
+              </linearGradient>
+            </defs>
+            {/* Gold border ring */}
+            <circle cx={cx} cy={cy} r={r + 9} fill="url(#goldRing)" filter="url(#wheelShadow)"/>
+            <circle cx={cx} cy={cy} r={r + 5} fill="#1e293b"/>
+            <circle cx={cx} cy={cy} r={r + 2} fill="#0f172a"/>
+            {/* Segments */}
+            {segmentPaths.map(({ seg, idx, d, tx, ty, textRot, fontSize }) => (
+              <g key={seg.id || idx}>
+                <path d={d} fill={seg.color || '#3b82f6'} stroke="rgba(255,255,255,0.3)" strokeWidth="1.5"/>
+                {/* lighter inner stripe for depth */}
+                <text
+                  x={tx} y={ty}
+                  textAnchor="middle" dominantBaseline="central"
+                  fontSize={fontSize} fontWeight="800" fill="white"
+                  stroke="rgba(0,0,0,0.35)" strokeWidth="3" paintOrder="stroke"
+                  transform={`rotate(${textRot}, ${tx}, ${ty})`}
+                >{seg.label}</text>
+              </g>
+            ))}
+            {/* Divider dots on outer ring */}
+            {normalizedRewards.map((_, idx) => {
+              const a = (idx * SEGMENT_ANGLE - 90) * Math.PI / 180;
+              const dx = cx + (r + 3) * Math.cos(a);
+              const dy2 = cy + (r + 3) * Math.sin(a);
+              return <circle key={idx} cx={dx} cy={dy2} r="3" fill="#fde68a"/>;
+            })}
+            {/* Center hub */}
+            <circle cx={cx} cy={cy} r={30} fill="url(#goldRing)"/>
+            <circle cx={cx} cy={cy} r={24} fill="url(#hubInner)"/>
+            <circle cx={cx} cy={cy} r={18} fill="url(#hubGrad)" opacity="0.9"/>
+            <text x={cx} y={cy} textAnchor="middle" dominantBaseline="central" fontSize="16">🏆</text>
+          </svg>
         </div>
       </div>
 
-      {resultMessage && (
-        <div className="mb-6 p-6 rounded-2xl bg-white border-2 border-slate-100 shadow-xl text-center w-full max-w-xs relative overflow-hidden">
-          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-blue-500 via-purple-500 to-pink-500"></div>
+      {/* Result */}
+      {resultMessage && !autoMode && (
+        <div className="mb-4 p-4 rounded-2xl bg-white border-2 border-slate-100 shadow-xl text-center w-full relative overflow-hidden">
+          <div className="absolute top-0 left-0 w-full h-1 bg-gradient-to-r from-yellow-400 via-orange-500 to-pink-500"/>
           {resultMessage}
         </div>
       )}
 
-      {/* Probability Info */}
-      {normalizedRewards.some(r => r.probability !== undefined) && (
-        <div className="mb-4 w-full max-w-xs">
-          <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2 text-center">Win Chances</p>
-          <div className="grid grid-cols-3 gap-1">
-            {normalizedRewards.map((r, i) => (
-              <div key={r.id || i} className="flex items-center gap-1 bg-slate-50 rounded-lg px-2 py-1 border border-slate-100">
-                <div className="w-2 h-2 rounded-full shrink-0" style={{ backgroundColor: r.color || '#ccc' }} />
-                <span className="text-[9px] font-bold text-slate-600 truncate">{r.label}</span>
-                <span className="text-[9px] font-black text-slate-400 ml-auto">{r.probability || 0}%</span>
-              </div>
-            ))}
-          </div>
+      {autoMode && (
+        <div className="mb-3 px-4 py-2 rounded-2xl bg-indigo-50 border border-indigo-200 w-full text-center">
+          <p className="text-xs font-black text-indigo-600 animate-pulse">🔄 Auto Spin chal raha hai... ({remainingSpins} baaki)</p>
         </div>
       )}
 
       {canSpin ? (
-        <button
-          onClick={handleSpin}
-          disabled={isSpinning || (cost > 0 && user.credits < cost)}
-          className="relative group bg-gradient-to-b from-yellow-400 to-orange-500 text-white text-xl font-black px-16 py-4 rounded-full shadow-[0_6px_0_#c2410c] active:shadow-[0_2px_0_#c2410c] active:translate-y-1 transition-all disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden"
-        >
-          <span className="relative z-10 drop-shadow-md tracking-wider flex items-center gap-2">
-            {isSpinning ? 'GOOD LUCK...' : (cost > 0 ? `SPIN (${cost} CR)` : 'SPIN NOW')}
-            {!isSpinning && <Zap fill="white" size={20} />}
-          </span>
-          <div className="absolute top-0 -left-full w-full h-full bg-white/30 -skew-x-12 group-hover:left-full transition-all duration-700 ease-in-out"></div>
-        </button>
-      ) : (
-        <div className="bg-slate-900 text-white px-8 py-4 rounded-2xl shadow-lg flex flex-col items-center border border-slate-700 w-full max-w-xs">
-          <div className="text-[10px] font-bold text-slate-500 uppercase mb-2 flex items-center gap-1 tracking-widest">
-            <Lock size={12} /> Daily Limit Reached
+        <div className="w-full flex flex-col gap-3">
+          {/* Spin count stepper */}
+          <div className="bg-slate-50 border border-slate-200 rounded-2xl p-3">
+            <div className="text-[10px] font-black text-slate-500 uppercase mb-2 tracking-wider text-center">Kitne Spin Karo? (1–99)</div>
+            {/* +/- stepper + type input — prominent row */}
+            <div className="flex items-center gap-2 mb-2.5">
+              <button
+                onClick={() => applySpinCount(spinCount - 1)}
+                disabled={isSpinning || autoMode || spinCount <= 1}
+                className="w-11 h-11 rounded-xl bg-slate-200 text-slate-800 font-black text-2xl leading-none disabled:opacity-30 active:scale-90 transition-all shrink-0"
+              >−</button>
+              <input
+                inputMode="numeric"
+                pattern="[0-9]*"
+                min={1} max={Math.min(99, remainingSpins)}
+                value={spinInputVal}
+                onChange={e => {
+                  const raw = e.target.value.replace(/[^0-9]/g, '');
+                  setSpinInputVal(raw);
+                  const num = parseInt(raw, 10);
+                  if (!isNaN(num)) setSpinCount(clampCount(num));
+                }}
+                onBlur={() => {
+                  const num = parseInt(spinInputVal, 10);
+                  const clamped = isNaN(num) ? 1 : clampCount(num);
+                  setSpinCount(clamped);
+                  setSpinInputVal(String(clamped));
+                }}
+                disabled={isSpinning || autoMode}
+                className="flex-1 text-center text-2xl font-black bg-white border-2 border-indigo-300 rounded-xl py-2 focus:outline-none focus:border-indigo-600 focus:ring-2 focus:ring-indigo-100 transition-all disabled:opacity-50"
+                placeholder="1"
+              />
+              <button
+                onClick={() => applySpinCount(spinCount + 1)}
+                disabled={isSpinning || autoMode || spinCount >= Math.min(99, remainingSpins)}
+                className="w-11 h-11 rounded-xl bg-slate-200 text-slate-800 font-black text-2xl leading-none disabled:opacity-30 active:scale-90 transition-all shrink-0"
+              >+</button>
+            </div>
+            {/* Quick preset chips */}
+            <div className="flex gap-1.5 flex-wrap justify-center">
+              {[1, 5, 10, 20, 50, 99].filter(v => v <= remainingSpins).map(v => (
+                <button
+                  key={v}
+                  onClick={() => applySpinCount(v)}
+                  disabled={isSpinning || autoMode}
+                  className={`px-3 h-8 rounded-xl text-xs font-black border transition-all active:scale-90 ${spinCount === v ? 'bg-indigo-600 text-white border-indigo-700 shadow-sm' : 'bg-white text-slate-600 border-slate-200'}`}
+                >{v}×</button>
+              ))}
+            </div>
+            {cost > 0 && (
+              <div className="text-center mt-2.5 text-[12px] font-black text-orange-600 bg-orange-50 rounded-xl py-1.5 border border-orange-100">
+                💰 {spinCount}× spin = {totalCostPreview} CR total
+              </div>
+            )}
           </div>
-          <div className="text-xl font-bold text-yellow-400 tracking-wider">{spinsUsed}/{dailyLimit} Used</div>
-          <div className="mt-2 text-[10px] text-slate-600">Come back tomorrow!</div>
+
+          {/* Spin + Auto buttons */}
+          <div className="flex gap-2">
+            <button
+              onClick={handleSpin}
+              disabled={isSpinning || autoMode}
+              className="flex-1 relative group bg-gradient-to-b from-yellow-400 to-orange-500 text-white text-base font-black py-4 rounded-2xl shadow-[0_5px_0_#c2410c] active:shadow-[0_2px_0_#c2410c] active:translate-y-1 transition-all disabled:opacity-50 disabled:cursor-not-allowed overflow-hidden"
+            >
+              <span className="relative z-10 drop-shadow-md flex items-center justify-center gap-1.5">
+                {isSpinning ? '🌀 Spinning...' : `SPIN ${spinCount}× ${cost > 0 ? `(${totalCostPreview} CR)` : '🎰'}`}
+              </span>
+              <div className="absolute top-0 -left-full w-full h-full bg-white/25 -skew-x-12 group-hover:left-full transition-all duration-700"/>
+            </button>
+            <button
+              onClick={toggleAuto}
+              disabled={isSpinning && !autoMode}
+              className={`px-4 py-4 rounded-2xl font-black text-sm transition-all shadow ${autoMode ? 'bg-red-500 text-white shadow-[0_4px_0_#b91c1c] active:shadow-[0_2px_0_#b91c1c] active:translate-y-0.5' : 'bg-slate-800 text-white shadow-[0_4px_0_#1e293b] active:shadow-[0_2px_0_#1e293b] active:translate-y-0.5'}`}
+            >
+              {autoMode ? '⏹ Stop' : '🔄 Auto'}
+            </button>
+          </div>
+        </div>
+      ) : (
+        <div className="bg-slate-900 text-white px-8 py-5 rounded-2xl shadow-lg flex flex-col items-center border border-slate-700 w-full">
+          <div className="text-[10px] font-bold text-slate-500 uppercase mb-2 flex items-center gap-1 tracking-widest">
+            <Lock size={12}/> Daily Limit Reached
+          </div>
+          <div className="text-2xl font-bold text-yellow-400 tracking-wider">{spinsUsed}/{dailyLimit} Used</div>
+          <div className="mt-1 text-[11px] text-slate-500">Kal wapas aana! 🌅</div>
         </div>
       )}
     </div>
