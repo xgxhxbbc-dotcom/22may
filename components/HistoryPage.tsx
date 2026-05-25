@@ -27,12 +27,13 @@ import {
 import { Layers, Clock } from 'lucide-react';
 import { getLoginHistory, formatLoginTime, formatDuration as formatLoginDuration, type LoginSession } from '../utils/loginHistory';
 import { getLevelInfo } from '../utils/levelSystem';
+import { getCreditHistory, clearCreditHistory, type CreditTxEntry } from '../utils/creditHistory';
 
 interface Props {
     user: User;
     onUpdateUser: (u: User) => void;
     settings?: SystemSettings;
-    initialTab?: 'READING' | 'ACTIVITY' | 'MISTAKE' | 'OFFLINE' | 'SUB_HISTORY' | 'STARRED' | 'FLASHCARDS' | 'LOGIN_HISTORY';
+    initialTab?: 'READING' | 'ACTIVITY' | 'MISTAKE' | 'OFFLINE' | 'SUB_HISTORY' | 'STARRED' | 'FLASHCARDS' | 'LOGIN_HISTORY' | 'CREDIT_HISTORY';
     /** Resume a chapter from a "Continue Reading" entry — closes History and opens the chapter. */
     onResumeRecentChapter?: (entry: RecentChapterEntry) => void;
     /** Resume a homework note (Sar Sangrah / Speedy / etc). */
@@ -42,7 +43,7 @@ interface Props {
 }
 
 export const HistoryPage: React.FC<Props> = ({ user, onUpdateUser, settings, initialTab, onResumeRecentChapter, onResumeRecentHw, onResumeRecentLucent }) => {
-  const [activeTab, setActiveTab] = useState<'READING' | 'ACTIVITY' | 'MISTAKE' | 'OFFLINE' | 'SUB_HISTORY' | 'STARRED' | 'FLASHCARDS' | 'LOGIN_HISTORY'>(initialTab || 'READING');
+  const [activeTab, setActiveTab] = useState<'READING' | 'ACTIVITY' | 'MISTAKE' | 'OFFLINE' | 'SUB_HISTORY' | 'STARRED' | 'FLASHCARDS' | 'LOGIN_HISTORY' | 'CREDIT_HISTORY'>(initialTab || 'READING');
   const [loginSessions, setLoginSessions] = useState<LoginSession[]>([]);
   const _lvl = getLevelInfo((user.role === 'ADMIN' || user.role === 'SUB_ADMIN') ? 9999999 : (user.totalScore || 0));
 
@@ -89,6 +90,13 @@ export const HistoryPage: React.FC<Props> = ({ user, onUpdateUser, settings, ini
   useEffect(() => {
     if (activeTab === 'LOGIN_HISTORY') {
       setLoginSessions(getLoginHistory(user.id).slice(0, 30));
+    }
+  }, [activeTab, user.id]);
+
+  const [creditHistory, setCreditHistory] = useState<CreditTxEntry[]>([]);
+  useEffect(() => {
+    if (activeTab === 'CREDIT_HISTORY') {
+      setCreditHistory(getCreditHistory(user.id));
     }
   }, [activeTab, user.id]);
   
@@ -478,6 +486,12 @@ export const HistoryPage: React.FC<Props> = ({ user, onUpdateUser, settings, ini
             >
                 🕐 Login History
             </button>
+            <button
+                onClick={() => setActiveTab('CREDIT_HISTORY')}
+                className={`flex-none px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-1 ${activeTab === 'CREDIT_HISTORY' ? 'bg-white shadow text-amber-700' : 'text-slate-600 hover:text-slate-700'}`}
+            >
+                💰 Credits
+            </button>
             {/* Important Notes tab removed — accessed from bottom-nav ⭐ Important tab */}
         </div>
 
@@ -850,6 +864,97 @@ export const HistoryPage: React.FC<Props> = ({ user, onUpdateUser, settings, ini
                     );
                 })}
                 <p className="text-center text-[10px] text-slate-400 pt-2">Local device storage • Last {loginSessions.length} sessions</p>
+            </div>
+            );
+        })()}
+
+        {activeTab === 'CREDIT_HISTORY' && (() => {
+            const levelColor = _lvl.color;
+            const levelBg = levelColor + '15';
+            const levelBorder = levelColor + '35';
+            const totalEarned = creditHistory.filter(t => t.amount > 0).reduce((s, t) => s + t.amount, 0);
+            const totalSpent = Math.abs(creditHistory.filter(t => t.amount < 0).reduce((s, t) => s + t.amount, 0));
+            return (
+            <div className="space-y-3 animate-in fade-in duration-300">
+                <div className="rounded-2xl px-4 py-3 flex items-center gap-3" style={{ background: levelBg, border: `1px solid ${levelBorder}` }}>
+                    <span className="text-xl">💰</span>
+                    <div className="flex-1">
+                        <p className="text-sm font-black" style={{ color: levelColor }}>Credit History</p>
+                        <p className="text-[11px] text-slate-500">Last {creditHistory.length} transactions (device pe stored)</p>
+                    </div>
+                    {creditHistory.length > 0 && (
+                        <button
+                            onClick={() => {
+                                clearCreditHistory(user.id);
+                                setCreditHistory([]);
+                            }}
+                            className="p-1.5 rounded-lg text-slate-400 hover:text-red-500 hover:bg-red-50 transition-colors"
+                            title="Clear history"
+                        >
+                            <Trash2 size={14} />
+                        </button>
+                    )}
+                </div>
+
+                {creditHistory.length > 0 && (
+                    <div className="grid grid-cols-2 gap-2">
+                        <div className="bg-emerald-50 border border-emerald-200 rounded-2xl p-3 text-center">
+                            <p className="text-[10px] font-black text-emerald-600 uppercase tracking-wider">Total Earned</p>
+                            <p className="text-xl font-black text-emerald-700 mt-0.5">+{totalEarned} CR</p>
+                        </div>
+                        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-3 text-center">
+                            <p className="text-[10px] font-black text-rose-600 uppercase tracking-wider">Total Spent</p>
+                            <p className="text-xl font-black text-rose-700 mt-0.5">-{totalSpent} CR</p>
+                        </div>
+                    </div>
+                )}
+
+                {creditHistory.length === 0 ? (
+                    <div className="text-center py-12 bg-amber-50 rounded-2xl border border-amber-100">
+                        <p className="text-3xl mb-2">💰</p>
+                        <p className="font-bold text-slate-600 text-sm">Koi credit transaction nahi mili</p>
+                        <p className="text-xs text-slate-400 mt-1">Spin karo, login bonus lo — yahan dikhega</p>
+                    </div>
+                ) : (
+                    <div className="space-y-2">
+                        {creditHistory.map((tx, i) => {
+                            const isEarn = tx.amount > 0;
+                            const txDate = new Date(tx.at);
+                            const isValid = !isNaN(txDate.getTime());
+                            const typeIcon = tx.type.includes('SPIN') ? '🎰' :
+                                tx.type.includes('LOGIN') || tx.type.includes('BONUS') ? '🗓️' :
+                                tx.type.includes('GIFT') || tx.type.includes('REDEEM') ? '🎁' :
+                                tx.type.includes('NOTIF') || tx.type.includes('REWARD') ? '🏆' :
+                                tx.type.includes('SPEND') || tx.type.includes('MCQ') || tx.type.includes('VIDEO') || tx.type.includes('PDF') ? '📖' :
+                                isEarn ? '✅' : '💸';
+                            return (
+                                <div key={tx.id || i} className={`rounded-2xl p-3.5 border flex items-center gap-3 transition-all ${
+                                    i % 2 === 0 ? 'bg-white' : 'bg-slate-50/60'
+                                }`} style={{ borderColor: '#e2e8f0' }}>
+                                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center text-sm shrink-0 ${
+                                        isEarn ? 'bg-emerald-100' : 'bg-rose-100'
+                                    }`}>
+                                        {typeIcon}
+                                    </div>
+                                    <div className="flex-1 min-w-0">
+                                        <p className="text-xs font-bold text-slate-800 truncate">{tx.description}</p>
+                                        <p className="text-[10px] text-slate-400 mt-0.5">
+                                            {isValid ? txDate.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '—'}
+                                            {isValid ? ` · ${txDate.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })}` : ''}
+                                        </p>
+                                        {tx.balanceAfter !== undefined && (
+                                            <p className="text-[10px] text-slate-400">Balance: {tx.balanceAfter} CR</p>
+                                        )}
+                                    </div>
+                                    <div className={`text-sm font-black shrink-0 ${isEarn ? 'text-emerald-600' : 'text-rose-600'}`}>
+                                        {isEarn ? '+' : ''}{tx.amount} CR
+                                    </div>
+                                </div>
+                            );
+                        })}
+                        <p className="text-center text-[10px] text-slate-400 pt-1">Local device storage • Last {creditHistory.length} transactions</p>
+                    </div>
+                )}
             </div>
             );
         })()}

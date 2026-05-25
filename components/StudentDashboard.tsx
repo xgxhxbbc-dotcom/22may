@@ -155,6 +155,7 @@ import {
 } from "lucide-react";
 import { speakText, stopSpeech, stripHtml } from "../utils/textToSpeech";
 import { getMistakeBankSync, addMistakes, removeMistakeByQuestion } from "../utils/mistakeBank";
+import { recordCreditTx } from "../utils/creditHistory";
 import { rotateScreen, isRotatingForOrientation } from "../utils/displayPrefs";
 import { hapticLight, hapticMedium, hapticStrong } from "../utils/haptic";
 import { splitIntoTopics } from "../utils/notesSplitter";
@@ -1865,6 +1866,7 @@ export const StudentDashboard: React.FC<Props> = ({
   }, [lucentNoteViewer, lucentPageIndex]);
   const [hwAnswers, setHwAnswers] = useState<Record<string, number>>({});
   const [hwPendingAnswers, setHwPendingAnswers] = useState<Record<string, number>>({});
+  const [hwManualSubmitted, setHwManualSubmitted] = useState<Record<string, boolean>>({});
 
   // ---- COMPETITION CUSTOM MCQ HUB (admin + student created practice MCQs) ----
   const [showCompMcqHub, setShowCompMcqHub] = useState(false);
@@ -2069,7 +2071,13 @@ export const StudentDashboard: React.FC<Props> = ({
   // Tracks htmlViewMode inside ChunkedNotesReader (for download sync without unmounting reader)
   const [lucentChunkHtmlMode, setLucentChunkHtmlMode] = useState<'chunk' | 'html'>('chunk');
   // Reset both tabs + view mode when page or note changes
-  useEffect(() => { setLucentActiveTab('NOTES'); setLucentNotesViewMode('chunk'); setLucentChunkHtmlMode('chunk'); }, [lucentPageIndex, lucentNoteViewer?.id]);
+  useEffect(() => {
+    const page = lucentNoteViewer?.pages?.[lucentPageIndex];
+    const hasNotes = !!(page?.chunkNotes?.trim() || page?.htmlNotes?.trim() || page?.content?.trim());
+    setLucentActiveTab(hasNotes ? 'NOTES' : 'MCQS');
+    setLucentNotesViewMode('chunk');
+    setLucentChunkHtmlMode('chunk');
+  }, [lucentPageIndex, lucentNoteViewer?.id]);
   const [hwScrollProgress, setHwScrollProgress] = useState(0);
   const hwScrollContainerRef = useRef<HTMLDivElement>(null);
   const hwScrollSaveTimerRef = useRef<number | null>(null);
@@ -3627,6 +3635,7 @@ export const StudentDashboard: React.FC<Props> = ({
         updatedUser.totalScore = (user.totalScore || 0) + 5;
         successMsg = `🎁 Gift Claimed! Added ${gift.value} Credits. (+5 score)`;
         triggerRewardEffect(Number(gift.value), 'Gift Reward');
+        try { recordCreditTx(user.id, Number(gift.value), 'EARN_GIFT', `Gift Claimed: +${gift.value} CR`, updatedUser.credits); } catch {}
       } else if (gift.type === "SUBSCRIPTION") {
         const [tier, level] = (gift.value as string).split("_");
         const duration = gift.durationHours || 24;
@@ -4595,17 +4604,14 @@ export const StudentDashboard: React.FC<Props> = ({
                   </button>
                 </div>
               )}
-              {/* Save offline — mode-aware: read mode → chunk container, write mode → html container */}
+              {/* Save offline — Write Mode only */}
+              {hwNotesViewMode === 'html' && (activeHw as any).htmlNotes && (
               <button
                 onClick={async () => {
                   try {
                     const safeTitle = (activeHw.title || 'Homework').replace(/[^a-z0-9_\- ]/gi, '_').slice(0, 60);
                     const _dlOk = await checkAndDoDownload(async () => {
-                      if (hwNotesViewMode === 'html' && (activeHw as any).htmlNotes) {
-                        await downloadAsMHTML('hw-html-download', safeTitle, { appName: settings?.appShortName || settings?.appName || 'IIC', pageTitle: activeHw.title || 'Homework', subtitle: 'Homework Notes — Write Mode' });
-                      } else {
-                        await downloadAsMHTML('hw-note-printable', `${safeTitle}_${new Date().toISOString().slice(0,10)}`, { appName: settings?.appShortName || settings?.appName || 'IIC', pageTitle: activeHw.title || 'Homework', subtitle: 'Homework Notes' });
-                      }
+                      await downloadAsMHTML('hw-html-download', safeTitle, { appName: settings?.appShortName || settings?.appName || 'IIC', pageTitle: activeHw.title || 'Homework', subtitle: 'Homework Notes — Write Mode' });
                     });
                     if (_dlOk) showAlert('📥 Saved!', 'SUCCESS');
                   } catch (e) {
@@ -4614,10 +4620,11 @@ export const StudentDashboard: React.FC<Props> = ({
                 }}
                 className="bg-white/20 hover:bg-white/30 p-2 rounded-full shrink-0 transition-colors"
                 aria-label="Save this lesson offline"
-                title="Save offline (HTML)"
+                title="Save offline (Write Mode)"
               >
                 <Download size={16} />
               </button>
+              )}
               <span className="bg-white/20 text-white text-[11px] font-black px-2.5 py-1 rounded-full shrink-0">
                 {flatIdx + 1}/{filteredHw.length}
               </span>
@@ -5154,6 +5161,7 @@ export const StudentDashboard: React.FC<Props> = ({
                                     return next;
                                   });
                                   setHwPendingAnswers({});
+                                  setHwManualSubmitted(prev => { const n = { ...prev }; delete n[hwKey]; return n; });
                                 }}
                                 className={`flex-1 text-[13px] font-black ${theme.text} ${theme.bgSoft} py-3 rounded-2xl active:scale-95 transition-all`}
                               >🔄 Phir se Try Karo</button>
@@ -5169,8 +5177,8 @@ export const StudentDashboard: React.FC<Props> = ({
                       }
 
                       // ── PRACTICE MODE: one question at a time ──
-                      // Show score card if all submitted
-                      if (allSubmitted) {
+                      // Show score card only when user manually submits
+                      if (hwManualSubmitted[hwKey]) {
                         const pct = Math.round((right / totalQ) * 100);
                         const grade = pct >= 80 ? { label: 'Excellent! 🌟', color: 'from-emerald-500 to-green-600', ring: 'ring-emerald-200' }
                                     : pct >= 60 ? { label: 'Good Job! 👍', color: 'from-blue-500 to-indigo-600', ring: 'ring-blue-200' }
@@ -5225,6 +5233,7 @@ export const StudentDashboard: React.FC<Props> = ({
                                     });
                                     setHwPendingAnswers({});
                                     setHwMcqCurrentIdx(prev => ({ ...prev, [hwKey]: 0 }));
+                                    setHwManualSubmitted(prev => { const n = { ...prev }; delete n[hwKey]; return n; });
                                   }}
                                   className={`flex-1 text-[13px] font-black ${theme.text} ${theme.bgSoft} py-3 rounded-2xl active:scale-95 transition-all`}
                                 >🔄 Phir se Try Karo</button>
@@ -5272,10 +5281,31 @@ export const StudentDashboard: React.FC<Props> = ({
                               <span className="text-[10px] font-black text-amber-600 shrink-0">{attempted}/{submitThreshold} — {submitThreshold - attempted} aur karo</span>
                             </div>
                           ) : (
-                            <div className="mb-3 flex items-center gap-2 bg-emerald-50 border border-emerald-200 rounded-xl px-3 py-1.5">
-                              <span className="text-emerald-500 text-sm">✅</span>
-                              <span className="text-[10px] font-black text-emerald-600 flex-1">{attempted} questions done — Result ready hai!</span>
-                            </div>
+                            <button
+                              onClick={() => {
+                                try {
+                                  const wrongEntries = mcqs.reduce((acc: any[], q: any, qi: number) => {
+                                    const sel = hwAnswers[`${hwKey}_${qi}`];
+                                    if (sel !== undefined && sel !== q.correctAnswer) {
+                                      acc.push({
+                                        question: q.question,
+                                        options: q.options || [],
+                                        correctAnswer: q.correctAnswer,
+                                        explanation: (q as any).explanation || '',
+                                        topic: (q as any).topic || '',
+                                        chapterTitle: (q as any).chapterTitle || 'MCQ Practice',
+                                        subjectName: (q as any).subjectName || (q as any).subject || 'General',
+                                        source: 'MCQ',
+                                      });
+                                    }
+                                    return acc;
+                                  }, []);
+                                  if (wrongEntries.length > 0) addMistakes(wrongEntries).catch(() => {});
+                                } catch {}
+                                setHwManualSubmitted(prev => ({ ...prev, [hwKey]: true }));
+                              }}
+                              className="mb-3 w-full py-3 rounded-2xl bg-gradient-to-r from-emerald-500 to-green-600 text-white font-black text-sm flex items-center justify-center gap-2 shadow-lg active:scale-95 transition animate-pulse"
+                            >🏁 Submit Quiz — Result Dekho</button>
                           )}
                           {/* Question card */}
                           <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
@@ -5309,29 +5339,9 @@ export const StudentDashboard: React.FC<Props> = ({
                                 );
                               })}
                             </div>
-                            {/* Submit button */}
-                            {!isAnswered && pendingOpt !== undefined && (
-                              <button
-                                onClick={() => {
-                                  const isCorrect = mcq.correctAnswer === pendingOpt;
-                                  setHwAnswers(prev => ({ ...prev, [ansKey]: pendingOpt }));
-                                  setHwPendingAnswers(prev => { const n = { ...prev }; delete n[ansKey]; return n; });
-                                  trackDailyMcqAnswer(isCorrect);
-                                  // Auto advance to next unanswered question
-                                  if (lucentAutoNextTimerRef.current) clearTimeout(lucentAutoNextTimerRef.current);
-                                  lucentAutoNextTimerRef.current = setTimeout(() => {
-                                    setHwMcqCurrentIdx(prev => {
-                                      const next = Math.min((prev[hwKey] ?? 0) + 1, totalQ - 1);
-                                      return { ...prev, [hwKey]: next };
-                                    });
-                                  }, 600);
-                                }}
-                                className="mt-3 w-full py-3 rounded-2xl bg-gradient-to-r from-indigo-600 to-indigo-700 text-white font-black text-base flex items-center justify-center gap-2 shadow-lg active:scale-95 transition"
-                              >✔ Submit</button>
-                            )}
                             {isAnswered && (
                               <div className="mt-3 px-3 py-2 rounded-xl text-[11px] font-black bg-slate-100 text-slate-500 text-center">
-                                ✅ Submitted — next question par jao
+                                ✅ Jawab lock — next question par jao
                               </div>
                             )}
                           </div>
@@ -14325,6 +14335,7 @@ export const StudentDashboard: React.FC<Props> = ({
                                           setClaimedNotifIds(ids);
                                           try { localStorage.setItem('nst_claimed_notifs_v1', JSON.stringify(ids)); } catch {}
                                           const updated = { ...user, credits: (user.credits || 0) + (n.rewardCredits || 0) };
+                                          try { recordCreditTx(user.id, n.rewardCredits || 0, 'EARN_NOTIF_REWARD', `Notification Reward: +${n.rewardCredits} CR`, updated.credits); } catch {}
                                           handleUserUpdate(updated);
                                         }}
                                         className="text-[11px] font-black bg-gradient-to-r from-amber-500 to-orange-500 text-white px-4 py-1.5 rounded-full active:scale-95 transition-transform flex items-center gap-1.5"
@@ -14703,27 +14714,19 @@ export const StudentDashboard: React.FC<Props> = ({
                 <span className="bg-white/20 px-2.5 py-1 rounded-full text-[11px] font-black whitespace-nowrap">
                   {safeIndex + 1}/{totalPages}
                 </span>
-                {/* Save Offline (HTML) — mode-aware: read → chunk container, write → html container */}
+                {/* Save Offline — Write Mode only */}
+                {(lucentNotesViewMode === 'html' || lucentChunkHtmlMode === 'html') && (currentPage?.htmlNotes || currentPage?.content) && (
                 <button
                   onClick={async () => {
                     try {
                       const safeTitle = `${entry.lessonTitle || 'Lucent'}_pg${currentPage?.pageNo || safeIndex + 1}`
                         .replace(/[^a-z0-9_\- ]/gi, '_').slice(0, 60);
                       const _dlOkLuc = await checkAndDoDownload(async () => {
-                        const isHtmlMode = lucentNotesViewMode === 'html' || lucentChunkHtmlMode === 'html';
-                        if (isHtmlMode && (currentPage?.htmlNotes || currentPage?.content)) {
-                          await downloadAsMHTML('lucent-html-download', safeTitle, {
-                            appName: settings?.appShortName || settings?.appName || 'IIC',
-                            pageTitle: `${entry.lessonTitle || 'Lucent'} · Page ${currentPage?.pageNo || safeIndex + 1}`,
-                            subtitle: 'Lucent Notes — Write Mode',
-                          });
-                        } else {
-                          await downloadAsMHTML('lucent-note-printable', `${safeTitle}_${new Date().toISOString().slice(0,10)}`, {
-                            appName: settings?.appShortName || settings?.appName || 'IIC',
-                            pageTitle: `${entry.lessonTitle || 'Lucent'} · Page ${currentPage?.pageNo || safeIndex + 1}`,
-                            subtitle: 'Lucent Notes',
-                          });
-                        }
+                        await downloadAsMHTML('lucent-html-download', safeTitle, {
+                          appName: settings?.appShortName || settings?.appName || 'IIC',
+                          pageTitle: `${entry.lessonTitle || 'Lucent'} · Page ${currentPage?.pageNo || safeIndex + 1}`,
+                          subtitle: 'Lucent Notes — Write Mode',
+                        });
                       });
                       if (_dlOkLuc) showAlert('📥 Saved!', 'SUCCESS');
                     } catch (e) {
@@ -14732,33 +14735,10 @@ export const StudentDashboard: React.FC<Props> = ({
                   }}
                   className="bg-white/20 hover:bg-white/30 p-2 rounded-full shrink-0 transition-colors"
                   aria-label="Save this Lucent page offline"
-                  title="Save offline (HTML)"
+                  title="Save offline (Write Mode)"
                 >
                   <Download size={16} />
                 </button>
-
-                {/* PDF Export (Ultra/Lifetime) */}
-                {(user.subscriptionTier === 'LIFETIME' || user.subscriptionLevel === 'ULTRA') && (
-                  <button
-                    onClick={() => {
-                      try {
-                        const printWin = window.open('', '_blank', 'width=800,height=900');
-                        if (!printWin) { showAlert('Pop-up blocked. Please allow pop-ups.', 'ERROR'); return; }
-                        const el = document.getElementById('lucent-note-printable');
-                        const bodyHtml = el ? el.innerHTML : (currentPage?.content || 'No content');
-                        const appName = settings?.appShortName || settings?.appName || 'IIC';
-                        printWin.document.write(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>${entry.lessonTitle} · Page ${currentPage?.pageNo || safeIndex+1}</title><style>body{font-family:'Segoe UI',Arial,sans-serif;max-width:700px;margin:40px auto;color:#111;font-size:14px;line-height:1.7}.watermark{position:fixed;bottom:30px;right:30px;font-size:48px;font-weight:900;color:rgba(99,102,241,0.08);pointer-events:none;transform:rotate(-20deg)}h1{color:#4f46e5;font-size:18px;margin-bottom:4px}p.sub{color:#6b7280;font-size:11px;margin-bottom:24px;border-bottom:1px solid #e5e7eb;padding-bottom:12px}@media print{.watermark{display:block}}</style></head><body><h1>${entry.lessonTitle}</h1><p class="sub">${appName} · Lucent Book · Page ${currentPage?.pageNo || safeIndex+1} of ${totalPages}</p>${bodyHtml}<div class="watermark">${appName}</div></body></html>`);
-                        printWin.document.close();
-                        printWin.focus();
-                        setTimeout(() => { try { printWin.print(); } catch {} }, 600);
-                      } catch { showAlert('PDF export failed.', 'ERROR'); }
-                    }}
-                    className="bg-white/20 hover:bg-white/30 p-2 rounded-full shrink-0 transition-colors"
-                    title="Export as PDF (Ultra/Lifetime)"
-                    aria-label="Export PDF"
-                  >
-                    <span style={{ fontSize: '13px', lineHeight: 1, fontWeight: 900 }}>PDF</span>
-                  </button>
                 )}
                 <button
                   onClick={() => { const next = !autoSyncOn; setLucentAutoSync(next); if (!next) stopSpeech(); }}
@@ -14772,33 +14752,41 @@ export const StudentDashboard: React.FC<Props> = ({
             </div>
             {/* Smart Search bar */}
             {/* NOTES / MCQ TAB SWITCHER */}
-            <div className={`shrink-0 bg-white border-b border-slate-100 px-4 py-2 flex items-center gap-2 ${isLandscapeUiHidden ? 'hidden' : ''}`}>
-              <button
-                onClick={() => { setLucentActiveTab('NOTES'); }}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-black transition-all ${
-                  lucentActiveTab === 'NOTES'
-                    ? 'bg-indigo-600 text-white shadow-sm'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                <FileText size={13} /> Notes
-              </button>
-              <button
-                onClick={() => { stopSpeech(); setLucentActiveTab('MCQS'); }}
-                className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-black transition-all ${
-                  lucentActiveTab === 'MCQS'
-                    ? 'bg-purple-600 text-white shadow-sm'
-                    : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                }`}
-              >
-                <BrainCircuit size={13} /> MCQs
-                {(() => {
-                  const k = `${entry.id}_${safeIndex}`;
-                  const cnt = lucentMcqsByPage[k]?.length || 0;
-                  return cnt > 0 ? <span className="ml-0.5 text-[10px] bg-white/30 px-1.5 py-0.5 rounded-full">{cnt}</span> : null;
-                })()}
-              </button>
-            </div>
+            {(() => {
+              const _pgHasNotes = !!(currentPage?.chunkNotes?.trim() || currentPage?.htmlNotes?.trim() || currentPage?.content?.trim());
+              const _mcqK = `${entry.id}_${safeIndex}`;
+              const _mcqCnt = lucentMcqsByPage[_mcqK]?.length || currentPage?.mcqs?.length || 0;
+              if (!_pgHasNotes && _mcqCnt === 0) return null;
+              return (
+                <div className={`shrink-0 bg-white border-b border-slate-100 px-4 py-2 flex items-center gap-2 ${isLandscapeUiHidden ? 'hidden' : ''}`}>
+                  {_pgHasNotes && (
+                    <button
+                      onClick={() => { setLucentActiveTab('NOTES'); }}
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-black transition-all ${
+                        lucentActiveTab === 'NOTES'
+                          ? 'bg-indigo-600 text-white shadow-sm'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      <FileText size={13} /> Notes
+                    </button>
+                  )}
+                  {_mcqCnt > 0 && (
+                    <button
+                      onClick={() => { stopSpeech(); setLucentActiveTab('MCQS'); }}
+                      className={`flex-1 flex items-center justify-center gap-1.5 py-2 px-3 rounded-xl text-xs font-black transition-all ${
+                        lucentActiveTab === 'MCQS'
+                          ? 'bg-purple-600 text-white shadow-sm'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      <BrainCircuit size={13} /> MCQs
+                      <span className="ml-0.5 text-[10px] bg-white/30 px-1.5 py-0.5 rounded-full">{_mcqCnt}</span>
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
             {/* Notes scroll area */}
             <div
               ref={lucentScrollContainerRef}
@@ -15270,7 +15258,14 @@ RULES:
                                 <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 shrink-0">Q {qi + 1}</span>
                                 {q.topic && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 truncate">{q.topic}</span>}
                               </div>
-                              <p className="text-sm font-black text-slate-800 leading-snug mb-3">{q.question}</p>
+                              <p className="text-sm font-black text-slate-800 leading-snug mb-2">{q.question}</p>
+                              {q.statements && q.statements.length > 0 && (
+                                <div className="mb-3 pl-3 border-l-2 border-purple-200 space-y-1">
+                                  {q.statements.map((stmt, si) => (
+                                    <p key={si} className="text-xs text-slate-700 leading-snug">{stmt}</p>
+                                  ))}
+                                </div>
+                              )}
                               {!isRevealed ? (
                                 <button
                                   onClick={() => setLucentMcqRevealed(prev => ({ ...prev, [pageKey]: Math.max(prev[pageKey] || 0, qi + 1) }))}
@@ -15387,7 +15382,7 @@ RULES:
                                 }`}>{cq.difficulty}</span>
                               )}
                             </div>
-                            <div className="flex items-start justify-between gap-2 mb-3">
+                            <div className="flex items-start justify-between gap-2 mb-2">
                               <p className="text-sm font-black text-slate-800 leading-snug flex-1">{cq.question}</p>
                               <McqSpeakButtons
                                 question={cq.question}
@@ -15396,6 +15391,13 @@ RULES:
                                 className="shrink-0"
                               />
                             </div>
+                            {cq.statements && cq.statements.length > 0 && (
+                              <div className="mb-3 pl-3 border-l-2 border-indigo-200 space-y-1">
+                                {cq.statements.map((stmt: string, si: number) => (
+                                  <p key={si} className="text-xs text-slate-700 leading-snug">{stmt}</p>
+                                ))}
+                              </div>
+                            )}
                             <div className="space-y-1.5 mb-3">
                               {(cq.options || []).map((opt: string, oi: number) => {
                                 const isOpt = oi === cq.correctAnswer;

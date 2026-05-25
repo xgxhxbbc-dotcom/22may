@@ -3,6 +3,7 @@ import { User, SystemSettings, SpinReward, SpinGameType } from '../types';
 import { Trophy, Zap, Star, Lock, ChevronRight } from 'lucide-react';
 import { CustomAlert } from './CustomDialogs';
 import { applyDeduction, getTotalCredits } from '../utils/creditSystem';
+import { recordCreditTx } from '../utils/creditHistory';
 
 interface Props {
   user: User;
@@ -126,7 +127,17 @@ const SpinWheelCore: React.FC<SpinWheelCoreProps> = ({ user, onUpdateUser, rewar
       setIsSpinning(false);
 
       let totalWon = 0;
-      let updatedUser: any = { ...applyDeduction(currentUser, totalCost) ?? currentUser };
+      // Apply credit deduction explicitly
+      let updatedUser: any = { ...currentUser };
+      if (totalCost > 0) {
+        const deducted = applyDeduction(currentUser, totalCost);
+        if (deducted) {
+          updatedUser = { ...deducted };
+        } else {
+          // Fallback: direct deduction from permanent credits
+          updatedUser.credits = Math.max(0, (currentUser.credits || 0) - totalCost);
+        }
+      }
       updatedUser[spinDateKey] = todayStr;
       updatedUser[spinCountKey] = currentSpinsUsed + spinsToRun;
       updatedUser.lastSpinTime = new Date().toISOString();
@@ -161,6 +172,15 @@ const SpinWheelCore: React.FC<SpinWheelCoreProps> = ({ user, onUpdateUser, rewar
           updatedUser.inbox = [codeMsg, ...(updatedUser.inbox || [])];
         }
       });
+
+      try {
+        if (totalCost > 0) {
+          recordCreditTx(currentUser.id, -totalCost, 'SPEND_SPIN', `Spin Wheel (${typeName}): ${spinsToRun}× — Cost: -${totalCost} CR`, updatedUser.credits ?? 0);
+        }
+        if (totalWon > 0) {
+          recordCreditTx(currentUser.id, totalWon, 'EARN_SPIN', `Spin Wheel (${typeName}): ${spinsToRun}× — Won: +${totalWon} CR`, (updatedUser.credits ?? 0));
+        }
+      } catch {}
 
       const netChange = totalWon - totalCost;
       const isWin = totalWon > 0;

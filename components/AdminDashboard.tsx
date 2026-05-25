@@ -9576,6 +9576,25 @@ Statement 2"
                   )}
                   {activeTab === 'CONFIG_GAME' && (
                        <div className="bg-slate-50 p-4 rounded-xl border border-slate-200 space-y-5">
+                           {/* Show/Hide toggle for the entire game */}
+                           <div className="flex items-center justify-between bg-white rounded-xl border border-slate-200 p-3">
+                               <div className="flex items-center gap-3">
+                                   <Gamepad2 size={18} className="text-indigo-500" />
+                                   <div>
+                                       <p className="font-bold text-sm text-slate-800">Store me Game Dikhao</p>
+                                       <p className="text-[10px] text-slate-500">Band karne par Store page se Spin Game hat jayega</p>
+                                   </div>
+                               </div>
+                               <label className="relative inline-flex items-center cursor-pointer">
+                                   <input
+                                       type="checkbox"
+                                       className="sr-only peer"
+                                       checked={localSettings.isGameEnabled !== false}
+                                       onChange={(e) => setLocalSettings({ ...localSettings, isGameEnabled: e.target.checked })}
+                                   />
+                                   <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+                               </label>
+                           </div>
                            <div className="flex items-center justify-between">
                                <h4 className="font-bold text-slate-800 flex items-center gap-2"><Gamepad2 size={18} /> Spin Game Types</h4>
                                <button
@@ -11027,6 +11046,7 @@ Statement 2"
                                                                   const added = parsed.questions.map(q => ({
                                                                       id: `mcq_${Date.now()}_${Math.random()}`,
                                                                       question: (q.question || '').replace(/<br\/?>/g, '\n').trim(),
+                                                                      statements: (q.statements && q.statements.length > 0) ? q.statements : undefined,
                                                                       options: (q.options || ['', '', '', '']).slice(0, 4),
                                                                       correctAnswer: q.correctAnswer ?? 0,
                                                                   })) as any[];
@@ -11061,6 +11081,27 @@ Statement 2"
                                                               updated[pgIdx] = { ...updated[pgIdx], mcqs };
                                                               setNewLucent({...newLucent, pages: updated});
                                                           }} className="w-full p-1.5 pr-6 border border-slate-200 rounded text-xs outline-none focus:border-emerald-500" placeholder={`Q${mIdx + 1}: Question?`} />
+                                                          {/* Statements — for "निम्नलिखित कथनों पर विचार करें" type MCQs.
+                                                              Har statement ek alag line mein likho. Ye options mein nahi jayenge. */}
+                                                          <div className="bg-blue-50 border border-blue-200 rounded p-1.5 space-y-1">
+                                                              <label className="text-[9px] font-black text-blue-700 uppercase block">📋 Statements (Statement-type MCQ ke liye — ek statement per line)</label>
+                                                              <textarea
+                                                                  value={((mcq as any).statements || []).join('\n')}
+                                                                  onChange={e => {
+                                                                      const updated = [...newLucent.pages];
+                                                                      const mcqs = [...(updated[pgIdx].mcqs || [])];
+                                                                      const raw = e.target.value;
+                                                                      const stmts = raw.split('\n').map(s => s.trim()).filter(Boolean);
+                                                                      mcqs[mIdx] = { ...mcqs[mIdx], statements: stmts.length > 0 ? stmts : undefined } as any;
+                                                                      updated[pgIdx] = { ...updated[pgIdx], mcqs };
+                                                                      setNewLucent({...newLucent, pages: updated});
+                                                                  }}
+                                                                  className="w-full p-1 border border-blue-200 rounded text-[11px] outline-none focus:border-blue-500 bg-white resize-none"
+                                                                  rows={3}
+                                                                  placeholder={"1. Bharat ki rajdhani Delhi hai.\n2. Bharat ek loktantrik desh hai.\n(khaali chhodein agar statement-type nahi hai)"}
+                                                              />
+                                                              <p className="text-[9px] text-blue-600">💡 Ye statements question ke baad, options se pehle dikhenge. Options mein mat likhein.</p>
+                                                          </div>
                                                           <div className="grid grid-cols-2 gap-1">
                                                               {(mcq.options || ['', '', '', '']).map((opt, oi) => (
                                                                   <div key={oi} className="flex items-center gap-1">
@@ -11093,8 +11134,8 @@ Statement 2"
                                   <div className="pt-2">
                                       <button onClick={() => {
                                           if (!newLucent.lessonTitle.trim()) return alert('Lesson name nahi diya.');
-                                          const validPages = newLucent.pages.filter(p => p.pageNo.trim() && (p.chunkNotes?.trim() || p.htmlNotes?.trim() || p.content?.trim()));
-                                          if (validPages.length === 0) return alert('Kam se kam ek page ke Read Mode ya Write Mode notes add karein.');
+                                          const validPages = newLucent.pages.filter(p => p.pageNo.trim() && (p.chunkNotes?.trim() || p.htmlNotes?.trim() || p.content?.trim() || (p.mcqs && p.mcqs.length > 0)));
+                                          if (validPages.length === 0) return alert('Kam se kam ek page ke notes ya MCQ add karein.');
                                           const entry: LucentNoteEntry = {
                                               id: Date.now().toString(),
                                               subject: newLucent.subject,
@@ -13667,8 +13708,8 @@ Statement 2"
                                       </div>
                                       <button onClick={() => {
                                           if (!newLucent.lessonTitle.trim()) return alert('Lesson name nahi diya.');
-                                          const validPages = newLucent.pages.filter(p => p.pageNo.trim() && (p.chunkNotes?.trim() || p.htmlNotes?.trim() || p.content?.trim()));
-                                          if (validPages.length === 0) return alert('Kam se kam ek page ke Read Mode ya Write Mode notes add karein.');
+                                          const validPages = newLucent.pages.filter(p => p.pageNo.trim() && (p.chunkNotes?.trim() || p.htmlNotes?.trim() || p.content?.trim() || (p.mcqs && p.mcqs.length > 0)));
+                                          if (validPages.length === 0) return alert('Kam se kam ek page ke notes ya MCQ add karein.');
                                           const entry: LucentNoteEntry = { id: Date.now().toString(), subject: newLucent.subject, bookName: newLucent.bookName.trim() || undefined, classLevel: newLucent.classLevel, lessonTitle: newLucent.lessonTitle.trim(), pages: validPages, createdAt: new Date().toISOString() };
                                           const updated = [...(localSettings.lucentNotes || []), entry];
 
