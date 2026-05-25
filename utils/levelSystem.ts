@@ -53,6 +53,7 @@ export interface LevelDailyLimits {
   write:             LevelTierLimits;
   concept:           LevelTierLimits;
   retention:         LevelTierLimits;
+  flashcard:         LevelTierLimits;
   creditWriteMax:    number;
   bonusLoginCredits: number;
 }
@@ -62,11 +63,12 @@ export interface LevelDailyLimits {
 // DL:        base Free=2,  Basic=5,  Ultra=10;  Free+2, Basic+3, Ultra+5 per level
 // PDF:       base Free=2,  Basic=3,  Ultra=5;   Free+2, Basic+3, Ultra+5 per level
 // Video:     base Free=0,  Basic=2,  Ultra=5;   Free+1(from L2), Basic+2, Ultra+2 per level
-// Notes:     Fixed Free=5, Basic=10, Ultra=15;  L9+ = UNLIMITED
+// Notes:     base Free=10, Basic=10, Ultra=10;  Free+2, Basic+4, Ultra+6 per level; L9+ = UNLIMITED
 // TTS:       Same as Notes
 // Write:     base Free=0,  Basic=5,  Ultra=10;  Basic+1, Ultra+1 per level from L4
-// Concept:   Same formula as Write (Free=0 credit-only, Basic/Ultra scaled)
+// Concept:   base Free=5,  Basic=5,  Ultra=5;   Free+2, Basic+4, Ultra+6 per level (Free also open now)
 // Retention: Same formula as Write (Free=0 N/A, Basic/Ultra scaled — Premium only)
+// Flashcard: base Free=10, Basic=15, Ultra=20;  +10 per level (all tiers)
 // bonusLoginCredits: 0,5,10,15,20,30,40,50,65,80,100
 
 const _BONUS_LOGIN = [0, 5, 10, 15, 20, 30, 40, 50, 65, 80, 100];
@@ -84,11 +86,12 @@ const buildTable = (): Record<number, LevelDailyLimits> => {
       dl:        { free: 2   + n * 2,  basic: 5   + n * 3,  ultra: 10  + n * 5  },
       pdf:       { free: 2   + n * 2,  basic: 3   + n * 3,  ultra: 5   + n * 5  },
       video:     { free: Math.max(0, n), basic: 2 + n * 2, ultra: 5 + n * 2 },
-      notes:     unlimitedNotes ? { free: UNLIMITED, basic: UNLIMITED, ultra: UNLIMITED } : { free: 5, basic: 10, ultra: 15 },
-      tts:       unlimitedNotes ? { free: UNLIMITED, basic: UNLIMITED, ultra: UNLIMITED } : { free: 5, basic: 10, ultra: 15 },
+      notes:     unlimitedNotes ? { free: UNLIMITED, basic: UNLIMITED, ultra: UNLIMITED } : { free: 10 + n * 2, basic: 10 + n * 4, ultra: 10 + n * 6 },
+      tts:       unlimitedNotes ? { free: UNLIMITED, basic: UNLIMITED, ultra: UNLIMITED } : { free: 10 + n * 2, basic: 10 + n * 4, ultra: 10 + n * 6 },
       write:     { free: 0, basic: writeBasic, ultra: writeUltra },
-      concept:   { free: 0, basic: writeBasic, ultra: writeUltra },
+      concept:   { free: 5 + n * 2, basic: 5 + n * 4, ultra: 5 + n * 6 },
       retention: { free: 0, basic: writeBasic, ultra: writeUltra },
+      flashcard: { free: 10 + n * 10, basic: 15 + n * 10, ultra: 20 + n * 10 },
       creditWriteMax:    _CREDIT_WRITE_MAX[n],
       bonusLoginCredits: _BONUS_LOGIN[n],
     };
@@ -128,6 +131,7 @@ export const getLevelDailyLimitsWithOverride = (
     write:             mergeTier(base.write,      ov.write),
     concept:           mergeTier(base.concept,    ov.concept),
     retention:         mergeTier(base.retention,  ov.retention),
+    flashcard:         mergeTier(base.flashcard,  ov.flashcard),
     creditWriteMax:    ov.creditWriteMax    ?? base.creditWriteMax,
     bonusLoginCredits: ov.bonusLoginCredits ?? base.bonusLoginCredits,
   };
@@ -144,12 +148,13 @@ export interface LevelDailyLimitsOverride {
   write?:             Partial<LevelTierLimits>;
   concept?:           Partial<LevelTierLimits>;
   retention?:         Partial<LevelTierLimits>;
+  flashcard?:         Partial<LevelTierLimits>;
   creditWriteMax?:    number;
   bonusLoginCredits?: number;
 }
 
 // ── Unified effective daily limit getter ─────────────────────────────────────
-export type DailyLimitFeature = 'mcq' | 'video' | 'pdf' | 'dl' | 'write' | 'notes' | 'tts' | 'concept' | 'retention';
+export type DailyLimitFeature = 'mcq' | 'video' | 'pdf' | 'dl' | 'write' | 'notes' | 'tts' | 'concept' | 'retention' | 'flashcard';
 
 export const getEffectiveDailyLimit = (
   feature: DailyLimitFeature,

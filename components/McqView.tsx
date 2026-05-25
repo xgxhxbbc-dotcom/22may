@@ -167,7 +167,13 @@ export const McqView: React.FC<Props> = ({
   const [listSubmitted, setListSubmitted] = useState(false);
   const [listTimerSeconds, setListTimerSeconds] = useState(0);
   const [listStarted, setListStarted] = useState(false);
+  const [listCurrentIdx, setListCurrentIdx] = useState(0);
+  // Tracks user's pending selection (tapped but NOT yet submitted)
+  const [listPendingAnswer, setListPendingAnswer] = useState<Record<number, number>>({});
+  // Prevent double-rewarding in the same session
+  const [listSessionRewarded, setListSessionRewarded] = useState(false);
   const listTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const autoNextTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const TTS_SPEEDS_MCQ = [1.0, 1.25, 1.5, 2.0, 0.75];
   const [ttsRate, setTtsRate] = useState<number>(() => getStoredTtsSpeed());
   const cycleTtsRate = () => {
@@ -219,9 +225,15 @@ export const McqView: React.FC<Props> = ({
           return;
       }
       listTimerRef.current = setInterval(() => setListTimerSeconds(s => s + 1), 1000);
-      return () => { if (listTimerRef.current) { clearInterval(listTimerRef.current); listTimerRef.current = null; } };
+      return () => {
+          if (listTimerRef.current) { clearInterval(listTimerRef.current); listTimerRef.current = null; }
+          if (autoNextTimerRef.current) { clearTimeout(autoNextTimerRef.current); autoNextTimerRef.current = null; }
+      };
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewMode, listMode, listStarted, listSubmitted]);
+
+  // Reset one-at-a-time index when listData or listMode changes
+  useEffect(() => { setListCurrentIdx(0); }, [listData, listMode]);
 
   // Load topics on mount if content exists locally or via minimal fetch.
   // Uses the same resilient/normalized lookup so topic chips show up even when
@@ -1060,18 +1072,12 @@ export const McqView: React.FC<Props> = ({
               title={chapter.title}
               subtitle={`${subject.name} • Flashcard Mode`}
               subject={subject.name}
+              user={user}
+              settings={settings}
+              onUpdateUser={onUpdateUser}
               onBack={() => { setViewMode('SELECTION'); setFlashcardData(null); }}
           />
        ) : viewMode === 'INTERACTIVE_LIST' && listData ? (
-          /* === LUCENT-STYLE INTERACTIVE LIST (matches the reference screenshot) ===
-             Single view that supports MCQ mode (tap option → instant feedback)
-             and Q&A mode (tap to reveal correct answer). Top has READ ALL +
-             3-pill mode switcher (📝 MCQ · 💬 Q&A · 🃏 Flashcard).
-             TTS rules:
-              • MCQ mode → speakers read ONLY the question until ALL questions
-                are answered. After that, answers also get played.
-              • Q&A mode → speakers always read Question + Correct Answer.
-          */
           (() => {
               const norm = listData.map((q: any) => ({
                   question: q.question || q.q || '',
@@ -1085,393 +1091,328 @@ export const McqView: React.FC<Props> = ({
                   topic: q.topic || '',
                   difficulty: q.difficulty || '',
               }));
-              const totalAnswered = Object.keys(listAnswers).length;
-              const allAnswered = totalAnswered === norm.length && norm.length > 0;
-              // TTS reveal rule: only reveal after submit in MCQ mode, always in Q&A mode
-              const ttsRevealAnswer = listMode === 'qa' || listSubmitted;
-              // Exam-mode: show 30-MCQ nudge notification
-              const show30McqNudge = listMode === 'mcq' && !listSubmitted && totalAnswered === 30 && !allAnswered;
+              const totalQ = norm.length;
+              const ci = Math.min(listCurrentIdx, Math.max(0, totalQ - 1));
+              const cq = norm[ci] ?? null;
+              const isMcq = listMode === 'mcq';
+              const cqSelected = listAnswers[ci];
+              const cqAnswered = isMcq ? cqSelected !== undefined : !!listRevealed[ci];
+              const attempted = Object.keys(listAnswers).length + (listMode === 'qa' ? Object.keys(listRevealed).length : 0);
+              const mcqAttempted = Object.keys(listAnswers).length;
+              const right = norm.reduce((acc, q, i) =>
+                  listAnswers[i] !== undefined && listAnswers[i] === q.correctAnswer ? acc + 1 : acc, 0);
+              const wrong = mcqAttempted - right;
+              const score = right;
+              const allAnswered = isMcq
+                  ? mcqAttempted === totalQ && totalQ > 0
+                  : Object.keys(listRevealed).length === totalQ && totalQ > 0;
+              const ttsRevealAnswer = listMode === 'qa' || cqAnswered;
 
-              // Submit handler: record mistakes for wrong answers only after submit
-              const handleSubmit = () => {
-                  if (listSubmitted) return;
-                  norm.forEach((q, i) => {
-                      const selected = listAnswers[i];
-                      if (selected === undefined) return;
-                      try {
-                          if (selected !== q.correctAnswer) {
-                              addMistakes([{
-                                  question: q.question,
-                                  options: q.options || [],
-                                  correctAnswer: q.correctAnswer,
-                                  explanation: q.explanation,
-                                  topic: q.topic,
-                                  chapterTitle: chapter.title,
-                                  subjectName: subject.name,
-                                  classLevel: classLevel,
-                                  board: board,
-                                  source: 'MCQ',
-                              }]);
-                          } else {
-                              removeMistakeByQuestion(q.question, q.correctAnswer);
-                          }
-                      } catch {}
-                  });
-                  setListSubmitted(true);
-                  // Auto-record revision attempt on submit
-                  try {
-                      recordRevisionAttempt({
-                          subjectId: subject.id || subject.name,
-                          subjectName: subject.name,
-                          chapterId: chapter.id,
-                          chapterTitle: chapter.title,
-                          pageKey: chapter.id,
-                          pageLabel: chapter.title,
-                          questions: norm as any,
-                          userAnswers: norm.map((_, i) => listAnswers[i] === undefined ? null : listAnswers[i]) as any,
-                      });
-                  } catch {}
-              };
-              const correctCount = norm.reduce((acc, q, i) =>
-                  acc + (listAnswers[i] === q.correctAnswer ? 1 : 0), 0);
-              const wrongCount = totalAnswered - correctCount;
               const persistSaved = (next: Record<number, boolean>) => {
-                  const streamKey = (classLevel === '11' || classLevel === '12') && stream ? `-${stream}` : '';
-                  const savedKey = `mcq_saved_${board}_${classLevel}${streamKey}_${subject.name}_${chapter.id}`;
+                  const streamKey2 = (classLevel === '11' || classLevel === '12') && stream ? `-${stream}` : '';
+                  const savedKey = `mcq_saved_${board}_${classLevel}${streamKey2}_${subject.name}_${chapter.id}`;
                   try { localStorage.setItem(savedKey, JSON.stringify(next)); } catch {}
               };
 
+              const resetSession = () => {
+                  setListAnswers({});
+                  setListRevealed({});
+                  setListSubmitted(false);
+                  setListTimerSeconds(0);
+                  setListStarted(false);
+                  setListCurrentIdx(0);
+              };
               return (
                   <div className="bg-slate-50 min-h-screen pb-24 animate-in fade-in slide-in-from-right-8">
-                      {/* Sticky Header: back · title · READ ALL */}
+                      {/* Sticky Header */}
                       <div className={`sticky top-0 z-20 bg-white border-b border-slate-100 shadow-sm transition-all duration-200 ${hideHeader ? 'hidden' : ''}`}>
                           <div className="p-3 flex items-center gap-2">
                               <button
                                   onClick={() => {
-                                      // Auto-record this attempt so wrong questions
-                                      // flow into the Schedule page (Revision Hub V2).
-                                      // We pass user answers as a parallel array; if a
-                                      // question wasn't attempted we record it as null
-                                      // (treated as "not correct" → goes to wrongQuestions).
                                       try {
-                                          const answersArr = norm.map((_, i) =>
-                                              listAnswers[i] === undefined ? null : listAnswers[i]
-                                          );
                                           recordRevisionAttempt({
                                               subjectId: subject.id || subject.name,
                                               subjectName: subject.name,
                                               chapterId: chapter.id,
                                               chapterTitle: chapter.title,
-                                              pageKey: chapter.id, // chapter-level bucket
+                                              pageKey: chapter.id,
                                               pageLabel: chapter.title,
                                               questions: norm as any,
-                                              userAnswers: answersArr as any,
+                                              userAnswers: norm.map((_, i) => listAnswers[i] === undefined ? null : listAnswers[i]) as any,
                                           });
                                       } catch {}
                                       setViewMode('SELECTION');
                                       setListData(null);
                                       setListAnswers({});
                                       setListRevealed({});
+                                      setListCurrentIdx(0);
                                   }}
                                   className="p-2 hover:bg-slate-100 rounded-full text-slate-600"
                               >
                                   <ArrowLeft size={20} />
                               </button>
                               <div className="flex-1 min-w-0">
-                                  <p className="text-[10px] font-black text-purple-600 uppercase tracking-wider">{listMode === 'qa' ? 'Q&A Mode' : 'MCQ Practice'}</p>
+                                  <p className="text-[10px] font-black text-purple-600 uppercase tracking-wider">{isMcq ? 'MCQ Practice' : 'Q&A Mode'}</p>
                                   <h3 className="font-black text-slate-800 leading-tight line-clamp-1 text-base">{chapter.title}</h3>
                               </div>
-                              {/* Speed control + READ ALL chain reader */}
-                              <div className="flex items-center gap-1 shrink-0">
+                              <div className="flex items-center gap-1.5 shrink-0">
                                   <button
                                       onClick={cycleTtsRate}
-                                      className="flex items-center px-2 py-1.5 rounded-full bg-orange-50 text-orange-700 hover:bg-orange-100 active:bg-orange-200 transition-colors font-black text-[10px] uppercase tracking-wider border border-orange-200"
-                                      title={`TTS Speed: ${ttsRate}x — tap to change`}
-                                      aria-label="TTS speed"
+                                      className="flex items-center px-2 py-1.5 rounded-full bg-orange-50 text-orange-700 font-black text-[10px] uppercase tracking-wider border border-orange-200 active:bg-orange-200"
+                                      title={`TTS Speed: ${ttsRate}x`}
                                   >
                                       ×{ttsRate === 1 ? '1' : ttsRate}
                                   </button>
-                                  {norm.length > 0 && (
-                                      <McqSpeakButtons
-                                          question={norm[0].question}
-                                          options={norm[0].options}
-                                          correctAnswer={norm[0].correctAnswer}
-                                          allQuestions={norm as any}
-                                          index={0}
-                                          revealAnswer={ttsRevealAnswer}
-                                          iconSize={14}
-                                          rate={ttsRate}
-                                          className=""
-                                      />
-                                  )}
+                                  <button
+                                      onClick={() => { setFlashcardData(listData); setViewMode('FLASHCARD'); }}
+                                      className="flex items-center px-2 py-1.5 rounded-full bg-amber-50 text-amber-700 font-black text-[10px] border border-amber-200"
+                                      title="Flashcard mode"
+                                  >
+                                      🃏
+                                  </button>
                               </div>
                           </div>
-                          {/* Counter row + timer + 3-pill mode switcher */}
-                          <div className="px-3 pb-3 flex items-center gap-2">
-                              <div className="text-[11px] font-bold text-slate-600 shrink-0 flex items-center gap-1.5">
-                                  <span className="text-slate-800 font-black">{totalAnswered} / {norm.length}</span>
-                                  {listMode === 'mcq' && listStarted && (
-                                      <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded-full ${listSubmitted ? 'bg-green-100 text-green-700' : 'bg-amber-100 text-amber-700'}`}>
-                                          ⏱ {Math.floor(listTimerSeconds / 60).toString().padStart(2, '0')}:{(listTimerSeconds % 60).toString().padStart(2, '0')}
-                                      </span>
-                                  )}
+                          {/* Stats bar */}
+                          <div className="px-3 pb-2.5 grid grid-cols-4 gap-1.5">
+                              <div className="bg-slate-100 rounded-xl py-1.5 text-center">
+                                  <div className="text-[9px] font-bold text-slate-500 uppercase">Tried</div>
+                                  <div className="text-base font-black text-slate-800">{mcqAttempted}</div>
                               </div>
-                              <div className="flex-1 flex bg-slate-100 p-0.5 rounded-full ml-2">
+                              <div className="bg-emerald-50 rounded-xl py-1.5 text-center">
+                                  <div className="text-[9px] font-bold text-emerald-600 uppercase">✅ Sahi</div>
+                                  <div className="text-base font-black text-emerald-700">{right}</div>
+                              </div>
+                              <div className="bg-rose-50 rounded-xl py-1.5 text-center">
+                                  <div className="text-[9px] font-bold text-rose-600 uppercase">❌ Galat</div>
+                                  <div className="text-base font-black text-rose-700">{wrong}</div>
+                              </div>
+                              <div className="bg-indigo-50 rounded-xl py-1.5 text-center">
+                                  <div className="text-[9px] font-bold text-indigo-600 uppercase">🏆 Score</div>
+                                  <div className="text-base font-black text-indigo-700">{score}</div>
+                              </div>
+                          </div>
+                          {/* Progress + mode switcher */}
+                          <div className="px-3 pb-2.5 flex items-center gap-2">
+                              <span className="text-[11px] font-black text-slate-600 shrink-0">
+                                  <span className="text-indigo-600">{ci + 1}</span>/{totalQ}
+                              </span>
+                              <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden mx-1">
+                                  <div className="h-full bg-indigo-500 transition-all rounded-full" style={{ width: `${((ci + 1) / Math.max(1, totalQ)) * 100}%` }} />
+                              </div>
+                              <div className="flex bg-slate-100 p-0.5 rounded-full shrink-0">
                                   <button
                                       onClick={() => setListMode('mcq')}
-                                      className={`flex-1 py-1.5 px-2 rounded-full text-[11px] font-black transition-all flex items-center justify-center gap-1 ${listMode === 'mcq' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500'}`}
-                                  >
-                                      📝 MCQ
-                                  </button>
+                                      className={`py-1 px-2.5 rounded-full text-[10px] font-black transition-all ${listMode === 'mcq' ? 'bg-indigo-600 text-white shadow-sm' : 'text-slate-500'}`}
+                                  >📝 MCQ</button>
                                   <button
                                       onClick={() => setListMode('qa')}
-                                      className={`flex-1 py-1.5 px-2 rounded-full text-[11px] font-black transition-all flex items-center justify-center gap-1 ${listMode === 'qa' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-500'}`}
-                                  >
-                                      💬 Q&A
-                                  </button>
-                                  <button
-                                      onClick={() => {
-                                          // Hand off to the existing Flashcard overlay.
-                                          setFlashcardData(listData);
-                                          setViewMode('FLASHCARD');
-                                      }}
-                                      className="flex-1 py-1.5 px-2 rounded-full text-[11px] font-black text-amber-700 bg-amber-50 hover:bg-amber-100 transition-all flex items-center justify-center gap-1"
-                                  >
-                                      🃏 FLASHCARD
-                                  </button>
+                                      className={`py-1 px-2.5 rounded-full text-[10px] font-black transition-all ${listMode === 'qa' ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-500'}`}
+                                  >💬 Q&A</button>
                               </div>
                           </div>
                       </div>
 
-                      {/* Q&A mode: top "Show All Answers" button (only when not all revealed) */}
-                      {listMode === 'qa' && Object.keys(listRevealed).length < norm.length && (
-                          <div className="px-4 pt-3">
-                              <button
-                                  onClick={() => {
-                                      const all: Record<number, boolean> = {};
-                                      norm.forEach((_, i) => { all[i] = true; });
-                                      setListRevealed(all);
-                                  }}
-                                  className="w-full py-2.5 rounded-2xl bg-gradient-to-r from-purple-600 to-pink-600 text-white font-black text-xs shadow-md flex items-center justify-center gap-2 active:scale-95"
-                              >
-                                  <Eye size={14}/> Show All Answers
-                              </button>
-                          </div>
-                      )}
-
-                      {/* MCQ mode hints and notifications */}
-                      {listMode === 'mcq' && !listSubmitted && (
-                          <div className="px-4 pt-3 space-y-2">
-                              {/* 30-MCQ notification: gentle nudge to submit */}
-                              {show30McqNudge && (
-                                  <div className="bg-amber-50 border border-amber-300 rounded-2xl px-3 py-2.5 text-[11px] font-bold text-amber-800 flex items-center justify-between gap-2">
-                                      <span>🎯 30 questions done! Baaki karo ya abhi submit karo.</span>
-                                      <button
-                                          onClick={handleSubmit}
-                                          className="shrink-0 bg-amber-500 text-white text-[10px] font-black px-2.5 py-1 rounded-lg active:scale-95"
-                                      >Submit</button>
-                                  </div>
-                              )}
-                              {/* Standard hint */}
-                              {!allAnswered && (
-                                  <div className="bg-blue-50 border border-blue-200 rounded-2xl px-3 py-2 text-[11px] font-bold text-blue-700 text-center">
-                                      👆 Har question ka jawab do, phir Submit karo. Galat answers automatically Mistakes mein jayenge.
-                                  </div>
-                              )}
-                              {/* All answered but not submitted */}
-                              {allAnswered && (
-                                  <button
-                                      onClick={handleSubmit}
-                                      className="w-full py-3 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-black text-sm shadow-md flex items-center justify-center gap-2 active:scale-95"
-                                  >
-                                      ✅ Submit — Results Dekho
-                                  </button>
-                              )}
-                          </div>
-                      )}
-                      {/* MCQ mode: partial answers submit button (shows after ≥1 answer) */}
-                      {listMode === 'mcq' && !listSubmitted && totalAnswered >= 1 && !allAnswered && (
-                          <div className="px-4 pt-2">
-                              <button
-                                  onClick={handleSubmit}
-                                  className="w-full py-2.5 rounded-2xl bg-indigo-600 text-white font-black text-xs shadow-md flex items-center justify-center gap-2 active:scale-95"
-                              >
-                                  📋 Submit ({totalAnswered}/{norm.length} answered)
-                              </button>
-                          </div>
-                      )}
-
-                      {/* Cards */}
-                      <div className="p-4 space-y-3">
-                          {norm.map((q, qi) => {
-                              const selected = listAnswers[qi];
-                              const revealed = !!listRevealed[qi];
-                              const isMcq = listMode === 'mcq';
-                              const answeredHere = isMcq ? selected !== undefined : revealed;
-                              // MCQ exam-mode: only show correct/wrong colors AFTER submit
-                              const showAnswerColors = isMcq ? listSubmitted : answeredHere;
-                              const isSaved = !!savedQuestions[qi];
-
-                              return (
-                                  <div key={qi} className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
-                                      {/* Top row: Q-chip + topic + speaker + save (+) */}
-                                      <div className="flex items-start gap-2 mb-2">
-                                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 shrink-0">Q {qi + 1}</span>
-                                          {q.topic && (
-                                              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 truncate min-w-0">{q.topic}</span>
-                                          )}
-                                          <div className="ml-auto flex items-center gap-1.5 shrink-0">
-                                              {/* Per-card speaker — single icon, respects revealAnswer rule */}
-                                              <McqSpeakButtons
-                                                  question={q.question}
-                                                  options={q.options}
-                                                  correctAnswer={q.correctAnswer}
-                                                  revealAnswer={ttsRevealAnswer}
-                                                  compact
-                                              />
-                                              {/* Save / Bookmark "+" toggle */}
+                      {/* Single Question Card */}
+                      {cq && (
+                          <div className="p-4">
+                              <div className="bg-white border border-slate-200 rounded-2xl p-4 shadow-sm">
+                                  {/* Top row: chip + topic + TTS + share */}
+                                  <div className="flex items-start gap-2 mb-3">
+                                      <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 shrink-0">Q {ci + 1}</span>
+                                      {cq.topic && (
+                                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 truncate min-w-0">{cq.topic}</span>
+                                      )}
+                                      <div className="ml-auto flex items-center gap-1.5 shrink-0">
+                                          <McqSpeakButtons
+                                              question={cq.question}
+                                              options={cq.options}
+                                              correctAnswer={cq.correctAnswer}
+                                              revealAnswer={ttsRevealAnswer}
+                                              compact
+                                              rate={ttsRate}
+                                          />
+                                          {onShareToCommunity && (
                                               <button
                                                   type="button"
                                                   onClick={() => {
-                                                      const next = { ...savedQuestions, [qi]: !isSaved };
-                                                      if (!next[qi]) delete next[qi];
-                                                      setSavedQuestions(next);
-                                                      persistSaved(next);
+                                                      const opts = cq.options.length === 4
+                                                          ? cq.options as [string,string,string,string]
+                                                          : ([...cq.options, '', '', '', ''].slice(0, 4) as [string,string,string,string]);
+                                                      onShareToCommunity({ question: cq.question, options: opts, correctAnswer: cq.correctAnswer, explanation: cq.explanation || '' });
                                                   }}
-                                                  title={isSaved ? 'Saved — tap to remove' : 'Save this question for review'}
-                                                  className={`shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-colors active:scale-95 ${isSaved ? 'bg-amber-100 text-amber-600' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}
+                                                  className="w-8 h-8 rounded-full flex items-center justify-center bg-violet-50 text-violet-600 hover:bg-violet-100 active:scale-95"
                                               >
-                                                  <span className="text-lg leading-none font-black">{isSaved ? '✓' : '+'}</span>
+                                                  <Send size={13} />
                                               </button>
-                                              {/* Community share button */}
-                                              {onShareToCommunity && (
-                                                  <button
-                                                      type="button"
-                                                      onClick={() => {
-                                                          const opts = q.options.length === 4
-                                                              ? q.options as [string,string,string,string]
-                                                              : ([...q.options, '', '', '', ''].slice(0, 4) as [string,string,string,string]);
-                                                          onShareToCommunity({ question: q.question, options: opts, correctAnswer: q.correctAnswer, explanation: q.explanation || '' });
-                                                      }}
-                                                      title="Community MCQ tab mein share karo"
-                                                      className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center transition-colors active:scale-95 bg-violet-50 text-violet-600 hover:bg-violet-100"
-                                                  >
-                                                      <Send size={14} />
-                                                  </button>
-                                              )}
-                                          </div>
+                                          )}
                                       </div>
+                                  </div>
 
-                                      {/* Question text */}
-                                      <p className="font-black text-slate-800 text-sm leading-snug mb-3">{q.question}</p>
+                                  {/* Question text */}
+                                  <p className="font-black text-slate-800 text-sm leading-snug mb-3">{cq.question}</p>
 
-                                      {/* Options */}
+                                  {/* MCQ Options */}
+                                  {isMcq && (
                                       <div className="space-y-1.5 mb-2">
-                                          {q.options.map((opt: string, oi: number) => {
-                                              const isCorrect = oi === q.correctAnswer;
-                                              const isSelected = selected === oi;
-                                              let cls = 'w-full text-left px-3 py-2.5 rounded-xl text-xs font-bold border-2 transition-all flex items-center gap-2';
-                                              if (showAnswerColors) {
-                                                  if (isCorrect) cls += ' bg-emerald-50 border-emerald-300 text-emerald-800';
-                                                  else if (isSelected) cls += ' bg-rose-50 border-rose-300 text-rose-800';
-                                                  else cls += ' bg-slate-50 border-slate-200 text-slate-500 opacity-70';
-                                              } else if (isMcq && isSelected) {
-                                                  // Selected but not yet submitted — neutral blue highlight
-                                                  cls += ' bg-indigo-50 border-indigo-400 text-indigo-900';
+                                          {cq.options.map((opt: string, oi: number) => {
+                                              const isCorrect = oi === cq.correctAnswer;
+                                              const isSelected = cqSelected === oi;
+                                              let cls = 'w-full text-left px-3 py-2.5 rounded-xl text-xs font-bold border-2 transition-all flex items-center gap-2 ';
+                                              if (cqAnswered) {
+                                                  if (isCorrect) cls += 'bg-emerald-50 border-emerald-300 text-emerald-800';
+                                                  else if (isSelected) cls += 'bg-rose-50 border-rose-300 text-rose-800';
+                                                  else cls += 'bg-slate-50 border-slate-200 text-slate-400 opacity-60';
                                               } else {
-                                                  cls += ' bg-white border-slate-200 text-slate-700' + (isMcq ? ' hover:border-indigo-300 hover:bg-indigo-50 cursor-pointer' : '');
+                                                  cls += 'bg-white border-slate-200 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 cursor-pointer';
                                               }
                                               return (
                                                   <button
                                                       type="button"
                                                       key={oi}
+                                                      disabled={cqAnswered}
                                                       onClick={() => {
-                                                          if (!isMcq) return;
-                                                          if (selected !== undefined || listSubmitted) return;
-                                                          // Exam mode: just record selection, NO immediate mistake tracking
-                                                          setListAnswers(prev => ({ ...prev, [qi]: oi }));
+                                                          if (cqAnswered) return;
+                                                          setListAnswers(prev => ({ ...prev, [ci]: oi }));
                                                           if (!listStarted) setListStarted(true);
+                                                          try {
+                                                              if (oi !== cq.correctAnswer) {
+                                                                  addMistakes([{
+                                                                      question: cq.question,
+                                                                      options: cq.options || [],
+                                                                      correctAnswer: cq.correctAnswer,
+                                                                      explanation: cq.explanation,
+                                                                      topic: cq.topic,
+                                                                      chapterTitle: chapter.title,
+                                                                      subjectName: subject.name,
+                                                                      classLevel: classLevel,
+                                                                      board: board,
+                                                                      source: 'MCQ',
+                                                                  }]);
+                                                              } else {
+                                                                  removeMistakeByQuestion(cq.question, cq.correctAnswer);
+                                                              }
+                                                          } catch {}
+                                                          if (ci < totalQ - 1) {
+                                                              if (autoNextTimerRef.current) clearTimeout(autoNextTimerRef.current);
+                                                              autoNextTimerRef.current = setTimeout(() => {
+                                                                  setListCurrentIdx(i => Math.min(i + 1, totalQ - 1));
+                                                              }, 1200);
+                                                          }
                                                       }}
-                                                      disabled={!isMcq || selected !== undefined || listSubmitted}
                                                       className={cls}
                                                   >
-                                                      <span className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center text-[10px] font-black ${showAnswerColors && isCorrect ? 'bg-emerald-500 text-white border-emerald-500' : showAnswerColors && isSelected ? 'bg-rose-500 text-white border-rose-500' : isMcq && isSelected ? 'bg-indigo-500 text-white border-indigo-500' : 'border-slate-300 text-slate-500'}`}>
+                                                      <span className={`flex-shrink-0 w-6 h-6 rounded-full border-2 flex items-center justify-center text-[10px] font-black ${cqAnswered && isCorrect ? 'bg-emerald-500 text-white border-emerald-500' : cqAnswered && isSelected ? 'bg-rose-500 text-white border-rose-500' : 'border-slate-300 text-slate-500'}`}>
                                                           {String.fromCharCode(65 + oi)}
                                                       </span>
                                                       <span className="flex-1">{opt}</span>
-                                                      {showAnswerColors && isCorrect && <CheckCircle size={16} className="text-emerald-600" />}
+                                                      {cqAnswered && isCorrect && <CheckCircle size={15} className="text-emerald-600 shrink-0" />}
                                                   </button>
                                               );
                                           })}
                                       </div>
+                                  )}
 
-                                      {/* Q&A mode: tap-to-reveal trigger when not yet revealed */}
-                                      {!isMcq && !revealed && (
-                                          <button
-                                              onClick={() => setListRevealed(p => ({ ...p, [qi]: true }))}
-                                              className="w-full py-2 rounded-xl bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 text-blue-700 text-xs font-bold flex items-center justify-center gap-1.5 hover:from-blue-100 hover:to-purple-100 transition-all"
-                                          >
-                                              <Eye size={12}/> Tap to Reveal Answer
-                                          </button>
-                                      )}
+                                  {/* Q&A mode: reveal button or answer */}
+                                  {!isMcq && !listRevealed[ci] && (
+                                      <button
+                                          onClick={() => setListRevealed(p => ({ ...p, [ci]: true }))}
+                                          className="w-full py-2.5 rounded-xl bg-gradient-to-r from-blue-50 to-purple-50 border border-blue-200 text-blue-700 text-xs font-bold flex items-center justify-center gap-1.5 hover:from-blue-100 active:scale-95 transition-all"
+                                      >
+                                          <Eye size={12}/> Tap to Reveal Answer
+                                      </button>
+                                  )}
+                                  {!isMcq && listRevealed[ci] && (
+                                      <div className="bg-emerald-50 border-2 border-emerald-200 rounded-xl p-3 mb-2 flex items-center gap-2">
+                                          <span className="w-7 h-7 rounded-full bg-emerald-600 text-white text-xs font-black flex items-center justify-center shrink-0">
+                                              {String.fromCharCode(65 + cq.correctAnswer)}
+                                          </span>
+                                          <p className="text-sm font-black text-emerald-900">{cq.options?.[cq.correctAnswer] || '—'}</p>
+                                      </div>
+                                  )}
 
-                                      {/* MCQ mode: hint when not yet answered */}
-                                      {isMcq && selected === undefined && (
-                                          <p className="text-[10px] font-bold text-slate-400 text-center py-1">👆 Pick an answer</p>
-                                      )}
+                                  {/* Explanation after answering */}
+                                  {cqAnswered && cq.explanation && (
+                                      <div className="mt-2 p-3 rounded-xl bg-amber-50 border border-amber-200">
+                                          <p className="text-[10px] font-black text-amber-700 uppercase tracking-wider mb-1">Explanation</p>
+                                          <p className="text-xs text-slate-800 leading-relaxed">{cq.explanation}</p>
+                                      </div>
+                                  )}
+                              </div>
 
-                                      {/* Reset (MCQ mode only) */}
-                                      {isMcq && selected !== undefined && (
-                                          <button
-                                              onClick={() => setListAnswers(prev => { const n = { ...prev }; delete n[qi]; return n; })}
-                                              className="w-full mt-1 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-[11px] active:scale-95 transition flex items-center justify-center gap-1"
-                                          >
-                                              <RefreshCw size={11}/> Try again
-                                          </button>
-                                      )}
+                              {/* Navigation */}
+                              <div className="mt-3 flex gap-3">
+                                  {/* Back — always visible when not on first question */}
+                                  {ci > 0 ? (
+                                      <button
+                                          onClick={() => {
+                                              if (autoNextTimerRef.current) clearTimeout(autoNextTimerRef.current);
+                                              setListCurrentIdx(ci - 1);
+                                          }}
+                                          className="py-3 px-5 rounded-2xl bg-white border-2 border-slate-200 text-slate-700 font-bold text-sm flex items-center justify-center gap-1.5 active:scale-95 transition"
+                                      >
+                                          <ChevronDown size={15} className="rotate-90" /> Pichla
+                                      </button>
+                                  ) : (
+                                      <div className="py-3 px-5 rounded-2xl bg-slate-50 border-2 border-slate-100 text-slate-300 font-bold text-sm flex items-center gap-1.5 select-none">
+                                          <ChevronDown size={15} className="rotate-90" /> Pichla
+                                      </div>
+                                  )}
 
-                                      {/* Explanation block (visible after answer/reveal) */}
-                                      {answeredHere && q.explanation && (
-                                          <div className="mt-3 p-3 rounded-xl bg-amber-50 border border-amber-200">
-                                              <p className="text-[10px] font-black text-amber-700 uppercase tracking-wider mb-1">Explanation</p>
-                                              <p className="text-xs text-slate-800 leading-relaxed">{q.explanation}</p>
-                                          </div>
-                                      )}
-                                  </div>
-                              );
-                          })}
+                                  {/* Next / Restart */}
+                                  {ci < totalQ - 1 ? (
+                                      <button
+                                          onClick={() => {
+                                              if (autoNextTimerRef.current) clearTimeout(autoNextTimerRef.current);
+                                              setListCurrentIdx(ci + 1);
+                                          }}
+                                          className={`flex-1 py-3 rounded-2xl font-black text-sm flex items-center justify-center gap-1.5 active:scale-95 transition shadow-md ${
+                                              cqAnswered || (listMode === 'qa' && listRevealed[ci])
+                                                  ? 'bg-indigo-600 text-white'
+                                                  : 'bg-slate-200 text-slate-500'
+                                          }`}
+                                      >
+                                          Agla <ChevronDown size={15} className="-rotate-90" />
+                                      </button>
+                                  ) : (
+                                      <button
+                                          onClick={resetSession}
+                                          className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-black text-sm flex items-center justify-center gap-2 active:scale-95 transition shadow-md"
+                                      >
+                                          <RefreshCw size={14}/> Phir se Karo
+                                      </button>
+                                  )}
+                              </div>
+                          </div>
+                      )}
 
-                          {/* Score Summary — only shows AFTER submit (exam mode) */}
-                          {listMode === 'mcq' && listSubmitted && (
+                      {/* All-answered summary */}
+                      {allAnswered && isMcq && (
+                          <div className="px-4 mt-2 pb-4">
                               <div className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-2xl p-5 shadow-lg">
-                                  <p className="text-[10px] font-black uppercase tracking-wider opacity-90 mb-1">Final Score</p>
-                                  <p className="text-3xl font-black mb-1">{Math.round((correctCount / Math.max(totalAnswered, 1)) * 100)}%</p>
-                                  <p className="text-[10px] opacity-75 mb-3">⏱ Time: {Math.floor(listTimerSeconds / 60).toString().padStart(2,'0')}:{(listTimerSeconds % 60).toString().padStart(2,'0')}</p>
-                                  <div className="grid grid-cols-3 gap-2 text-center text-xs font-bold mb-4">
-                                      <div className="bg-white/15 rounded-xl py-2"><div className="text-[10px] opacity-80">Attempted</div><div className="text-base">{totalAnswered}</div></div>
-                                      <div className="bg-white/15 rounded-xl py-2"><div className="text-[10px] opacity-80">✅ Correct</div><div className="text-base">{correctCount}</div></div>
-                                      <div className="bg-white/15 rounded-xl py-2"><div className="text-[10px] opacity-80">❌ Wrong</div><div className="text-base">{wrongCount}</div></div>
+                                  <p className="text-[10px] font-black uppercase tracking-wider opacity-80 mb-1">Final Score</p>
+                                  <p className="text-3xl font-black mb-1">{Math.round((right / Math.max(mcqAttempted, 1)) * 100)}%</p>
+                                  {listStarted && (
+                                      <p className="text-[10px] opacity-75 mb-3">⏱ {Math.floor(listTimerSeconds / 60).toString().padStart(2,'0')}:{(listTimerSeconds % 60).toString().padStart(2,'0')}</p>
+                                  )}
+                                  <div className="grid grid-cols-3 gap-2 text-center text-xs font-bold mb-3">
+                                      <div className="bg-white/15 rounded-xl py-2"><div className="text-[10px] opacity-80">Attempted</div><div className="text-base">{mcqAttempted}</div></div>
+                                      <div className="bg-white/15 rounded-xl py-2"><div className="text-[10px] opacity-80">✅ Sahi</div><div className="text-base">{right}</div></div>
+                                      <div className="bg-white/15 rounded-xl py-2"><div className="text-[10px] opacity-80">❌ Galat</div><div className="text-base">{wrong}</div></div>
                                   </div>
-                                  {wrongCount > 0 && (
-                                      <div className="bg-white/20 rounded-xl px-3 py-2 text-[11px] font-bold mb-3 text-center">
-                                          📌 {wrongCount} galat questions Mistakes page mein save ho gaye
+                                  {wrong > 0 && (
+                                      <div className="bg-white/20 rounded-xl px-3 py-2 text-[11px] font-bold text-center mb-3">
+                                          📌 {wrong} galat questions Mistakes page mein save ho gaye
                                       </div>
                                   )}
                                   <button
-                                      onClick={() => {
-                                          setListAnswers({});
-                                          setListRevealed({});
-                                          setListSubmitted(false);
-                                          setListTimerSeconds(0);
-                                          setListStarted(false);
-                                      }}
+                                      onClick={resetSession}
                                       className="w-full py-2.5 rounded-xl bg-white text-indigo-700 font-black text-xs flex items-center justify-center gap-2 active:scale-95"
                                   >
                                       <RefreshCw size={14}/> Phir se Try Karo
                                   </button>
                               </div>
-                          )}
-                      </div>
+                          </div>
+                      )}
                   </div>
               );
           })()

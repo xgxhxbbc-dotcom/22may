@@ -84,7 +84,10 @@ const SpinWheelCore: React.FC<SpinWheelCoreProps> = ({ user, onUpdateUser, rewar
       setAlertConfig({isOpen: true, message: `Insufficient Credits! You need ${cost} Credits to spin.`});
       return;
     }
-
+    try {
+      const _sk = `nst_spin_daily_${user.id}_${todayStr}`;
+      localStorage.setItem(_sk, String(parseInt(localStorage.getItem(_sk)||'0',10)+1));
+    } catch {}
     setIsSpinning(true);
     setResultMessage(null);
 

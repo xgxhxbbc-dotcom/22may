@@ -859,6 +859,15 @@ export const StudentDashboard: React.FC<Props> = ({
       const freshUser = (window as any).__dashUserRef?.current ?? user;
       const today = new Date().toISOString().split('T')[0];
       const countKey = `nst_mcq_daily_total_${today}_${freshUser.id}`;
+      // ── Hard gate: block free users who have hit their daily MCQ limit ────
+      if (freshUser.role !== 'ADMIN' && freshUser.role !== 'SUB_ADMIN' && !freshUser.isPremium) {
+        const prevTotal = parseInt(localStorage.getItem(countKey) || '0', 10);
+        const mcqLimGate = getEffectiveDailyLimit('mcq', getLevelInfo(freshUser.totalScore || 0).level, 'FREE', settings);
+        if (prevTotal >= mcqLimGate) {
+          showAlert(`🚫 Daily MCQ Limit khatam! (${mcqLimGate}/${mcqLimGate}) — Kal reset hoga.`, 'INFO');
+          return;
+        }
+      }
       const correctKey = `nst_mcq_daily_correct_${today}_${freshUser.id}`;
       const total = (parseInt(localStorage.getItem(countKey) || '0')) + 1;
       const correct = (parseInt(localStorage.getItem(correctKey) || '0')) + (isCorrect ? 1 : 0);
@@ -874,7 +883,7 @@ export const StudentDashboard: React.FC<Props> = ({
           showAlert(`🚫 Daily Free MCQ Limit khatam! (${mcqLim}/${mcqLim}) — Kal dobara milega.`, 'INFO');
         }
       }
-      // ── Score earning per MCQ (wrong=+1, correct=+2, 3-streak=+5 bonus) ────
+      // ── Score earning per MCQ: wrong=+1 · correct=+2 · 3-streak=+5 · 5-streak=+10 ──
       const boost = getActiveBoost(freshUser);
       const streakKey = `nst_mcq_streak_${today}_${freshUser.id}`;
       const currentStreak = parseInt(localStorage.getItem(streakKey) || '0');
@@ -887,17 +896,23 @@ export const StudentDashboard: React.FC<Props> = ({
           handleUserUpdate({ ...freshUser, totalScore: (freshUser.totalScore || 0) + earned });
         }
       } else {
-        // Correct answer → +2 score
+        // Correct answer → +2 base score
         const newStreak = currentStreak + 1;
         localStorage.setItem(streakKey, newStreak.toString());
-        let baseEarned = tryEarnScore(freshUser.id, 2, freshUser.subscriptionLevel, freshUser.isPremium, boost);
-        let bonusEarned = 0;
-        // Every 3 consecutive correct → +5 bonus
-        if (newStreak % 3 === 0) {
-          bonusEarned = tryEarnScore(freshUser.id, 5, freshUser.subscriptionLevel, freshUser.isPremium, boost);
-          showAlert(`🔥 ${newStreak} Streak! +5 Bonus Score!`, 'SUCCESS');
+        let totalBonus = 0;
+        let bonusMsg = '';
+        // Streak milestone: every 5 consecutive → +10 bonus (checked first for display priority)
+        if (newStreak % 5 === 0) {
+          totalBonus += tryEarnScore(freshUser.id, 10, freshUser.subscriptionLevel, freshUser.isPremium, boost);
+          bonusMsg = `⚡ ${newStreak} Streak! +10 Bonus Score!`;
+        } else if (newStreak % 3 === 0) {
+          // Every 3 consecutive (but not a multiple of 5) → +5 bonus
+          totalBonus += tryEarnScore(freshUser.id, 5, freshUser.subscriptionLevel, freshUser.isPremium, boost);
+          bonusMsg = `🔥 ${newStreak} Streak! +5 Bonus Score!`;
         }
-        const totalEarned = baseEarned + bonusEarned;
+        if (bonusMsg) showAlert(bonusMsg, 'SUCCESS');
+        const baseEarned = tryEarnScore(freshUser.id, 2, freshUser.subscriptionLevel, freshUser.isPremium, boost);
+        const totalEarned = baseEarned + totalBonus;
         if (totalEarned > 0) {
           handleUserUpdate({ ...freshUser, totalScore: (freshUser.totalScore || 0) + totalEarned });
         }
@@ -930,6 +945,30 @@ export const StudentDashboard: React.FC<Props> = ({
       handleUserUpdate({ ...freshUser, inbox: [rewardMsg, ...(freshUser.inbox || [])] });
       showAlert(`🎯 MCQ Prize! ${applicableRule.label}`, 'SUCCESS', 'Daily MCQ Reward!');
     } catch (err) { console.warn('MCQ tracking failed:', err); }
+  };
+
+  // --- DAILY GATE HELPER (video / pdf / tts) ---
+  // Checks daily limit BEFORE use. Consumes 1 usage if allowed, blocks with alert if not.
+  // Returns true = allowed, false = blocked (caller should abort the action).
+  const checkDailyGate = (feature: 'video' | 'pdf' | 'tts', storageKey: string): boolean => {
+    try {
+      const freshUser = (window as any).__dashUserRef?.current ?? user;
+      if (freshUser.role === 'ADMIN' || freshUser.role === 'SUB_ADMIN') return true;
+      const tier: 'FREE'|'BASIC'|'ULTRA' =
+        freshUser.subscriptionLevel === 'ULTRA' ? 'ULTRA' :
+        freshUser.subscriptionLevel === 'BASIC' ? 'BASIC' : 'FREE';
+      const lvl = getLevelInfo(freshUser.totalScore || 0).level;
+      const lim = getEffectiveDailyLimit(feature, lvl, tier, settings);
+      if (lim >= UNLIMITED) return true;
+      const used = parseInt(localStorage.getItem(storageKey) || '0', 10);
+      if (used >= lim) {
+        const label = feature === 'video' ? 'Video' : feature === 'pdf' ? 'PDF' : 'Audio/TTS';
+        showAlert(`🚫 Aaj ki ${label} limit khatam (${lim}/${lim}). Kal reset hoga!`, 'INFO');
+        return false;
+      }
+      localStorage.setItem(storageKey, String(used + 1));
+      return true;
+    } catch { return true; }
   };
 
   // --- BROADCAST REDEEM CODE DELIVERY ---
@@ -2015,8 +2054,12 @@ export const StudentDashboard: React.FC<Props> = ({
   // Flashcard launcher (Lucent + Homework MCQs share this single overlay)
   const [flashcardMcqs, setFlashcardMcqs] = useState<{ items: any[]; title: string; subtitle: string; subject?: string } | null>(null);
   const [hwMcqMode, setHwMcqMode] = useState<Record<string, 'interactive' | 'reveal'>>({});
+  const [hwMcqCurrentIdx, setHwMcqCurrentIdx] = useState<Record<string, number>>({});
   // Per-question selected option for Lucent interactive-mode MCQs (key = `${pageKey}_${qi}`)
   const [lucentMcqAnswers, setLucentMcqAnswers] = useState<Record<string, number>>({});
+  // One-at-a-time index for interactive MCQ mode (per pageKey)
+  const [lucentMcqCurrentIdx, setLucentMcqCurrentIdx] = useState<Record<string, number>>({});
+  const lucentAutoNextTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 'html' = styled HTML view (default), 'chunk' = ChunkedNotesReader tappable lines
   const [lucentNotesViewMode, setLucentNotesViewMode] = useState<'html' | 'chunk'>('chunk');
   // Tracks htmlViewMode inside ChunkedNotesReader (for download sync without unmounting reader)
@@ -2602,8 +2645,53 @@ export const StudentDashboard: React.FC<Props> = ({
       showAlert('This Lucent page is no longer available.', 'ERROR');
       return;
     }
-    setLucentNoteViewer(found);
-    setLucentPageIndex(Math.min(entry.pageIndex, (found.pages?.length || 1) - 1));
+    tryOpenLucentNote(found, Math.min(entry.pageIndex, (found.pages?.length || 1) - 1));
+  };
+
+  // ── Chunk-Notes daily gate ────────────────────────────────────────────────
+  // Enforces reading limit per tier/level; paid users can spend 5 CR to unlock extra reads.
+  const CN_CREDIT_COST = 5;
+  const _cnDailyKey = `nst_cn_daily_${user.id}_${_todayKey}`;
+
+  const tryOpenLucentNote = (entry: any, pageIdx = 0, extraOpts?: { force?: boolean }) => {
+    if (!entry) return;
+    const isAdmin = user.role === 'ADMIN' || user.role === 'SUB_ADMIN';
+    if (isAdmin || extraOpts?.force) {
+      setLucentNoteViewer(entry);
+      setLucentPageIndex(pageIdx);
+      return;
+    }
+    const tier: 'FREE' | 'BASIC' | 'ULTRA' = _isUltraUser ? 'ULTRA' : _isBasicUser ? 'BASIC' : 'FREE';
+    const lim = getEffectiveDailyLimit('notes', _userLevel, tier, settings);
+    const used = parseInt(localStorage.getItem(_cnDailyKey) || '0', 10);
+    if (lim === -1 || used < lim) {
+      try { localStorage.setItem(_cnDailyKey, String(used + 1)); } catch {}
+      setLucentNoteViewer(entry);
+      setLucentPageIndex(pageIdx);
+      return;
+    }
+    // Limit reached
+    if (tier === 'FREE') {
+      showAlert(`📖 Aaj ke liye padhne ki limit khatam ho gayi (${lim} notes). Basic/Ultra plan upgrade karein ya kal aayein!`, 'INFO');
+      return;
+    }
+    // Paid user: offer credit unlock
+    const totalCR = getTotalCredits(user);
+    if (totalCR < CN_CREDIT_COST) {
+      showAlert(`📖 Aaj ki reading limit khatam ho gayi (${lim} notes). Credits bhi kam hain (${totalCR} CR). Kal reset hoga!`, 'INFO');
+      return;
+    }
+    const updatedUser = applyDeduction(user, CN_CREDIT_COST);
+    if (!updatedUser) {
+      showAlert('Credit deduction mein error. Dobara try karein.', 'ERROR');
+      return;
+    }
+    handleUserUpdate(updatedUser);
+    try { saveUserToLive(updatedUser); } catch {}
+    try { localStorage.setItem(_cnDailyKey, String(used + 1)); } catch {}
+    showAlert(`✅ ${CN_CREDIT_COST} CR use hoye — extra note unlock!`, 'SUCCESS');
+    setLucentNoteViewer(entry);
+    setLucentPageIndex(pageIdx);
   };
 
   // Closes any in-progress note reader BEFORE switching bottom-nav tabs.
@@ -2878,10 +2966,9 @@ export const StudentDashboard: React.FC<Props> = ({
         stopProfileStarRead();
         setShowStarredPage(false);
         setShowCommunityStarsPage(false);
-        setLucentNoteViewer(found);
         const totalPages = (found.pages?.length || 1);
         const idx = Number.isFinite(source.pageIndex) ? Math.min(Math.max(0, source.pageIndex!), totalPages - 1) : 0;
-        setLucentPageIndex(idx);
+        tryOpenLucentNote(found, idx);
         return true;
       }
       if (source.kind === 'homework' && source.hwId) {
@@ -4789,6 +4876,8 @@ export const StudentDashboard: React.FC<Props> = ({
                             });
                             markReadToday(activeHw.id);
                           } catch {}
+                          const _ttsKey = `nst_tts_daily_${user.id}_${new Date().toISOString().split('T')[0]}`;
+                          if (!checkDailyGate('tts', _ttsKey)) { stopSpeech(); return; }
                         }}
                         // When TTS finishes the LAST topic, mark this note as fully read
                         // so the History page can show a green Done badge.
@@ -4832,14 +4921,24 @@ export const StudentDashboard: React.FC<Props> = ({
                           </button>
                         )}
                         {activeHw.videoUrl && (
-                          <button onClick={() => setHwVideoVisible(v => !v)}
+                          <button onClick={() => {
+                            if (!hwVideoVisible) {
+                              const _k = `nst_vid_daily_${user.id}_${new Date().toISOString().split('T')[0]}`;
+                              if (!checkDailyGate('video', _k)) return;
+                            }
+                            setHwVideoVisible(v => !v);
+                          }}
                             className={`aspect-square flex flex-col items-center justify-center gap-1.5 rounded-2xl active:scale-95 transition-all border-2 ${hwVideoVisible ? 'bg-rose-100 border-rose-400' : 'bg-rose-50 border-rose-200'}`}>
                             <Play size={22} className="text-rose-600" />
                             <span className="text-[10px] font-black text-rose-700 uppercase tracking-wide">Video</span>
                           </button>
                         )}
                         {activeHw.pdfUrl && (
-                          <button onClick={() => setHwActivePdf(activeHw.pdfUrl!)}
+                          <button onClick={() => {
+                            const _k = `nst_pdf_daily_${user.id}_${new Date().toISOString().split('T')[0]}`;
+                            if (!checkDailyGate('pdf', _k)) return;
+                            setHwActivePdf(activeHw.pdfUrl!);
+                          }}
                             className="aspect-square flex flex-col items-center justify-center gap-1.5 bg-amber-50 border-2 border-amber-200 rounded-2xl active:scale-95 transition-all">
                             <FileText size={22} className="text-amber-600" />
                             <span className="text-[10px] font-black text-amber-700 uppercase tracking-wide">PDF</span>
@@ -4944,79 +5043,148 @@ export const StudentDashboard: React.FC<Props> = ({
                         sahi jawab directly.
                       Flashcard mode launches FlashcardMcqView where tap-to-read
                       lives on the cards themselves. No manual toggle needed. */}
-                  <div className="space-y-3">
-                    {activeHw.parsedMcqs!.map((mcq, qi) => {
-                      const ansKey = `${hwKey}_${qi}`;
+                  <div>
+                    {(() => {
                       const hwMode = hwMcqMode[hwKey] || 'interactive';
+                      const mcqs = activeHw.parsedMcqs!;
+                      const totalQ = mcqs.length;
+
+                      // ── Q&A REVEAL MODE: question + answer only, no options ──
+                      if (hwMode === 'reveal') {
+                        return (
+                          <div className="space-y-3">
+                            {mcqs.map((mcq, qi) => (
+                              <div key={qi} className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
+                                <p className="text-sm font-bold text-slate-800 leading-snug mb-3">{qi + 1}. {mcq.question}</p>
+                                <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-start gap-2">
+                                  <span className="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs font-black flex items-center justify-center shrink-0 mt-0.5">
+                                    {String.fromCharCode(65 + mcq.correctAnswer)}
+                                  </span>
+                                  <p className="text-sm font-black text-emerald-900 flex-1">{mcq.options[mcq.correctAnswer] || '—'}</p>
+                                </div>
+                                {mcq.explanation && (
+                                  <p className="text-xs text-slate-600 mt-2 bg-amber-50 border border-amber-200 rounded-xl p-3 leading-relaxed">
+                                    <span className="font-black text-amber-700">💡</span> {mcq.explanation}
+                                  </p>
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        );
+                      }
+
+                      // ── INTERACTIVE MCQ MODE: one-at-a-time ──
+                      const ci = hwMcqCurrentIdx[hwKey] ?? 0;
+                      const mcq = mcqs[ci];
+                      if (!mcq) return null;
+                      const ansKey = `${hwKey}_${ci}`;
                       const selected = hwAnswers[ansKey];
-                      // In reveal mode, treat all questions as "answered correctly" so the
-                      // correct option is highlighted and the explanation is visible without
-                      // any tap. The student can flip to Khud Banao any time to actually quiz.
-                      const isRevealMode = hwMode === 'reveal';
-                      const showResult = isRevealMode || selected !== undefined;
-                      // Per-question speaker mode is derived from practice mode.
-                      const cardTtsMode: 'qa' | 'all' = isRevealMode ? 'qa' : 'all';
+                      const isAnswered = selected !== undefined;
+
+                      const attempted = mcqs.reduce((acc, _, i) => hwAnswers[`${hwKey}_${i}`] !== undefined ? acc + 1 : acc, 0);
+                      const right = mcqs.reduce((acc, m, i) => {
+                        const s = hwAnswers[`${hwKey}_${i}`];
+                        return s !== undefined && s === m.correctAnswer ? acc + 1 : acc;
+                      }, 0);
+                      const wrong = attempted - right;
+
                       return (
-                        <div key={qi} className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
-                          <div className="flex items-start justify-between gap-2 mb-3">
-                            <p className="text-sm font-bold text-slate-800 leading-snug flex-1">{qi + 1}. {mcq.question}</p>
-                            <McqSpeakButtons
-                              question={mcq.question}
-                              options={mcq.options}
-                              correctAnswer={mcq.correctAnswer}
-                              className="shrink-0"
-                              mode={cardTtsMode}
-                            />
+                        <div>
+                          {/* Stats bar */}
+                          <div className="grid grid-cols-4 gap-1.5 mb-3">
+                            <div className="bg-slate-100 rounded-xl py-2 text-center">
+                              <div className="text-[9px] font-bold text-slate-500 uppercase">Tried</div>
+                              <div className="text-sm font-black text-slate-800">{attempted}</div>
+                            </div>
+                            <div className="bg-emerald-50 rounded-xl py-2 text-center">
+                              <div className="text-[9px] font-bold text-emerald-600 uppercase">✅ Sahi</div>
+                              <div className="text-sm font-black text-emerald-700">{right}</div>
+                            </div>
+                            <div className="bg-rose-50 rounded-xl py-2 text-center">
+                              <div className="text-[9px] font-bold text-rose-600 uppercase">❌ Galat</div>
+                              <div className="text-sm font-black text-rose-700">{wrong}</div>
+                            </div>
+                            <div className="bg-indigo-50 rounded-xl py-2 text-center">
+                              <div className="text-[9px] font-bold text-indigo-600 uppercase">🏆</div>
+                              <div className="text-sm font-black text-indigo-700">{right}</div>
+                            </div>
                           </div>
-                          <div className="space-y-2">
-                            {mcq.options.map((opt, oi) => {
-                              const isSelected = selected === oi;
-                              const isCorrect = mcq.correctAnswer === oi;
-                              return (
-                                <button
-                                  key={oi}
-                                  disabled={isRevealMode}
-                                  onClick={() => {
-                                    if (isRevealMode || selected !== undefined) return;
+                          {/* Progress */}
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="text-[11px] font-black text-slate-600 shrink-0"><span className="text-indigo-600">{ci + 1}</span>/{totalQ}</span>
+                            <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                              <div className="h-full bg-indigo-500 transition-all rounded-full" style={{ width: `${((ci + 1) / Math.max(1, totalQ)) * 100}%` }} />
+                            </div>
+                          </div>
+                          {/* Single question card */}
+                          <div className="bg-white rounded-2xl p-4 border border-slate-200 shadow-sm">
+                            <div className="flex items-start justify-between gap-2 mb-3">
+                              <p className="text-sm font-bold text-slate-800 leading-snug flex-1"><span className="text-indigo-600 font-black">Q{ci + 1}.</span> {mcq.question}</p>
+                              <McqSpeakButtons question={mcq.question} options={mcq.options} correctAnswer={mcq.correctAnswer} className="shrink-0" mode="all" />
+                            </div>
+                            <div className="space-y-2">
+                              {mcq.options.map((opt, oi) => {
+                                const isOpt = mcq.correctAnswer === oi;
+                                const isSel = selected === oi;
+                                let cls = 'w-full text-left text-sm px-4 py-2.5 rounded-xl border-2 transition-all font-medium flex items-center gap-2 ';
+                                if (isAnswered) {
+                                  cls += isOpt ? 'bg-green-50 border-green-400 text-green-800 font-bold'
+                                    : isSel ? 'bg-red-50 border-red-400 text-red-800'
+                                    : 'bg-slate-50 border-slate-200 text-slate-400 opacity-60';
+                                } else {
+                                  cls += 'bg-slate-50 border-slate-200 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50';
+                                }
+                                return (
+                                  <button key={oi} disabled={isAnswered} onClick={() => {
+                                    if (isAnswered) return;
                                     setHwAnswers(prev => ({ ...prev, [ansKey]: oi }));
-                                    // Voice feedback on a wrong choice — speaks the
-                                    // correct answer in Hinglish so the student gets
-                                    // immediate audible confirmation. Right answer stays
-                                    // silent (the green tick + colour change is enough).
-                                    if (!isCorrect) {
-                                      const correctLetter = String.fromCharCode(65 + mcq.correctAnswer);
-                                      const correctText = (mcq.options[mcq.correctAnswer] || '')
-                                        .replace(/<[^>]+>/g, ' ')
-                                        .replace(/\s+/g, ' ')
-                                        .trim();
+                                    trackDailyMcqAnswer(oi === mcq.correctAnswer);
+                                    if (!isOpt) {
+                                      const cText = (mcq.options[mcq.correctAnswer] || '').replace(/<[^>]+>/g,' ').trim();
                                       stopSpeech();
-                                      speakText(
-                                        `Galat answer. Sahi answer ye hai: Option ${correctLetter}, ${correctText}.`,
-                                        null,
-                                        1.0,
-                                        'hi-IN',
-                                      ).catch(() => {});
+                                      speakText(`Galat. Sahi: Option ${String.fromCharCode(65+mcq.correctAnswer)}, ${cText}.`, null, 1.0, 'hi-IN').catch(()=>{});
                                     }
-                                  }}
-                                  className={`w-full text-left text-sm px-4 py-2.5 rounded-xl border-2 transition-all font-medium ${showResult
-                                    ? (isCorrect ? 'bg-green-50 border-green-400 text-green-800 font-bold'
-                                      : isSelected ? 'bg-red-50 border-red-400 text-red-800'
-                                      : 'bg-slate-50 border-slate-200 text-slate-500')
-                                    : 'bg-slate-50 border-slate-200 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50'}`}>
-                                  <span className="font-black mr-2">{String.fromCharCode(65 + oi)}.</span>{opt}
-                                  {showResult && isCorrect && <span className="ml-2 text-green-700">✅</span>}
-                                </button>
-                              );
-                            })}
+                                    if (ci < totalQ - 1) {
+                                      if (lucentAutoNextTimerRef.current) clearTimeout(lucentAutoNextTimerRef.current);
+                                      lucentAutoNextTimerRef.current = setTimeout(() => {
+                                        setHwMcqCurrentIdx(prev => ({ ...prev, [hwKey]: Math.min((prev[hwKey] ?? 0) + 1, totalQ - 1) }));
+                                      }, 1200);
+                                    }
+                                  }} className={cls}>
+                                    <span className="font-black shrink-0">{String.fromCharCode(65+oi)}.</span>
+                                    <span className="flex-1">{opt}</span>
+                                    {isAnswered && isOpt && <span>✅</span>}
+                                    {isAnswered && isSel && !isOpt && <span>❌</span>}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                            {isAnswered && mcq.explanation && (
+                              <p className="text-xs text-slate-600 mt-3 bg-amber-50 border border-amber-200 rounded-xl p-3 leading-relaxed">
+                                <span className="font-black text-amber-700">💡 Explanation:</span> {mcq.explanation}
+                              </p>
+                            )}
                           </div>
-                          {(isRevealMode || selected !== undefined) && mcq.explanation && (
-                            <p className="text-xs text-slate-600 mt-3 bg-amber-50 border border-amber-200 rounded-xl p-3 leading-relaxed">
-                              <span className="font-black text-amber-700">💡 Explanation:</span> {mcq.explanation}
-                            </p>
-                          )}
+                          {/* Back / Next */}
+                          <div className="mt-3 flex gap-3">
+                            {ci > 0 ? (
+                              <button onClick={() => { if (lucentAutoNextTimerRef.current) clearTimeout(lucentAutoNextTimerRef.current); setHwMcqCurrentIdx(prev => ({ ...prev, [hwKey]: ci - 1 })); }}
+                                className="py-3 px-5 rounded-2xl bg-white border-2 border-slate-200 text-slate-700 font-bold text-sm flex items-center gap-1.5 active:scale-95 transition">← Pichla</button>
+                            ) : (
+                              <div className="py-3 px-5 rounded-2xl bg-slate-50 border-2 border-slate-100 text-slate-300 font-bold text-sm select-none">← Pichla</div>
+                            )}
+                            {ci < totalQ - 1 ? (
+                              <button onClick={() => { if (lucentAutoNextTimerRef.current) clearTimeout(lucentAutoNextTimerRef.current); setHwMcqCurrentIdx(prev => ({ ...prev, [hwKey]: ci + 1 })); }}
+                                className={`flex-1 py-3 rounded-2xl font-black text-sm flex items-center justify-center gap-1.5 active:scale-95 transition shadow-md ${isAnswered ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'}`}>
+                                Agla →
+                              </button>
+                            ) : (
+                              <div className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-black text-sm flex items-center justify-center shadow-md">🎯 Sab Ho Gaya!</div>
+                            )}
+                          </div>
                         </div>
                       );
-                    })}
+                    })()}
                   </div>
                   {/* Score Summary — appears at the bottom of the MCQ list. Updates live as the
                       student answers; hides while nothing is attempted to avoid a "0/0" empty state. */}
@@ -7034,8 +7202,7 @@ export const StudentDashboard: React.FC<Props> = ({
                                   <button
                                     key={`lh_${h.entry.id}_${h.pageIndex}_${i}`}
                                     onClick={() => {
-                                      setLucentNoteViewer(h.entry);
-                                      setLucentPageIndex(h.pageIndex);
+                                      tryOpenLucentNote(h.entry, h.pageIndex);
                                       setPendingReadQuery(homeSearchQuery.trim());
                                       setShowHomeSearch(false);
                                       setHomeSearchQuery('');
@@ -7786,102 +7953,6 @@ export const StudentDashboard: React.FC<Props> = ({
                   }
                 />
               </>
-            );
-          })()}
-          {(() => {
-            const packages = settings?.packages || [
-              { id: 'pkg-1', credits: 100, price: 10 },
-              { id: 'pkg-2', credits: 200, price: 20 },
-              { id: 'pkg-3', credits: 500, price: 50 },
-              { id: 'pkg-4', credits: 1000, price: 100 },
-              { id: 'pkg-5', credits: 2000, price: 200 },
-              { id: 'pkg-6', credits: 5000, price: 500 },
-            ];
-            const event = settings?.specialDiscountEvent;
-            const isEventActive = (() => {
-              if (!event?.enabled) return false;
-              const now = Date.now();
-              const startsAt = event.startsAt ? new Date(event.startsAt).getTime() : 0;
-              const endsAt = event.endsAt ? new Date(event.endsAt).getTime() : Infinity;
-              if (startsAt === endsAt && now >= startsAt) return true;
-              return now >= startsAt && now < endsAt;
-            })();
-            const isSubscribed = user.isPremium && user.subscriptionEndDate && new Date(user.subscriptionEndDate) > new Date();
-            const totalScore = user.totalScore || 0;
-            const scoreDiscount = (() => {
-              const l = getLevelInfo ? getLevelInfo(totalScore) : null;
-              return (l as any)?.discount ?? 0;
-            })();
-            return (
-              <div className="animate-in fade-in duration-200 pb-28 bg-black min-h-screen">
-                <div className="px-4 pt-4" />
-                {/* Current Balance */}
-                <div className="mx-4 mb-4 px-4 py-3 rounded-2xl flex items-center gap-3" style={{ background: 'linear-gradient(90deg, rgba(245,158,11,0.12), rgba(234,88,12,0.08))', border: '1.5px solid rgba(245,158,11,0.25)' }}>
-                  <span className="text-2xl">🪙</span>
-                  <div>
-                    <p className="text-xs text-slate-500 font-bold">Aapke paas hain</p>
-                    <p className="text-lg font-black text-amber-300">{((user.credits ?? 0) + (user.bonusCredits ?? 0)).toLocaleString('en-IN')} <span className="text-xs text-amber-600">CR</span></p>
-                  </div>
-                  {(user.bonusCredits ?? 0) > 0 && (
-                    <div className="ml-auto text-right">
-                      <p className="text-[9px] text-emerald-500 font-black">+{user.bonusCredits} Bonus</p>
-                      <p className="text-[8px] text-slate-600">included</p>
-                    </div>
-                  )}
-                </div>
-                {/* Coin Packages */}
-                <div className="px-4 grid grid-cols-3 gap-2.5 mb-4">
-                  {packages.slice(0, 6).map((pkg: any) => {
-                    let finalPrice = pkg.price;
-                    let creditDiscount = 0;
-                    if (isEventActive && event?.discountPercent) creditDiscount += event.discountPercent;
-                    if (isSubscribed) creditDiscount += 5;
-                    if (user.storeDiscount) creditDiscount += user.storeDiscount;
-                    if (scoreDiscount > 0) creditDiscount += scoreDiscount;
-                    if (creditDiscount > 100) creditDiscount = 100;
-                    if (creditDiscount > 0) finalPrice = Math.round(pkg.price * (1 - creditDiscount / 100));
-                    const bonusConfig = (settings as any)?.coinPurchaseBonus;
-                    let extraCredits = 0;
-                    if (bonusConfig?.active && pkg.price >= (bonusConfig.minAmount || 0)) {
-                      extraCredits = Math.floor(pkg.credits * (bonusConfig.percent / 100));
-                    }
-                    const totalCredits = pkg.credits + extraCredits;
-                    const isDiscounted = finalPrice < pkg.price;
-                    return (
-                      <button
-                        key={pkg.id}
-                        onClick={() => {
-                          const message = `Hello Admin, I want to buy:\n\nItem: ${totalCredits} Credits\nPrice: ₹${finalPrice}\nUser ID: ${user.id}\nDetails: ${totalCredits} Credits Top-up\n\nPlease share payment details.`;
-                          const payNum = (settings?.paymentNumbers || [{ number: '8227070298' }])[0];
-                          window.open(`https://wa.me/91${payNum.number}?text=${encodeURIComponent(message)}`, '_blank');
-                        }}
-                        className="bg-[#111] border border-slate-800 p-3 rounded-2xl hover:bg-[#1a1a1a] hover:border-amber-500/30 transition-all text-center group relative overflow-hidden"
-                      >
-                        {extraCredits > 0 && (
-                          <div className="absolute top-0 right-0 bg-amber-500 text-black text-[7px] font-black px-1.5 py-0.5 rounded-bl-xl">+{extraCredits}</div>
-                        )}
-                        <div className="text-amber-400 text-lg mb-0.5">🪙</div>
-                        <p className="text-white font-black text-sm leading-none">{totalCredits.toLocaleString('en-IN')}</p>
-                        <p className="text-[10px] mt-1.5 font-bold">
-                          {isDiscounted ? (
-                            <><span className="text-slate-600 line-through mr-1">₹{pkg.price}</span><span className="text-emerald-400">₹{finalPrice}</span></>
-                          ) : (
-                            <span className="text-slate-400">₹{pkg.price}</span>
-                          )}
-                        </p>
-                      </button>
-                    );
-                  })}
-                </div>
-                {/* Earn coins CTA */}
-                <div className="mx-4 mt-2 px-4 py-3 rounded-2xl flex items-center gap-3" style={{ background: 'rgba(245,158,11,0.07)', border: '1px dashed rgba(245,158,11,0.25)' }}>
-                  <span className="text-xl">🎰</span>
-                  <div className="flex-1">
-                    <p className="text-xs font-black text-amber-400">Free mein bhi kama sakte ho!</p>
-                    <p className="text-[10px] text-slate-600">Neeche Plans section → Earn pe jaake Spin karo</p>
-                  </div>
-                </div>
-              </div>
             );
           })()}
         </div>
@@ -8702,6 +8773,20 @@ export const StudentDashboard: React.FC<Props> = ({
                         </div>
                       </div>
 
+                      {/* Aaj ki Limits — opens DAILY tab of score panel */}
+                      <div className="px-4 pt-3 pb-3 border-b border-slate-100">
+                        <button
+                          onClick={() => { setShowDotsMenu(false); setShowScorePanel(true); setScorePanelTab('DAILY'); }}
+                          className="w-full flex items-center gap-3 p-2.5 rounded-xl bg-emerald-50 border border-emerald-100 hover:bg-emerald-100 active:scale-95 transition-all"
+                        >
+                          <span className="text-base">📊</span>
+                          <div className="text-left">
+                            <p className="text-xs font-black text-emerald-800">Aaj ki Usage Limits</p>
+                            <p className="text-[10px] text-emerald-600">MCQ, Notes, TTS, Downloads aur aur</p>
+                          </div>
+                        </button>
+                      </div>
+
                       {/* Quick Actions */}
                       <div className="px-4 pt-3 pb-3 border-b border-slate-100">
                         <p className="text-[10px] font-black text-slate-400 uppercase tracking-widest mb-2">Quick Access</p>
@@ -8776,7 +8861,7 @@ export const StudentDashboard: React.FC<Props> = ({
               const _li = getLevelInfo(_ls);
               return (
                 <button
-                  onClick={() => setShowScorePanel(true)}
+                  onClick={() => { setShowScorePanel(true); setScorePanelTab('DAILY'); }}
                   className={`relative overflow-hidden inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full shadow-sm text-[8px] font-black border backdrop-blur-sm whitespace-nowrap shrink-0 active:scale-95 transition-all w-[64px] justify-center bg-white/15 text-white border-white/30`}
                   title="View my level"
                   style={{ boxShadow: `0 0 8px ${_li.glowColor}` }}
@@ -11310,7 +11395,11 @@ export const StudentDashboard: React.FC<Props> = ({
                                 </div>
                               )}
                               {hw.pdfUrl && (
-                                <button onClick={() => setHwActivePdf(hw.pdfUrl!)}
+                                <button onClick={() => {
+                                  const _k = `nst_pdf_daily_${user.id}_${new Date().toISOString().split('T')[0]}`;
+                                  if (!checkDailyGate('pdf', _k)) return;
+                                  setHwActivePdf(hw.pdfUrl!);
+                                }}
                                   className="w-full bg-amber-50 border border-amber-200 p-3 rounded-xl flex items-center gap-3 hover:bg-amber-100 active:scale-[0.98] transition-all">
                                   <FileText className="text-amber-600 shrink-0" size={16} />
                                   <span className="text-sm font-bold text-amber-800">Open PDF</span>
@@ -12262,8 +12351,7 @@ export const StudentDashboard: React.FC<Props> = ({
                             onClick={() => {
                               // Open this lesson at the first page of this topic
                               const firstPgIdx = (lce.pages || []).findIndex(p => (p.topicName || '').trim() === topicName);
-                              setLucentNoteViewer(lce);
-                              setLucentPageIndex(Math.max(0, firstPgIdx));
+                              tryOpenLucentNote(lce, Math.max(0, firstPgIdx));
                               setLucentLessonCompare(null);
                             }}
                             className="flex-1 py-2 text-[11px] font-black text-indigo-600 flex items-center justify-center gap-1 hover:bg-indigo-50 transition-colors"
@@ -13996,9 +14084,8 @@ export const StudentDashboard: React.FC<Props> = ({
                     return;
                   }
                   markContentItemSeen(user.id, item.id);
-                  setLucentNoteViewer(entry);
                   setLucentPageListViewer(entry);
-                  setLucentPageIndex(item.pageIndex);
+                  tryOpenLucentNote(entry, item.pageIndex);
                   setShowInbox(false);
                 };
 
@@ -14709,6 +14796,8 @@ export const StudentDashboard: React.FC<Props> = ({
                         });
                         markReadToday(recId);
                       } catch {}
+                      const _ttsKey = `nst_tts_daily_${user.id}_${new Date().toISOString().split('T')[0]}`;
+                      if (!checkDailyGate('tts', _ttsKey)) { stopSpeech(); return; }
                     }}
                     onComplete={() => {
                       // Mark this lucent page as fully read for the History badge.
@@ -15060,110 +15149,229 @@ RULES:
                       </button>
                     )}
 
-                    {/* MCQ cards (Speedy-style inline) — supports both 'reveal' and 'interactive' modes */}
+                    {/* MCQ cards — 'reveal' = all at once, 'interactive' = one-at-a-time */}
                     {(() => {
                       const mode = lucentMcqMode[pageKey] || 'reveal';
-                      return mcqs.map((q, qi) => {
-                        const isRevealed = qi < revealedCount;
-                        const ansKey = `${pageKey}_${qi}`;
-                        const selected = lucentMcqAnswers[ansKey];
-                        const interactiveAnswered = mode === 'interactive' && selected !== undefined;
-                        const showAnswerColors = mode === 'interactive' ? interactiveAnswered : isRevealed;
-                        const showExplanations = mode === 'interactive' ? interactiveAnswered : isRevealed;
 
-                        return (
-                          <div key={(q as any).id || qi} className="bg-white border border-purple-100 rounded-2xl p-4 shadow-sm">
+                      // ── REVEAL (Q&A) MODE — question + answer only, no options ──
+                      if (mode === 'reveal') {
+                        return mcqs.map((q, qi) => {
+                          const isRevealed = qi < revealedCount;
+                          const answerText = (q.options || [])[q.correctAnswer] || '—';
+                          const answerLetter = String.fromCharCode(65 + q.correctAnswer);
+                          return (
+                            <div key={(q as any).id || qi} className="bg-white border border-purple-100 rounded-2xl p-4 shadow-sm">
+                              <div className="flex items-start gap-2 mb-2">
+                                <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 shrink-0">Q {qi + 1}</span>
+                                {q.topic && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 truncate">{q.topic}</span>}
+                              </div>
+                              <p className="text-sm font-black text-slate-800 leading-snug mb-3">{q.question}</p>
+                              {!isRevealed ? (
+                                <button
+                                  onClick={() => setLucentMcqRevealed(prev => ({ ...prev, [pageKey]: Math.max(prev[pageKey] || 0, qi + 1) }))}
+                                  className="w-full py-2.5 rounded-xl bg-purple-100 hover:bg-purple-200 text-purple-700 font-black text-xs active:scale-95 transition flex items-center justify-center gap-2"
+                                >
+                                  👁 Answer dekhein
+                                </button>
+                              ) : (
+                                <>
+                                  <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3 flex items-start gap-2 mb-2">
+                                    <span className="w-6 h-6 rounded-full bg-emerald-600 text-white text-xs font-black flex items-center justify-center shrink-0">{answerLetter}</span>
+                                    <p className="text-sm font-black text-emerald-900 flex-1">{answerText}</p>
+                                  </div>
+                                  <div className="space-y-1 text-[11px] leading-relaxed">
+                                    {q.concept && <p className="bg-blue-50 border border-blue-100 rounded-lg px-2.5 py-1.5 text-slate-700"><span className="font-black text-blue-700">💡</span> {q.concept}</p>}
+                                    {q.explanation && <p className="bg-slate-50 border border-slate-100 rounded-lg px-2.5 py-1.5 text-slate-700"><span className="font-black text-slate-700">🔎</span> {q.explanation}</p>}
+                                    {q.examTip && <p className="bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 text-slate-700"><span className="font-black text-amber-700">🎯</span> {q.examTip}</p>}
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          );
+                        });
+                      }
+
+                      // ── INTERACTIVE (MCQ) MODE — one-at-a-time ──
+                      const ci = lucentMcqCurrentIdx[pageKey] ?? 0;
+                      const totalQ = mcqs.length;
+                      const cq = mcqs[ci];
+                      if (!cq) return null;
+                      const ansKey = `${pageKey}_${ci}`;
+                      const selected = lucentMcqAnswers[ansKey];
+                      const isAnswered = selected !== undefined;
+                      const isCorrect = isAnswered && selected === cq.correctAnswer;
+
+                      // Stats
+                      const attempted = mcqs.reduce((acc, _, i) => lucentMcqAnswers[`${pageKey}_${i}`] !== undefined ? acc + 1 : acc, 0);
+                      const right = mcqs.reduce((acc, q2, i) => {
+                        const s = lucentMcqAnswers[`${pageKey}_${i}`];
+                        return (s !== undefined && s === q2.correctAnswer) ? acc + 1 : acc;
+                      }, 0);
+                      const wrong = attempted - right;
+                      const allDone = attempted === totalQ;
+
+                      return (
+                        <div>
+                          {/* Stats bar */}
+                          <div className="grid grid-cols-4 gap-1.5 mb-3">
+                            <div className="bg-slate-100 rounded-xl py-2 text-center">
+                              <div className="text-[9px] font-bold text-slate-500 uppercase">Tried</div>
+                              <div className="text-sm font-black text-slate-800">{attempted}</div>
+                            </div>
+                            <div className="bg-emerald-50 rounded-xl py-2 text-center">
+                              <div className="text-[9px] font-bold text-emerald-600 uppercase">✅ Sahi</div>
+                              <div className="text-sm font-black text-emerald-700">{right}</div>
+                            </div>
+                            <div className="bg-rose-50 rounded-xl py-2 text-center">
+                              <div className="text-[9px] font-bold text-rose-600 uppercase">❌ Galat</div>
+                              <div className="text-sm font-black text-rose-700">{wrong}</div>
+                            </div>
+                            <div className="bg-indigo-50 rounded-xl py-2 text-center">
+                              <div className="text-[9px] font-bold text-indigo-600 uppercase">🏆 Score</div>
+                              <div className="text-sm font-black text-indigo-700">{right}</div>
+                            </div>
+                          </div>
+
+                          {/* Progress */}
+                          <div className="flex items-center gap-2 mb-3">
+                            <span className="text-[11px] font-black text-slate-600 shrink-0">
+                              <span className="text-indigo-600">{ci + 1}</span>/{totalQ}
+                            </span>
+                            <div className="flex-1 h-1.5 bg-slate-200 rounded-full overflow-hidden">
+                              <div className="h-full bg-indigo-500 transition-all rounded-full" style={{ width: `${((ci + 1) / Math.max(1, totalQ)) * 100}%` }} />
+                            </div>
+                          </div>
+
+                          {/* All-done result card */}
+                          {allDone && (
+                            <div className="bg-gradient-to-br from-indigo-500 to-purple-600 text-white rounded-2xl p-4 mb-3 text-center">
+                              <p className="text-[10px] font-black uppercase tracking-wider opacity-80 mb-1">Final Score</p>
+                              <p className="text-2xl font-black mb-2">{Math.round((right / totalQ) * 100)}%</p>
+                              <p className="text-xs opacity-80 mb-3">{right}/{totalQ} sahi</p>
+                              <button
+                                onClick={() => {
+                                  if (lucentAutoNextTimerRef.current) clearTimeout(lucentAutoNextTimerRef.current);
+                                  setLucentMcqAnswers(prev => {
+                                    const n = { ...prev };
+                                    mcqs.forEach((_, i) => delete n[`${pageKey}_${i}`]);
+                                    return n;
+                                  });
+                                  setLucentMcqCurrentIdx(prev => ({ ...prev, [pageKey]: 0 }));
+                                }}
+                                className="px-5 py-2 bg-white/20 hover:bg-white/30 rounded-xl font-black text-sm active:scale-95 transition"
+                              >
+                                🔄 Phir se Karo
+                              </button>
+                            </div>
+                          )}
+
+                          {/* Single question card */}
+                          <div className="bg-white border border-purple-100 rounded-2xl p-4 shadow-sm">
                             <div className="flex items-start gap-2 mb-2">
-                              <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 shrink-0">Q {qi + 1}</span>
-                              {q.topic && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 truncate">{q.topic}</span>}
-                              {q.difficulty && (
+                              <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 shrink-0">Q {ci + 1}</span>
+                              {cq.topic && <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 truncate">{cq.topic}</span>}
+                              {cq.difficulty && (
                                 <span className={`ml-auto text-[10px] font-black px-2 py-0.5 rounded-full ${
-                                  q.difficulty === 'EASY' ? 'bg-emerald-100 text-emerald-700' :
-                                  q.difficulty === 'HARD' ? 'bg-rose-100 text-rose-700' :
+                                  cq.difficulty === 'EASY' ? 'bg-emerald-100 text-emerald-700' :
+                                  cq.difficulty === 'HARD' ? 'bg-rose-100 text-rose-700' :
                                   'bg-amber-100 text-amber-700'
-                                }`}>📊 {q.difficulty}</span>
+                                }`}>{cq.difficulty}</span>
                               )}
                             </div>
                             <div className="flex items-start justify-between gap-2 mb-3">
-                              <p className="text-sm font-black text-slate-800 leading-snug flex-1">{q.question}</p>
+                              <p className="text-sm font-black text-slate-800 leading-snug flex-1">{cq.question}</p>
                               <McqSpeakButtons
-                                question={q.question}
-                                options={q.options || []}
-                                correctAnswer={q.correctAnswer}
+                                question={cq.question}
+                                options={cq.options || []}
+                                correctAnswer={cq.correctAnswer}
                                 className="shrink-0"
-                                allQuestions={mcqs as any}
-                                index={qi}
                               />
                             </div>
                             <div className="space-y-1.5 mb-3">
-                              {(q.options || []).map((opt: string, oi: number) => {
-                                const isCorrect = oi === q.correctAnswer;
-                                const isSelected = mode === 'interactive' && selected === oi;
-                                let cls = 'px-3 py-2 rounded-xl text-xs font-bold border transition-all flex items-start gap-2';
-                                if (showAnswerColors) {
-                                  if (isCorrect) cls += ' bg-emerald-50 border-emerald-300 text-emerald-800';
-                                  else if (isSelected) cls += ' bg-rose-50 border-rose-300 text-rose-800';
-                                  else cls += ' bg-slate-50 border-slate-200 text-slate-500 opacity-70';
+                              {(cq.options || []).map((opt: string, oi: number) => {
+                                const isOpt = oi === cq.correctAnswer;
+                                const isSel = selected === oi;
+                                let cls = 'px-3 py-2.5 rounded-xl text-xs font-bold border-2 transition-all flex items-center gap-2 w-full text-left ';
+                                if (isAnswered) {
+                                  if (isOpt) cls += 'bg-emerald-50 border-emerald-400 text-emerald-800';
+                                  else if (isSel) cls += 'bg-rose-50 border-rose-400 text-rose-800';
+                                  else cls += 'bg-slate-50 border-slate-200 text-slate-400 opacity-60';
                                 } else {
-                                  cls += mode === 'interactive'
-                                    ? ' bg-slate-50 border-slate-200 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 cursor-pointer'
-                                    : ' bg-slate-50 border-slate-200 text-slate-700';
+                                  cls += 'bg-white border-slate-200 text-slate-700 hover:border-indigo-300 hover:bg-indigo-50 cursor-pointer';
                                 }
-                                const onClick = () => {
-                                  if (mode !== 'interactive') return;
-                                  if (selected !== undefined) return;
-                                  setLucentMcqAnswers(prev => ({ ...prev, [ansKey]: oi }));
-                                };
                                 return (
                                   <button
                                     type="button"
                                     key={oi}
-                                    onClick={onClick}
-                                    disabled={mode !== 'interactive' || selected !== undefined}
-                                    className={`${cls} w-full text-left`}
+                                    disabled={isAnswered}
+                                    onClick={() => {
+                                      if (isAnswered) return;
+                                      setLucentMcqAnswers(prev => ({ ...prev, [ansKey]: oi }));
+                                      // auto-next after 1.2s (if not last question)
+                                      if (ci < totalQ - 1) {
+                                        if (lucentAutoNextTimerRef.current) clearTimeout(lucentAutoNextTimerRef.current);
+                                        lucentAutoNextTimerRef.current = setTimeout(() => {
+                                          setLucentMcqCurrentIdx(prev => ({ ...prev, [pageKey]: Math.min((prev[pageKey] ?? 0) + 1, totalQ - 1) }));
+                                        }, 1200);
+                                      }
+                                    }}
+                                    className={cls}
                                   >
-                                    <span className="font-black mr-1">{String.fromCharCode(65 + oi)}.</span>
+                                    <span className={`w-5 h-5 rounded-full border-2 flex items-center justify-center text-[10px] font-black shrink-0 ${isAnswered && isOpt ? 'bg-emerald-500 border-emerald-500 text-white' : isAnswered && isSel ? 'bg-rose-500 border-rose-500 text-white' : 'border-slate-300 text-slate-500'}`}>
+                                      {String.fromCharCode(65 + oi)}
+                                    </span>
                                     <span className="flex-1">{opt}</span>
-                                    {showAnswerColors && isCorrect && <span>✅</span>}
-                                    {showAnswerColors && isSelected && !isCorrect && <span>❌</span>}
+                                    {isAnswered && isOpt && <span className="text-emerald-600 text-sm">✅</span>}
+                                    {isAnswered && isSel && !isOpt && <span className="text-rose-600 text-sm">❌</span>}
                                   </button>
                                 );
                               })}
                             </div>
-                            {/* Reveal mode trigger */}
-                            {mode === 'reveal' && !isRevealed && (
-                              <button
-                                onClick={() => setLucentMcqRevealed(prev => ({ ...prev, [pageKey]: Math.max(prev[pageKey] || 0, qi + 1) }))}
-                                className="w-full py-2 rounded-xl bg-purple-100 hover:bg-purple-200 text-purple-700 font-black text-xs active:scale-95 transition"
-                              >
-                                Show Answer & Explanation
-                              </button>
-                            )}
-                            {/* Interactive mode hint when not yet answered */}
-                            {mode === 'interactive' && selected === undefined && (
-                              <p className="text-[10px] font-bold text-slate-400 text-center py-1">Pick an option</p>
-                            )}
-                            {/* Reset for interactive */}
-                            {mode === 'interactive' && selected !== undefined && (
-                              <button
-                                onClick={() => setLucentMcqAnswers(prev => { const n = { ...prev }; delete n[ansKey]; return n; })}
-                                className="w-full mt-1 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 font-bold text-[11px] active:scale-95 transition"
-                              >
-                                🔄 Try again
-                              </button>
-                            )}
-                            {showExplanations && (
+                            {/* Explanation after answering */}
+                            {isAnswered && (
                               <div className="space-y-1.5 text-[11px] leading-relaxed mt-2">
-                                {q.concept && <p className="bg-blue-50 border border-blue-100 rounded-lg px-2.5 py-1.5 text-slate-700"><span className="font-black text-blue-700">💡 Concept:</span> {q.concept}</p>}
-                                {q.explanation && <p className="bg-slate-50 border border-slate-100 rounded-lg px-2.5 py-1.5 text-slate-700"><span className="font-black text-slate-700">🔎 Explanation:</span> {q.explanation}</p>}
-                                {q.examTip && <p className="bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 text-slate-700"><span className="font-black text-amber-700">🎯 Exam Tip:</span> {q.examTip}</p>}
-                                {q.commonMistake && <p className="bg-rose-50 border border-rose-100 rounded-lg px-2.5 py-1.5 text-slate-700"><span className="font-black text-rose-700">⚠ Common Mistake:</span> {q.commonMistake}</p>}
-                                {q.mnemonic && <p className="bg-purple-50 border border-purple-100 rounded-lg px-2.5 py-1.5 text-slate-700"><span className="font-black text-purple-700">🧠 Memory Trick:</span> {q.mnemonic}</p>}
+                                {cq.explanation && <p className="bg-slate-50 border border-slate-100 rounded-lg px-2.5 py-1.5 text-slate-700"><span className="font-black text-slate-700">🔎 Explanation:</span> {cq.explanation}</p>}
+                                {cq.concept && <p className="bg-blue-50 border border-blue-100 rounded-lg px-2.5 py-1.5 text-slate-700"><span className="font-black text-blue-700">💡 Concept:</span> {cq.concept}</p>}
+                                {cq.examTip && <p className="bg-amber-50 border border-amber-100 rounded-lg px-2.5 py-1.5 text-slate-700"><span className="font-black text-amber-700">🎯 Exam Tip:</span> {cq.examTip}</p>}
                               </div>
                             )}
                           </div>
-                        );
-                      });
+
+                          {/* Back / Next buttons */}
+                          <div className="mt-3 flex gap-3">
+                            {ci > 0 ? (
+                              <button
+                                onClick={() => {
+                                  if (lucentAutoNextTimerRef.current) clearTimeout(lucentAutoNextTimerRef.current);
+                                  setLucentMcqCurrentIdx(prev => ({ ...prev, [pageKey]: ci - 1 }));
+                                }}
+                                className="py-3 px-5 rounded-2xl bg-white border-2 border-slate-200 text-slate-700 font-bold text-sm flex items-center gap-1.5 active:scale-95 transition"
+                              >
+                                ← Pichla
+                              </button>
+                            ) : (
+                              <div className="py-3 px-5 rounded-2xl bg-slate-50 border-2 border-slate-100 text-slate-300 font-bold text-sm select-none">← Pichla</div>
+                            )}
+                            {ci < totalQ - 1 ? (
+                              <button
+                                onClick={() => {
+                                  if (lucentAutoNextTimerRef.current) clearTimeout(lucentAutoNextTimerRef.current);
+                                  setLucentMcqCurrentIdx(prev => ({ ...prev, [pageKey]: ci + 1 }));
+                                }}
+                                className={`flex-1 py-3 rounded-2xl font-black text-sm flex items-center justify-center gap-1.5 active:scale-95 transition shadow-md ${
+                                  isAnswered ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500'
+                                }`}
+                              >
+                                Agla →
+                              </button>
+                            ) : (
+                              <div className="flex-1 py-3 rounded-2xl bg-gradient-to-r from-indigo-600 to-purple-600 text-white font-black text-sm flex items-center justify-center shadow-md">
+                                🎯 Sab Ho Gaya!
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      );
                     })()}
 
                   </div>
@@ -15866,6 +16074,9 @@ RULES:
           subtitle={flashcardMcqs.subtitle}
           subject={flashcardMcqs.subject}
           onBack={() => setFlashcardMcqs(null)}
+          user={user}
+          settings={settings}
+          onUpdateUser={handleUserUpdate}
         />
       )}
 
@@ -17219,6 +17430,12 @@ RULES:
                     : `nst_free_html_${user.id}_${todayStr}`
                   ) || '0', 10) : 0;
                   const _paidWriteUsed = _isOwnTier ? parseInt(localStorage.getItem(`nst_paid_write_${user.id}_${todayStr}`) || '0', 10) : 0;
+                  const _cnUsed    = _isOwnTier ? parseInt(localStorage.getItem(`nst_cn_daily_${user.id}_${todayStr}`) || '0', 10) : 0;
+                  const _ttsUsed   = _isOwnTier ? parseInt(localStorage.getItem(`nst_tts_daily_${user.id}_${todayStr}`) || '0', 10) : 0;
+                  const _fcUsed    = _isOwnTier ? parseInt(localStorage.getItem(`nst_fc_daily_${user.id}_${new Date().toDateString()}`) || '0', 10) : 0;
+                  const _vidUsed   = _isOwnTier ? parseInt(localStorage.getItem(`nst_vid_daily_${user.id}_${todayStr}`) || '0', 10) : 0;
+                  const _pdfUsed   = _isOwnTier ? parseInt(localStorage.getItem(`nst_pdf_daily_${user.id}_${todayStr}`) || '0', 10) : 0;
+                  const _spinUsed  = _isOwnTier ? parseInt(localStorage.getItem(`nst_spin_daily_${user.id}_${todayStr}`) || '0', 10) : 0;
 
                   // ── Bar color based on usage % ──
                   const _barClr = (pct: number) =>
@@ -17438,35 +17655,46 @@ RULES:
 
                         {/* Notes Reading */}
                         {_isUnlimNotes
-                          ? _renderCard('📖', 'Notes Reading', null, 0, true, 'free', null, false)
+                          ? _renderCard('📖', 'Notes Reading', null, _cnUsed, true, 'free', null, true)
                           : _renderCard('📖', 'Notes Reading',
                               _tier === 'ULTRA' ? _ld.notes.ultra : _tier === 'BASIC' ? _ld.notes.basic : _ld.notes.free,
-                              0, false, 'free', null, false)}
+                              _cnUsed, false, 'free',
+                              _ldNext ? (_tier === 'ULTRA' ? _ldNext.notes.ultra : _tier === 'BASIC' ? _ldNext.notes.basic : _ldNext.notes.free) : null,
+                              true)}
 
                         {/* Audio / TTS */}
                         {_isUnlimNotes
-                          ? _renderCard('🎧', 'Audio / TTS', null, 0, true, 'free', null, false)
+                          ? _renderCard('🎧', 'Audio / TTS', null, _ttsUsed, true, 'free', null, true)
                           : _renderCard('🎧', 'Audio / TTS',
                               _tier === 'ULTRA' ? _ld.tts.ultra : _tier === 'BASIC' ? _ld.tts.basic : _ld.tts.free,
-                              0, false, 'free', null, false)}
+                              _ttsUsed, false, 'free',
+                              _ldNext ? (_tier === 'ULTRA' ? _ldNext.tts.ultra : _tier === 'BASIC' ? _ldNext.tts.basic : _ldNext.tts.free) : null,
+                              true)}
+
+                        {/* Flashcards */}
+                        {_renderCard('🃏', 'Flashcards',
+                            _tier === 'ULTRA' ? _ld.flashcard.ultra : _tier === 'BASIC' ? _ld.flashcard.basic : _ld.flashcard.free,
+                            _fcUsed, false, 'free',
+                            _ldNext ? (_tier === 'ULTRA' ? _ldNext.flashcard.ultra : _tier === 'BASIC' ? _ldNext.flashcard.basic : _ldNext.flashcard.free) : null,
+                            true)}
 
                         {/* ── CREDIT features (blue) ── */}
                         {/* Video Lectures */}
                         {_vidLim > 0
-                          ? _renderCard('🎬', 'Video Lectures', _vidLim, 0, false, 'free', _vidNext, false)
-                          : _renderCard('🎬', 'Video Lectures', null, 0, false, 'credit', null, false, _vidCrCost)}
+                          ? _renderCard('🎬', 'Video Lectures', _vidLim, _vidUsed, false, 'free', _vidNext, false)
+                          : _renderCard('🎬', 'Video Lectures', null, _vidUsed, false, 'credit', null, false, _vidCrCost)}
 
                         {/* PDF / Notes Access */}
                         {_pdfLim > 0
-                          ? _renderCard('📄', 'PDF / Notes Access', _pdfLim, 0, false, 'free', _pdfNext, false)
-                          : _renderCard('📄', 'PDF / Notes Access', null, 0, false, 'credit', null, false, _pdfCrCost)}
+                          ? _renderCard('📄', 'PDF / Notes Access', _pdfLim, _pdfUsed, false, 'free', _pdfNext, false)
+                          : _renderCard('📄', 'PDF / Notes Access', null, _pdfUsed, false, 'credit', null, false, _pdfCrCost)}
 
                         {/* Concept Notes: credit if plan has it, locked if FREE */}
                         {_conLim > 0
-                          ? _renderCard('💡', 'Concept Notes', _conLim, 0, false, 'free', _conNext, false)
+                          ? _renderCard('💡', 'Concept Notes', _conLim, _cnUsed, false, 'free', _conNext, false)
                           : _tier === 'FREE'
-                            ? _renderCard('💡', 'Concept Notes', null, 0, false, 'locked', null, false)
-                            : _renderCard('💡', 'Concept Notes', null, 0, false, 'credit', null, false, _wrtCrCost)}
+                            ? _renderCard('💡', 'Concept Notes', null, _cnUsed, false, 'locked', null, false)
+                            : _renderCard('💡', 'Concept Notes', null, _cnUsed, false, 'credit', null, false, _wrtCrCost)}
 
                         {/* Retention Notes: locked on FREE, credit on BASIC/ULTRA */}
                         {_retLim > 0
@@ -17478,6 +17706,152 @@ RULES:
                         {/* Write (Credits) — always credit (blue) */}
                         {_renderCard('✏️', 'Write Mode (Credits)', _creditMax, _paidWriteUsed, false, 'credit', null, true, _wrtCrCost)}
 
+                      </div>
+
+                      {/* ── All-Tier Comparison Table ── */}
+                      <div className="rounded-2xl overflow-hidden border border-white/10">
+                        <div className="px-3 py-2 border-b border-white/6 flex items-center gap-2" style={{ background: 'rgba(255,255,255,0.03)' }}>
+                          <span>📊</span>
+                          <div className="flex-1 min-w-0">
+                            <p className="text-[9px] font-black text-white uppercase tracking-widest">Sabhi Plans Ki Limits — Level {lvl.level}</p>
+                            <p className="text-[7px] text-slate-500 mt-0.5">Teeno tiers + aaj ki usage ek nazar mein</p>
+                          </div>
+                        </div>
+                        {/* Header row */}
+                        <div className="grid border-b border-white/6 text-center" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1.1fr' }}>
+                          <div className="px-2 py-1.5 text-[7px] font-black text-slate-500 uppercase text-left">Feature</div>
+                          <div className="py-1.5 text-[7px] font-black text-slate-400 border-l border-white/5" style={{ background: 'rgba(71,85,105,0.12)' }}>🆓 Free</div>
+                          <div className="py-1.5 text-[7px] font-black text-sky-400 border-l border-white/5" style={{ background: 'rgba(14,165,233,0.07)' }}>🔵 Pro</div>
+                          <div className="py-1.5 text-[7px] font-black text-violet-400 border-l border-white/5" style={{ background: 'rgba(124,58,237,0.1)' }}>⚡ Max</div>
+                          <div className="py-1.5 text-[7px] font-black text-amber-400 border-l border-white/5" style={{ background: 'rgba(251,191,36,0.08)' }}>📊 Aaj</div>
+                        </div>
+                        {/* Data rows */}
+                        {(() => {
+                          const _spinF = settings?.spinLimitFree  ?? 2;
+                          const _spinB = settings?.spinLimitBasic ?? 5;
+                          const _spinU = settings?.spinLimitUltra ?? 10;
+                          // usageMap: label → today's used count (only tracked features)
+                          const _usageMap: Record<string, number> = {
+                            'MCQ Practice':  _mcqUsed,
+                            'Downloads':     _dlUsed,
+                            'PDF Access':    _pdfUsed,
+                            'Video':         _vidUsed,
+                            'Notes Reading': _cnUsed,
+                            'Audio / TTS':   _ttsUsed,
+                            'Flashcards':    _fcUsed,
+                            'Write Mode':    _writeUsed,
+                            'Spin Wheel':    _spinUsed,
+                          };
+                          const rows = [
+                            { icon: '❓', label: 'MCQ Practice',   f: _ld.mcq.free,       b: _ld.mcq.basic,       u: _ld.mcq.ultra },
+                            { icon: '📥', label: 'Downloads',      f: _ld.dl.free,        b: _ld.dl.basic,        u: _ld.dl.ultra },
+                            { icon: '📄', label: 'PDF Access',     f: _ld.pdf.free,       b: _ld.pdf.basic,       u: _ld.pdf.ultra },
+                            { icon: '🎬', label: 'Video',          f: _ld.video.free,     b: _ld.video.basic,     u: _ld.video.ultra },
+                            { icon: '📖', label: 'Notes Reading',  f: _ld.notes.free,     b: _ld.notes.basic,     u: _ld.notes.ultra },
+                            { icon: '🎧', label: 'Audio / TTS',    f: _ld.tts.free,       b: _ld.tts.basic,       u: _ld.tts.ultra },
+                            { icon: '🃏', label: 'Flashcards',     f: _ld.flashcard.free, b: _ld.flashcard.basic, u: _ld.flashcard.ultra },
+                            { icon: '✍️', label: 'Write Mode',     f: _ld.write.free,     b: _ld.write.basic,     u: _ld.write.ultra },
+                            { icon: '💡', label: 'Concept Notes',  f: _ld.concept.free,   b: _ld.concept.basic,   u: _ld.concept.ultra },
+                            { icon: '🔁', label: 'Retention',      f: _ld.retention.free, b: _ld.retention.basic, u: _ld.retention.ultra },
+                            { icon: '🎰', label: 'Spin Wheel',     f: _spinF,             b: _spinB,              u: _spinU },
+                          ];
+                          const fmt = (v: number) => v >= UNLIMITED ? '∞' : v === 0 ? '🔒' : String(v);
+                          const clr = (v: number, base: string) => v >= UNLIMITED ? '#10b981' : v === 0 ? '#334155' : base;
+                          return rows.map((row, idx) => {
+                            const fStr = fmt(row.f), bStr = fmt(row.b), uStr = fmt(row.u);
+                            const myLim = _tier === 'ULTRA' ? row.u : _tier === 'BASIC' ? row.b : row.f;
+                            const usedVal = _usageMap[row.label] ?? null;
+                            const isTracked = usedVal !== null && _isOwnTier;
+                            const usePct = (isTracked && myLim > 0 && myLim < UNLIMITED) ? Math.min(100, Math.round((usedVal! / myLim) * 100)) : 0;
+                            const useClr = isTracked
+                              ? (myLim >= UNLIMITED ? '#10b981' : usePct >= 100 ? '#ef4444' : usePct >= 75 ? '#f97316' : usePct >= 50 ? '#eab308' : usePct >= 25 ? '#3b82f6' : '#22c55e')
+                              : '#475569';
+                            return (
+                              <div key={row.label} className={`border-b border-white/[0.04]`} style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1.1fr', display: 'grid' }}>
+                                <div className="px-2 py-2 flex items-center gap-1.5 min-w-0">
+                                  <span className="text-xs shrink-0">{row.icon}</span>
+                                  <p className="text-[7px] font-bold text-slate-300 leading-tight truncate">{row.label}</p>
+                                </div>
+                                <div className="py-2 flex items-center justify-center border-l border-white/[0.04]" style={{ background: 'rgba(71,85,105,0.06)' }}>
+                                  <span className="text-[8px] font-black" style={{ color: clr(row.f, '#94a3b8') }}>{fStr}</span>
+                                </div>
+                                <div className="py-2 flex items-center justify-center border-l border-white/[0.04]" style={{ background: 'rgba(14,165,233,0.04)' }}>
+                                  <span className="text-[8px] font-black" style={{ color: clr(row.b, '#38bdf8') }}>{bStr}</span>
+                                </div>
+                                <div className="py-2 flex items-center justify-center border-l border-white/[0.04]" style={{ background: 'rgba(124,58,237,0.06)' }}>
+                                  <span className="text-[8px] font-black" style={{ color: clr(row.u, '#a78bfa') }}>{uStr}</span>
+                                </div>
+                                {/* Aaj column — color-coded usage bar + number */}
+                                <div className="py-1.5 px-1.5 flex flex-col items-center justify-center gap-0.5 border-l border-white/[0.04]" style={{ background: 'rgba(251,191,36,0.04)' }}>
+                                  {isTracked ? (
+                                    <>
+                                      <span className="text-[8px] font-black" style={{ color: useClr }}>
+                                        {myLim >= UNLIMITED ? `${usedVal}` : `${usedVal}/${myLim}`}
+                                      </span>
+                                      {myLim > 0 && myLim < UNLIMITED && (
+                                        <div className="w-full h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                                          <div className="h-full rounded-full transition-all" style={{ width: `${usePct}%`, background: useClr }} />
+                                        </div>
+                                      )}
+                                      {myLim >= UNLIMITED && <span className="text-[6px] text-emerald-500 font-black">∞</span>}
+                                    </>
+                                  ) : (
+                                    <span className="text-[7px] text-slate-600">—</span>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()}
+                        {/* Bonus Login Credits row */}
+                        <div className="border-t border-white/[0.04]" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1.1fr', display: 'grid' }}>
+                          <div className="px-2 py-2 flex items-center gap-1.5">
+                            <span className="text-xs">🎁</span>
+                            <p className="text-[7px] font-bold text-slate-300 leading-tight">Login CR</p>
+                          </div>
+                          {[0,1,2].map(i => (
+                            <div key={i} className="py-2 flex items-center justify-center border-l border-white/[0.04]"
+                              style={{ background: i === 0 ? 'rgba(71,85,105,0.06)' : i === 1 ? 'rgba(14,165,233,0.04)' : 'rgba(124,58,237,0.06)' }}>
+                              <span className="text-[8px] font-black text-amber-400">
+                                {_ld.bonusLoginCredits > 0 ? `+${_ld.bonusLoginCredits}` : '—'}
+                              </span>
+                            </div>
+                          ))}
+                          <div className="py-2 flex items-center justify-center border-l border-white/[0.04]" style={{ background: 'rgba(251,191,36,0.04)' }}>
+                            <span className="text-[7px] text-slate-600">—</span>
+                          </div>
+                        </div>
+                        {/* Credit Write Max row */}
+                        <div className="border-t border-white/[0.04]" style={{ gridTemplateColumns: '2fr 1fr 1fr 1fr 1.1fr', display: 'grid' }}>
+                          <div className="px-2 py-2 flex items-center gap-1.5">
+                            <span className="text-xs">✏️</span>
+                            <p className="text-[7px] font-bold text-slate-300 leading-tight">Write (Max)</p>
+                          </div>
+                          {[0,1,2].map(i => (
+                            <div key={i} className="py-2 flex items-center justify-center border-l border-white/[0.04]"
+                              style={{ background: i === 0 ? 'rgba(71,85,105,0.06)' : i === 1 ? 'rgba(14,165,233,0.04)' : 'rgba(124,58,237,0.06)' }}>
+                              <span className="text-[8px] font-black text-sky-400">{_creditMax}</span>
+                            </div>
+                          ))}
+                          <div className="py-1.5 px-1.5 flex flex-col items-center justify-center gap-0.5 border-l border-white/[0.04]" style={{ background: 'rgba(251,191,36,0.04)' }}>
+                            {_isOwnTier ? (() => {
+                              const wPct = _creditMax > 0 ? Math.min(100, Math.round((_paidWriteUsed / _creditMax) * 100)) : 0;
+                              const wClr = wPct >= 100 ? '#ef4444' : wPct >= 75 ? '#f97316' : wPct >= 50 ? '#eab308' : wPct >= 25 ? '#3b82f6' : '#22c55e';
+                              return (
+                                <>
+                                  <span className="text-[8px] font-black" style={{ color: wClr }}>{_paidWriteUsed}/{_creditMax}</span>
+                                  <div className="w-full h-1 rounded-full overflow-hidden" style={{ background: 'rgba(255,255,255,0.08)' }}>
+                                    <div className="h-full rounded-full transition-all" style={{ width: `${wPct}%`, background: wClr }} />
+                                  </div>
+                                </>
+                              );
+                            })() : <span className="text-[7px] text-slate-600">—</span>}
+                          </div>
+                        </div>
+                        {/* Footer note */}
+                        <div className="px-3 py-2 border-t border-white/6" style={{ background: 'rgba(255,255,255,0.02)' }}>
+                          <p className="text-[7px] text-slate-600">🔒 = Locked · ∞ = Unlimited · 📊 Aaj = Aaj ki actual usage (sirf apna plan)</p>
+                        </div>
                       </div>
 
                       {/* Upgrade nudge */}
@@ -18015,6 +18389,13 @@ RULES:
                       basic: fmt(ld.tts.basic),
                       ultra: fmt(ld.tts.ultra),
                       unlimitedAt: 9,
+                    },
+                    {
+                      icon: '🃏', label: 'Flashcards',
+                      free:  fmt(ld.flashcard.free),
+                      basic: fmt(ld.flashcard.basic),
+                      ultra: fmt(ld.flashcard.ultra),
+                      freeNote: '+10/level',
                     },
                     {
                       icon: '💰', label: 'Login Bonus CR',
