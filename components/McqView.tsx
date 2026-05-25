@@ -1272,6 +1272,9 @@ export const McqView: React.FC<Props> = ({
                                   {/* Top row: chip + topic + TTS + share */}
                                   <div className="flex items-start gap-2 mb-3">
                                       <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 shrink-0">Q {ci + 1}</span>
+                                      {ci === totalQ - 1 && !listSubmitted && (
+                                          <span className="text-[10px] font-black px-2 py-0.5 rounded-full bg-rose-100 text-rose-700 shrink-0 animate-pulse">🏁 Last Question</span>
+                                      )}
                                       {cq.topic && (
                                           <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 truncate min-w-0">{cq.topic}</span>
                                       )}
@@ -1373,7 +1376,7 @@ export const McqView: React.FC<Props> = ({
                                   )}
                               </div>
 
-                              {/* Navigation: Prev | Submit | Next */}
+                              {/* Navigation: Prev | Submit | Next/Skip/SubmitQuiz */}
                               <div className="mt-3 flex gap-2">
                                   {/* Prev */}
                                   {ci > 0 ? (
@@ -1400,6 +1403,19 @@ export const McqView: React.FC<Props> = ({
                                       >
                                           <RefreshCw size={14}/> Restart
                                       </button>
+                                  ) : ci === totalQ - 1 ? (
+                                      /* On last question — show full Submit Quiz button in centre */
+                                      <button
+                                          onClick={handleSubmit}
+                                          disabled={mcqAttempted === 0}
+                                          className={`flex-1 py-3 rounded-2xl font-black text-sm flex items-center justify-center gap-1.5 active:scale-95 transition shadow-md ${
+                                              mcqAttempted > 0
+                                                  ? 'bg-gradient-to-r from-emerald-500 to-teal-600 text-white shadow-emerald-200'
+                                                  : 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                          }`}
+                                      >
+                                          <CheckCircle size={14}/> Submit Quiz
+                                      </button>
                                   ) : (
                                       <button
                                           onClick={handleSubmit}
@@ -1414,7 +1430,7 @@ export const McqView: React.FC<Props> = ({
                                       </button>
                                   )}
 
-                                  {/* Next */}
+                                  {/* Next / Skip — hidden on last question (Submit takes that role) */}
                                   {ci < totalQ - 1 ? (
                                       <button
                                           onClick={() => {
@@ -1424,17 +1440,25 @@ export const McqView: React.FC<Props> = ({
                                           className={`py-3 px-4 rounded-2xl font-black text-sm flex items-center justify-center gap-1 active:scale-95 transition shadow-md ${
                                               cqAnswered || (listMode === 'qa' && listRevealed[ci])
                                                   ? 'bg-indigo-600 text-white'
-                                                  : 'bg-slate-200 text-slate-500'
+                                                  : 'bg-slate-100 text-slate-500 border border-slate-200'
                                           }`}
                                       >
-                                          Next <ChevronDown size={15} className="-rotate-90" />
+                                          {isMcq && !cqAnswered ? 'Skip' : 'Next'} <ChevronDown size={15} className="-rotate-90" />
                                       </button>
                                   ) : (
-                                      <div className="py-3 px-4 rounded-2xl bg-slate-50 border-2 border-slate-100 text-slate-300 font-bold text-sm flex items-center gap-1 select-none">
-                                          Next <ChevronDown size={15} className="-rotate-90" />
+                                      /* Last question — no Next button, submit is in centre */
+                                      <div className="py-3 px-4 rounded-2xl bg-slate-50 border-2 border-slate-100 text-slate-300 font-bold text-sm flex items-center gap-1 select-none opacity-0 pointer-events-none">
+                                          <ChevronDown size={15} className="-rotate-90" />
                                       </div>
                                   )}
                               </div>
+
+                              {/* Last question bottom hint */}
+                              {ci === totalQ - 1 && !listSubmitted && mcqAttempted > 0 && (
+                                  <p className="text-center text-[10px] text-emerald-600 font-bold mt-2">
+                                      ✅ {mcqAttempted}/{totalQ} attempt — Submit karein result dekhne ke liye
+                                  </p>
+                              )}
                           </div>
                       )}
 

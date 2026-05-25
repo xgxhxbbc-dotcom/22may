@@ -1931,17 +1931,6 @@ export const PdfView: React.FC<Props> = ({
                                        >
                                            <RotateCcw size={11} /> Rot
                                        </button>
-                                       <button
-                                           onClick={() => {
-                                               const htmlContent = deepDiveTopics.map(t => `<h2>${t.title}</h2>${t.content}`).join('<hr/>');
-                                               saveOfflineItem({ id: `deep_dive_${chapter.id}`, type: 'NOTE', title: 'Deep Dive Notes', subtitle: `${subject.name} - ${chapter.title}`, data: { html: htmlContent } });
-                                               setAlertConfig({isOpen: true, message: 'Deep Dive Notes Saved Offline! Access them in the History tab.'});
-                                           }}
-                                           className="p-1.5 rounded-full text-slate-600 hover:bg-slate-100 transition-colors"
-                                           aria-label="Save offline"
-                                       >
-                                           <Download size={14} />
-                                       </button>
                                        {deepDiveViewMode === 'html' && (
                                            <button
                                                onClick={async () => {

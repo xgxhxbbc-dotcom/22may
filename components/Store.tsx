@@ -232,15 +232,19 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
       <div className="px-4 pt-5">
 
         {/* PLAN TYPE SELECTOR — Premium tab switcher */}
+        {(() => {
+          const isGameEnabled = settings?.isGameEnabled !== false;
+          const allTabs = [
+            { id: 'BASIC' as const, label: 'PRO', icon: '⭐', desc: 'Basic' },
+            { id: 'ULTRA' as const, label: 'MAX', icon: '⚡', desc: 'Ultra' },
+            { id: 'CREDITS' as const, label: 'Credits', icon: '🪙', desc: 'Buy' },
+            ...(isGameEnabled ? [{ id: 'EARN' as const, label: 'Earn', icon: '🎰', desc: 'Free' }] : []),
+          ];
+          return (
         <div className="mb-5">
           <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">Choose Your Plan</p>
-          <div className="grid grid-cols-4 gap-2">
-            {[
-              { id: 'BASIC' as const, label: 'PRO', icon: '⭐', desc: 'Basic' },
-              { id: 'ULTRA' as const, label: 'MAX', icon: '⚡', desc: 'Ultra' },
-              { id: 'CREDITS' as const, label: 'Credits', icon: '🪙', desc: 'Buy' },
-              { id: 'EARN' as const, label: 'Earn', icon: '🎰', desc: 'Free' },
-            ].map(tab => {
+          <div className={`grid gap-2 ${allTabs.length === 3 ? 'grid-cols-3' : 'grid-cols-4'}`}>
+            {allTabs.map(tab => {
               const isActive = tierType === tab.id;
               return (
                 <button
@@ -268,6 +272,8 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
             })}
           </div>
         </div>
+          );
+        })()}
 
         {/* SPECIAL DISCOUNT EVENT BANNER */}
         {showEventBanner && (
@@ -311,8 +317,8 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
         )}
 
 
-        {/* EARN CONTENT */}
-        {tierType === 'EARN' && (
+        {/* EARN CONTENT — only when game feature is enabled */}
+        {tierType === 'EARN' && settings?.isGameEnabled !== false && (
           <div className="animate-in fade-in duration-200">
             {renderEarnContent ?? (
               <div className="text-center py-12 text-slate-500 font-bold">
