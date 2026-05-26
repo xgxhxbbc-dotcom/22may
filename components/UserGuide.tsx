@@ -607,160 +607,308 @@ export const UserGuide: React.FC<Props> = ({ onClose }) => {
 
     const totalItems = SECTIONS.reduce((acc, s) => acc + s.items.length, 0);
 
+    /* ── premium colour tokens ── */
+    const C = {
+        bg:         '#07090f',
+        surface:    '#0c1120',
+        card:       '#101828',
+        cardHover:  '#131f2f',
+        border:     'rgba(59,130,246,0.14)',
+        borderBright:'rgba(59,130,246,0.32)',
+        accent:     '#3b82f6',
+        accentSoft: 'rgba(59,130,246,0.12)',
+        accentGlow: 'rgba(59,130,246,0.22)',
+        text:       '#f1f5f9',
+        textMuted:  '#64748b',
+        textDim:    '#334155',
+    };
+
     return (
-        <div className="fixed inset-0 z-[9998] bg-slate-50 flex flex-col animate-in slide-in-from-bottom-8 duration-250">
-            {/* HEADER */}
-            <div className="bg-gradient-to-br from-indigo-700 via-violet-700 to-purple-700 px-4 pt-5 pb-4 text-white shrink-0 relative overflow-hidden shadow-xl">
-                <div className="absolute inset-0 opacity-10">
-                    <BookOpen size={220} className="absolute -right-10 -bottom-10 rotate-12" />
+        <div className="fixed inset-0 z-[9998] flex flex-col"
+            style={{ background: C.bg, fontFamily:'system-ui,-apple-system,sans-serif' }}>
+
+            {/* ════════════════════════════════
+                HEADER  — cinematic premium
+            ════════════════════════════════ */}
+            <div className="shrink-0 relative overflow-hidden px-5 pt-6 pb-5"
+                style={{
+                    background: 'linear-gradient(160deg,#0a0f1e 0%,#0f1f3d 45%,#0a1428 100%)',
+                    borderBottom: `1px solid ${C.borderBright}`,
+                    boxShadow: '0 1px 0 rgba(59,130,246,0.08)',
+                }}>
+                {/* ambient glows */}
+                <div style={{ position:'absolute', inset:0, pointerEvents:'none' }}>
+                    <div style={{ position:'absolute', top:-30, left:-20, width:200, height:160, borderRadius:'50%',
+                        background:'radial-gradient(circle,rgba(37,99,235,0.22) 0%,transparent 70%)', filter:'blur(1px)' }} />
+                    <div style={{ position:'absolute', bottom:-20, right:-10, width:150, height:120, borderRadius:'50%',
+                        background:'radial-gradient(circle,rgba(99,102,241,0.14) 0%,transparent 70%)' }} />
                 </div>
-                <div className="relative z-10 flex items-start gap-3">
-                    <div className="w-11 h-11 bg-white/20 rounded-2xl flex items-center justify-center shrink-0 mt-0.5">
-                        <GraduationCap size={22} />
+                {/* shimmer line at top */}
+                <div style={{ position:'absolute', top:0, left:0, right:0, height:2,
+                    background:'linear-gradient(90deg,transparent 0%,rgba(59,130,246,0.7) 40%,rgba(99,102,241,0.7) 60%,transparent 100%)' }} />
+
+                <div className="relative z-10 flex items-center gap-4">
+                    {/* icon */}
+                    <div className="shrink-0 w-12 h-12 rounded-2xl flex items-center justify-center"
+                        style={{
+                            background:'linear-gradient(135deg,rgba(37,99,235,0.3) 0%,rgba(99,102,241,0.2) 100%)',
+                            border:'1px solid rgba(99,102,241,0.45)',
+                            boxShadow:'0 0 18px rgba(59,130,246,0.25), inset 0 1px 0 rgba(255,255,255,0.07)',
+                        }}>
+                        <GraduationCap size={23} style={{ color:'#93c5fd' }} />
                     </div>
                     <div className="flex-1 min-w-0">
-                        <h1 className="text-lg font-black leading-tight">Student Help Guide</h1>
-                        <p className="text-indigo-200 text-[11px] font-medium mt-0.5">
-                            Har feature ki poori jaankaari — {totalItems} topics covered
+                        <div className="flex items-center gap-2">
+                            <h1 className="text-xl font-black tracking-tight" style={{ color:'#f8fafc' }}>App Guide</h1>
+                            <span className="text-[9px] font-black px-2 py-0.5 rounded-full tracking-wider"
+                                style={{ background:'rgba(59,130,246,0.2)', color:'#93c5fd', border:'1px solid rgba(59,130,246,0.4)', letterSpacing:'0.08em' }}>
+                                PREMIUM
+                            </span>
+                        </div>
+                        <p className="text-[11px] font-medium mt-0.5" style={{ color:'#475569' }}>
+                            {totalItems} features · complete reference guide
                         </p>
                     </div>
-                    <button
-                        onClick={onClose}
-                        className="w-9 h-9 bg-white/15 rounded-full flex items-center justify-center hover:bg-white/25 transition-colors shrink-0"
-                    >
-                        <X size={18} />
+                    <button onClick={onClose}
+                        className="shrink-0 w-9 h-9 rounded-full flex items-center justify-center active:scale-90 transition-transform"
+                        style={{
+                            background:'rgba(255,255,255,0.05)',
+                            border:'1px solid rgba(255,255,255,0.1)',
+                            boxShadow:'inset 0 1px 0 rgba(255,255,255,0.06)',
+                        }}>
+                        <X size={16} style={{ color:'#94a3b8' }} />
                     </button>
                 </div>
-                <p className="relative z-10 text-indigo-100 text-[12px] leading-relaxed mt-2.5">
-                    App ke <strong>saare features, buttons aur sections</strong> ka poora explanation — Credits se lekar AI tak, sab kuch samjhein.
-                </p>
             </div>
 
-            {/* SEARCH */}
-            <div className="px-4 py-3 bg-white border-b border-slate-100 shrink-0 shadow-sm">
+            {/* ════════════════════════════════
+                SEARCH
+            ════════════════════════════════ */}
+            <div className="shrink-0 px-4 py-3"
+                style={{ background: C.surface, borderBottom:`1px solid ${C.border}` }}>
                 <div className="relative">
-                    <Search size={15} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <Search size={14} className="absolute left-3.5 top-1/2 -translate-y-1/2" style={{ color:'#334155' }} />
                     <input
                         type="text"
-                        placeholder="Koi bhi feature search karo... (e.g. coins, MCQ, streak)"
+                        placeholder="Search — coins, MCQ, video, streak, AI..."
                         value={search}
                         onChange={e => setSearch(e.target.value)}
-                        className="w-full pl-9 pr-10 py-2.5 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-300 font-medium"
+                        className="w-full py-2.5 pl-9 pr-9 text-[13px] font-medium rounded-xl focus:outline-none transition-all"
+                        style={{
+                            background: C.card,
+                            border: `1px solid ${q ? C.borderBright : C.border}`,
+                            color: C.text,
+                            boxShadow: q ? `0 0 0 3px rgba(59,130,246,0.08)` : 'none',
+                        }}
                     />
                     {q && (
-                        <button
-                            onClick={() => setSearch('')}
-                            className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xs font-bold"
-                        >
-                            ✕
-                        </button>
+                        <button onClick={() => setSearch('')}
+                            className="absolute right-3.5 top-1/2 -translate-y-1/2 w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-black transition-all active:scale-90"
+                            style={{ background:'rgba(255,255,255,0.08)', color:'#64748b' }}>✕</button>
                     )}
                 </div>
                 {q && (
-                    <p className="text-[11px] text-slate-500 mt-1.5 px-1">
-                        🔍 "{search}" ke liye {filteredSections.reduce((acc, s) => acc + s.items.length, 0)} results
+                    <p className="text-[10.5px] mt-1.5 px-1 font-medium" style={{ color:'#334155' }}>
+                        {filteredSections.reduce((a, s) => a + s.items.length, 0)} results — "{search}"
                     </p>
                 )}
             </div>
 
-            {/* CONTENT */}
-            <div className="flex-1 overflow-y-auto px-3 pt-3 pb-20 space-y-2.5">
+            {/* ════════════════════════════════
+                CONTENT
+            ════════════════════════════════ */}
+            <div className="flex-1 overflow-y-auto px-3 pt-3 pb-24 space-y-2.5">
 
                 {filteredSections.length === 0 && (
-                    <div className="text-center py-16">
-                        <p className="text-3xl mb-3">🔍</p>
-                        <p className="font-bold text-slate-700">Koi result nahi mila</p>
-                        <p className="text-sm text-slate-400 mt-1">Dusra keyword try karo</p>
+                    <div className="text-center py-20">
+                        <div className="w-14 h-14 rounded-2xl flex items-center justify-center mx-auto mb-4"
+                            style={{ background:C.card, border:`1px solid ${C.border}` }}>
+                            <Search size={22} style={{ color:C.textDim }} />
+                        </div>
+                        <p className="font-bold text-sm" style={{ color:C.textMuted }}>Koi result nahi mila</p>
+                        <p className="text-xs mt-1" style={{ color:C.textDim }}>Dusra keyword try karo</p>
                     </div>
                 )}
 
                 {filteredSections.map(section => {
                     const isOpen = expanded.has(section.id) || !!q;
                     return (
-                        <div key={section.id} className="rounded-2xl overflow-hidden border border-slate-100 shadow-sm bg-white">
-                            {/* Group Header */}
-                            <button
-                                onClick={() => toggle(section.id)}
-                                className={`w-full flex items-center justify-between px-4 py-3 ${groupHeaderMap[section.groupColor] || 'bg-slate-600'} text-white`}
-                            >
-                                <div className="flex items-center gap-2.5">
-                                    <div className="w-7 h-7 bg-white/20 rounded-lg flex items-center justify-center shrink-0">
-                                        {section.groupIcon}
-                                    </div>
-                                    <div className="text-left">
-                                        <p className="font-black text-sm">{section.groupTitle}</p>
-                                        <p className="text-white/70 text-[10px]">{section.groupDesc}</p>
-                                    </div>
+                        <div key={section.id} className="rounded-2xl overflow-hidden"
+                            style={{
+                                background: C.card,
+                                border: `1px solid ${isOpen ? C.borderBright : C.border}`,
+                                boxShadow: isOpen ? `0 0 20px rgba(59,130,246,0.07)` : 'none',
+                                transition: 'border-color 0.2s, box-shadow 0.2s',
+                            }}>
+
+                            {/* ── Section header ── */}
+                            <button onClick={() => toggle(section.id)}
+                                className="w-full flex items-center gap-3 px-4 py-3.5 text-left active:brightness-110 transition-all"
+                                style={{ background: isOpen
+                                    ? 'linear-gradient(135deg,#0f1f3d 0%,#131d35 100%)'
+                                    : 'transparent' }}>
+                                {/* accent left bar */}
+                                <div style={{ width:3, height:36, borderRadius:2, flexShrink:0,
+                                    background: isOpen
+                                        ? 'linear-gradient(180deg,#3b82f6 0%,#6366f1 100%)'
+                                        : 'rgba(59,130,246,0.25)',
+                                    boxShadow: isOpen ? '0 0 8px rgba(59,130,246,0.5)' : 'none',
+                                    transition:'all 0.2s' }} />
+                                {/* icon */}
+                                <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0"
+                                    style={{
+                                        background: isOpen ? 'rgba(59,130,246,0.2)' : C.accentSoft,
+                                        border: `1px solid ${isOpen ? C.borderBright : C.border}`,
+                                        color:'#93c5fd',
+                                        transition:'all 0.2s',
+                                    }}>
+                                    {section.groupIcon}
+                                </div>
+                                <div className="flex-1 min-w-0">
+                                    <p className="font-black text-[13px]" style={{ color: isOpen ? '#f1f5f9' : '#cbd5e1' }}>
+                                        {section.groupTitle}
+                                    </p>
+                                    <p className="text-[10px] font-medium mt-0.5 truncate" style={{ color:'#334155' }}>
+                                        {section.groupDesc}
+                                    </p>
                                 </div>
                                 <div className="flex items-center gap-2 shrink-0">
-                                    <span className="bg-white/20 text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                                    <span className="text-[9px] font-black px-2 py-0.5 rounded-full tracking-wide"
+                                        style={{
+                                            background: isOpen ? 'rgba(59,130,246,0.25)' : C.accentSoft,
+                                            color:'#93c5fd',
+                                            border:`1px solid ${C.borderBright}`,
+                                        }}>
                                         {section.items.length}
                                     </span>
-                                    {isOpen ? <ChevronDown size={16} /> : <ChevronRight size={16} />}
+                                    <div style={{ transition:'transform 0.2s', transform: isOpen ? 'rotate(0deg)' : 'rotate(-90deg)' }}>
+                                        <ChevronDown size={15} style={{ color: isOpen ? '#3b82f6' : '#334155' }} />
+                                    </div>
                                 </div>
                             </button>
 
-                            {/* Items */}
+                            {/* ── Items ── */}
                             {isOpen && (
-                                <div className="divide-y divide-slate-50">
+                                <div style={{ borderTop:`1px solid ${C.border}` }}>
                                     {section.items.map((item, idx) => {
                                         const isSelected = selectedItem?.sectionId === section.id && selectedItem.itemIndex === idx;
-                                        const cardColor = colorMap[item.color] || colorMap['slate'];
                                         return (
-                                            <div
-                                                key={idx}
-                                                className={`transition-all ${isSelected ? 'bg-slate-50' : 'bg-white hover:bg-slate-50/60'}`}
-                                            >
-                                                {/* Item Header */}
+                                            <div key={idx} style={{
+                                                borderTop: idx > 0 ? `1px solid rgba(15,24,46,0.9)` : 'none',
+                                                background: isSelected
+                                                    ? 'linear-gradient(135deg,rgba(59,130,246,0.06) 0%,rgba(99,102,241,0.04) 100%)'
+                                                    : 'transparent',
+                                                transition:'background 0.15s',
+                                            }}>
+                                                {/* item row */}
                                                 <button
                                                     onClick={() => setSelectedItem(isSelected ? null : { sectionId: section.id, itemIndex: idx })}
-                                                    className="w-full text-left px-4 py-3.5 flex items-start gap-3"
-                                                >
-                                                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border ${cardColor}`}>
+                                                    className="w-full text-left px-4 py-3.5 flex items-start gap-3 active:brightness-110 transition-all">
+                                                    {/* item icon */}
+                                                    <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 mt-0.5"
+                                                        style={{
+                                                            background: isSelected ? 'rgba(59,130,246,0.2)' : C.accentSoft,
+                                                            border:`1px solid ${isSelected ? C.borderBright : C.border}`,
+                                                            color:'#93c5fd',
+                                                            boxShadow: isSelected ? '0 0 10px rgba(59,130,246,0.18)' : 'none',
+                                                            transition:'all 0.15s',
+                                                        }}>
                                                         {item.icon}
                                                     </div>
                                                     <div className="flex-1 min-w-0">
                                                         <div className="flex items-center gap-2 flex-wrap">
-                                                            <p className="font-black text-sm text-slate-800">{item.title}</p>
+                                                            <p className="font-black text-[13px]"
+                                                                style={{ color: isSelected ? '#f8fafc' : '#e2e8f0' }}>
+                                                                {item.title}
+                                                            </p>
                                                             {item.warning && (
-                                                                <span className="text-[9px] bg-red-100 text-red-600 px-1.5 py-0.5 rounded-full font-bold">⚠️ Note</span>
+                                                                <span className="text-[8.5px] font-black px-1.5 py-0.5 rounded-full tracking-wide"
+                                                                    style={{ background:'rgba(239,68,68,0.12)', color:'#fca5a5', border:'1px solid rgba(239,68,68,0.28)', letterSpacing:'0.04em' }}>
+                                                                    ⚠ LIMIT
+                                                                </span>
                                                             )}
                                                             {item.tip && !item.warning && (
-                                                                <span className="text-[9px] bg-emerald-100 text-emerald-600 px-1.5 py-0.5 rounded-full font-bold">💡 Tip</span>
+                                                                <span className="text-[8.5px] font-black px-1.5 py-0.5 rounded-full tracking-wide"
+                                                                    style={{ background:'rgba(34,197,94,0.1)', color:'#86efac', border:'1px solid rgba(34,197,94,0.28)', letterSpacing:'0.04em' }}>
+                                                                    💡 TIP
+                                                                </span>
                                                             )}
                                                         </div>
-                                                        <p className="text-[11px] text-slate-500 font-medium mt-0.5">{item.subtitle}</p>
+                                                        <p className="text-[11px] font-medium mt-0.5" style={{ color:'#475569' }}>
+                                                            {item.subtitle}
+                                                        </p>
                                                         {item.tags && (
                                                             <div className="flex flex-wrap gap-1 mt-1.5">
                                                                 {item.tags.map(tag => (
-                                                                    <span key={tag} className="text-[9px] bg-slate-100 text-slate-500 px-1.5 py-0.5 rounded font-bold">
+                                                                    <span key={tag} className="text-[9px] font-bold px-1.5 py-0.5 rounded-md"
+                                                                        style={{ background:'rgba(15,23,42,0.8)', color:'#334155', border:`1px solid rgba(59,130,246,0.1)` }}>
                                                                         {tag}
                                                                     </span>
                                                                 ))}
                                                             </div>
                                                         )}
                                                     </div>
-                                                    <div className="shrink-0 text-slate-300 mt-1">
-                                                        {isSelected ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                                                    <div className="shrink-0 mt-1" style={{ transition:'transform 0.15s', transform: isSelected ? 'rotate(0deg)' : 'rotate(-90deg)' }}>
+                                                        <ChevronDown size={14} style={{ color: isSelected ? '#3b82f6' : '#1e293b' }} />
                                                     </div>
                                                 </button>
 
-                                                {/* Expanded Detail */}
+                                                {/* ── Expanded detail ── */}
                                                 {isSelected && (
                                                     <div className="px-4 pb-4 space-y-2.5">
-                                                        <div className={`rounded-xl p-3.5 border ${cardColor}`}>
-                                                            <p className="text-[10px] font-black uppercase tracking-wide mb-1.5 opacity-70">📋 Kya hai aur kaise use karein</p>
-                                                            <p className="text-[12px] leading-relaxed font-medium text-slate-700">{item.desc}</p>
+                                                        {/* shimmer divider */}
+                                                        <div style={{ height:1, background:'linear-gradient(90deg,transparent,rgba(59,130,246,0.35),transparent)', marginBottom:2 }} />
+
+                                                        {/* description card */}
+                                                        <div className="rounded-xl p-4" style={{
+                                                            background:'linear-gradient(135deg,#0a1428 0%,#0d1a30 100%)',
+                                                            border:`1px solid ${C.borderBright}`,
+                                                            boxShadow:'inset 0 1px 0 rgba(255,255,255,0.03)',
+                                                        }}>
+                                                            <p className="text-[8.5px] font-black uppercase tracking-widest mb-2.5"
+                                                                style={{ color:'rgba(59,130,246,0.5)', letterSpacing:'0.12em' }}>
+                                                                ◆ KYA HAI · KAISE USE KAREIN
+                                                            </p>
+                                                            <p className="text-[12.5px] leading-[1.7] font-medium" style={{ color:'#e2e8f0' }}>
+                                                                {item.desc}
+                                                            </p>
                                                         </div>
+
+                                                        {/* warning / limit */}
                                                         {item.warning && (
-                                                            <div className="bg-red-50 border border-red-200 rounded-xl p-3">
-                                                                <p className="text-[11px] text-red-700 font-bold leading-relaxed">{item.warning}</p>
+                                                            <div className="rounded-xl p-3.5 flex gap-3" style={{
+                                                                background:'linear-gradient(135deg,rgba(127,29,29,0.3) 0%,rgba(153,27,27,0.15) 100%)',
+                                                                border:'1px solid rgba(239,68,68,0.3)',
+                                                                boxShadow:'inset 0 1px 0 rgba(239,68,68,0.05)',
+                                                            }}>
+                                                                <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+                                                                    style={{ background:'rgba(239,68,68,0.15)', border:'1px solid rgba(239,68,68,0.3)', fontSize:13 }}>⚠️</div>
+                                                                <div>
+                                                                    <p className="text-[8.5px] font-black uppercase tracking-widest mb-1.5"
+                                                                        style={{ color:'#fca5a5', letterSpacing:'0.1em' }}>LIMIT · DHYAN DO</p>
+                                                                    <p className="text-[11.5px] font-medium leading-relaxed" style={{ color:'#fecaca' }}>
+                                                                        {item.warning}
+                                                                    </p>
+                                                                </div>
                                                             </div>
                                                         )}
+
+                                                        {/* tip / bonus */}
                                                         {item.tip && (
-                                                            <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-3">
-                                                                <p className="text-[10px] font-black text-emerald-700 uppercase mb-1">💡 Pro Tip</p>
-                                                                <p className="text-[11px] text-emerald-800 font-medium leading-relaxed">{item.tip}</p>
+                                                            <div className="rounded-xl p-3.5 flex gap-3" style={{
+                                                                background:'linear-gradient(135deg,rgba(20,83,45,0.35) 0%,rgba(21,128,61,0.15) 100%)',
+                                                                border:'1px solid rgba(34,197,94,0.28)',
+                                                                boxShadow:'inset 0 1px 0 rgba(34,197,94,0.04)',
+                                                            }}>
+                                                                <div className="w-7 h-7 rounded-lg flex items-center justify-center shrink-0"
+                                                                    style={{ background:'rgba(34,197,94,0.12)', border:'1px solid rgba(34,197,94,0.3)', fontSize:13 }}>💡</div>
+                                                                <div>
+                                                                    <p className="text-[8.5px] font-black uppercase tracking-widest mb-1.5"
+                                                                        style={{ color:'#86efac', letterSpacing:'0.1em' }}>BONUS TIP</p>
+                                                                    <p className="text-[11.5px] font-medium leading-relaxed" style={{ color:'#bbf7d0' }}>
+                                                                        {item.tip}
+                                                                    </p>
+                                                                </div>
                                                             </div>
                                                         )}
                                                     </div>
@@ -774,21 +922,34 @@ export const UserGuide: React.FC<Props> = ({ onClose }) => {
                     );
                 })}
 
-                {/* Footer */}
-                <div className="mt-2 bg-white border border-slate-200 rounded-2xl p-4 text-center">
-                    <p className="text-[11px] text-slate-500 font-medium">
-                        💬 <strong>Aur koi sawaal ho?</strong> Chat → Support mein admin ko seedha message karo — woh help karenge.
+                {/* footer */}
+                <div className="rounded-2xl p-4 text-center" style={{
+                    background: C.card,
+                    border: `1px solid ${C.border}`,
+                }}>
+                    <p className="text-[11px] font-medium" style={{ color: C.textDim }}>
+                        💬 <span style={{ color:'#cbd5e1', fontWeight:700 }}>Aur koi sawaal ho?</span>{' '}
+                        <span style={{ color:'#334155' }}>Chat → Support mein admin ko message karo.</span>
                     </p>
                 </div>
             </div>
 
-            {/* CLOSE BUTTON */}
-            <div className="shrink-0 px-4 py-3 bg-white border-t border-slate-100 shadow-[0_-4px_12px_-4px_rgba(0,0,0,0.08)]">
-                <button
-                    onClick={onClose}
-                    className="w-full bg-indigo-600 text-white font-black py-3 rounded-xl hover:bg-indigo-700 active:scale-[0.98] transition-all"
-                >
-                    Close Guide
+            {/* ════════════════════════════════
+                CLOSE BUTTON
+            ════════════════════════════════ */}
+            <div className="shrink-0 px-4 py-3.5" style={{
+                background: C.surface,
+                borderTop:`1px solid ${C.border}`,
+                boxShadow:'0 -1px 0 rgba(59,130,246,0.06)',
+            }}>
+                <button onClick={onClose}
+                    className="w-full py-3.5 rounded-2xl font-black text-sm tracking-wide text-white active:scale-[0.98] transition-all"
+                    style={{
+                        background:'linear-gradient(135deg,#1d4ed8 0%,#2563eb 50%,#1e40af 100%)',
+                        boxShadow:'0 4px 24px rgba(37,99,235,0.45), inset 0 1px 0 rgba(255,255,255,0.12)',
+                        letterSpacing:'0.04em',
+                    }}>
+                    ✕  Guide Banda Karo
                 </button>
             </div>
         </div>

@@ -39,6 +39,38 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
       ? user.storeDiscount
       : 0;
 
+  // === VISIT DISCOUNT ===
+  const [visitCount, setVisitCount] = useState<number>(0);
+  const visitDiscountRules = settings?.storeVisitDiscountRules || [];
+  const visitDiscountEnabled = !!(settings?.storeVisitDiscountEnabled && visitDiscountRules.length > 0);
+  const userSubTier: 'FREE' | 'BASIC' | 'ULTRA' =
+    (user as any).subscriptionLevel === 'ULTRA' ? 'ULTRA'
+    : (user as any).subscriptionLevel === 'BASIC' ? 'BASIC'
+    : 'FREE';
+  const eligibleTiers: ('FREE' | 'BASIC' | 'ULTRA')[] = settings?.storeVisitDiscountTiers || ['FREE'];
+  const isEligibleForVisitDiscount = visitDiscountEnabled && eligibleTiers.includes(userSubTier);
+  const visitDiscount = isEligibleForVisitDiscount
+    ? (visitDiscountRules
+        .filter(r => visitCount >= r.visits)
+        .sort((a, b) => b.discountPercent - a.discountPercent)[0]?.discountPercent || 0)
+    : 0;
+  // Next visit threshold for progress hint
+  const nextVisitRule = isEligibleForVisitDiscount
+    ? visitDiscountRules
+        .filter(r => r.visits > visitCount)
+        .sort((a, b) => a.visits - b.visits)[0]
+    : null;
+
+  useEffect(() => {
+    if (!visitDiscountEnabled) return;
+    const key = `store_visit_total_${user.id}`;
+    const prev = parseInt(localStorage.getItem(key) || '0', 10);
+    const newCount = prev + 1;
+    localStorage.setItem(key, String(newCount));
+    setVisitCount(newCount);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user.id]);
+
   useEffect(() => {
     if (subscriptionPlans.length > 0 && !selectedPlanId) {
       const defaultPlan = subscriptionPlans.find(p => p.name.includes('Monthly')) || subscriptionPlans[0];
@@ -340,6 +372,7 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
                 if (isSubscribed) discountPercentVal += 5;
                 if (activeStoreDiscount > 0) discountPercentVal += activeStoreDiscount;
                 if (scoreDiscount > 0) discountPercentVal += scoreDiscount;
+                if (visitDiscount > 0) discountPercentVal += visitDiscount;
                 if (discountPercentVal > 0) {
                   if (discountPercentVal > 100) discountPercentVal = 100;
                   finalPrice = Math.round(finalPrice * (1 - discountPercentVal / 100));
@@ -444,7 +477,7 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
 
         {/* PERSONAL DISCOUNT BANNER */}
         {activeStoreDiscount > 0 && (
-          <div className="mb-5 p-3.5 rounded-2xl bg-gradient-to-r from-rose-900/50 to-pink-900/50 border border-rose-500/40 flex items-center gap-3 animate-in fade-in">
+          <div className="mb-4 p-3.5 rounded-2xl bg-gradient-to-r from-rose-900/50 to-pink-900/50 border border-rose-500/40 flex items-center gap-3 animate-in fade-in">
             <div className="w-9 h-9 bg-rose-500/25 rounded-xl flex items-center justify-center shrink-0">
               <Ticket size={16} className="text-rose-300" />
             </div>
@@ -452,6 +485,53 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
               <p className="text-sm font-black text-rose-300">Personal Discount Active! 🎉</p>
               <p className="text-[11px] text-rose-400/80">{activeStoreDiscount}% OFF sabhi plans pe — Level 4 tak valid</p>
             </div>
+          </div>
+        )}
+
+        {/* VISIT DISCOUNT BANNER */}
+        {visitDiscountEnabled && isEligibleForVisitDiscount && (
+          <div className="mb-4 rounded-2xl overflow-hidden border border-emerald-500/30 animate-in fade-in">
+            <div className="bg-gradient-to-r from-emerald-900/60 to-teal-900/60 p-3.5 flex items-center gap-3">
+              <div className="w-9 h-9 bg-emerald-500/20 rounded-xl flex items-center justify-center shrink-0 text-lg">🏬</div>
+              <div className="flex-1 min-w-0">
+                {visitDiscount > 0 ? (
+                  <>
+                    <p className="text-sm font-black text-emerald-300">Visit Discount Active! +{visitDiscount}% OFF 🎉</p>
+                    <p className="text-[10px] text-emerald-400/80 mt-0.5">
+                      {visitCount} store visits complete — discount sabhi plans pe apply ho raha hai
+                      {nextVisitRule && ` · ${nextVisitRule.visits - visitCount} aur visits pe ${nextVisitRule.discountPercent}% OFF`}
+                    </p>
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm font-black text-emerald-400">Visit Discount — {visitCount} visit{visitCount !== 1 ? 's' : ''} 🏬</p>
+                    {nextVisitRule && (
+                      <p className="text-[10px] text-emerald-500/80 mt-0.5">
+                        Sirf {nextVisitRule.visits - visitCount} aur visits par {nextVisitRule.discountPercent}% OFF milega!
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+              {visitDiscount > 0 && (
+                <span className="shrink-0 text-[11px] font-black bg-emerald-500/25 text-emerald-300 border border-emerald-500/40 px-2 py-1 rounded-full">
+                  -{visitDiscount}%
+                </span>
+              )}
+            </div>
+            {/* Visit progress bar */}
+            {nextVisitRule && (
+              <div className="bg-slate-900/60 px-3.5 py-2 flex items-center gap-2">
+                <span className="text-[9px] text-slate-500 font-bold shrink-0">{visitCount}v</span>
+                <div className="flex-1 h-1.5 bg-white/10 rounded-full overflow-hidden">
+                  <div
+                    className="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all"
+                    style={{ width: `${Math.min(100, (visitCount / nextVisitRule.visits) * 100)}%` }}
+                  />
+                </div>
+                <span className="text-[9px] text-emerald-400 font-black shrink-0">{nextVisitRule.visits}v → {nextVisitRule.discountPercent}% OFF</span>
+              </div>
+            )}
           </div>
         )}
 
@@ -510,6 +590,7 @@ export const Store: React.FC<Props> = ({ user, settings, renderEarnContent }) =>
             if (isSubscribed) discountPercentVal += 5;
             if (activeStoreDiscount > 0) discountPercentVal += activeStoreDiscount;
             if (scoreDiscount > 0) discountPercentVal += scoreDiscount;
+            if (visitDiscount > 0) discountPercentVal += visitDiscount;
             if (discountPercentVal > 0) {
               if (discountPercentVal > 100) discountPercentVal = 100;
               price = Math.round(price * (1 - discountPercentVal / 100));

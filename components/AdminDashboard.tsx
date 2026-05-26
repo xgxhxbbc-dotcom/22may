@@ -458,7 +458,7 @@ const AdminDashboardInner: React.FC<Props> = ({ onNavigate, settings, onUpdateSe
   // --- HOMEWORK STATE ---
   const [homeworkTab, setHomeworkTab] = useState<'ADD' | 'HISTORY' | 'COMP_MCQ'>('ADD');
   const [bookNotesTab, setBookNotesTab] = useState<'ADD' | 'HISTORY'>('ADD');
-  const [newBookNote, setNewBookNote] = useState({ date: new Date().toISOString().split('T')[0], title: '', notes: '', chunkNotes: '', htmlNotes: '', mcqText: '', audioUrl: '', videoUrl: '', pdfUrl: '', targetSubject: 'sarSangrah', pageNo: '', topicName: '', classTarget: 'ALL' as 'COMPETITION' | 'ALL' | '6' | '7' | '8' | '9' | '10' | '11' | '12' });
+  const [newBookNote, setNewBookNote] = useState({ date: new Date().toISOString().split('T')[0], title: '', notes: '', chunkNotes: '', htmlNotes: '', lightCSS: '', darkCSS: '', mcqText: '', audioUrl: '', videoUrl: '', pdfUrl: '', targetSubject: 'sarSangrah', pageNo: '', topicName: '', classTarget: 'ALL' as 'COMPETITION' | 'ALL' | '6' | '7' | '8' | '9' | '10' | '11' | '12' });
   const [newBookNoteMcqs, setNewBookNoteMcqs] = useState<Array<{ id: string; question: string; options: string[]; correctAnswer: number }>>([]);
   const [newBookNoteBulk, setNewBookNoteBulk] = useState<string | undefined>(undefined);
   // ── Compre Book Notes (stored in Firestore compre_notes, shown in Compare → Book Notes tab) ──
@@ -490,7 +490,7 @@ const AdminDashboardInner: React.FC<Props> = ({ onNavigate, settings, onUpdateSe
   const [showLucentSmartPaste, setShowLucentSmartPaste] = useState(false);
   const [newCompMcqText, setNewCompMcqText] = useState('');
   const [globalChallengeMcqInput, setGlobalChallengeMcqInput] = useState('');
-  const [newHomework, setNewHomework] = useState({ date: new Date().toISOString().split('T')[0], title: '', notes: '', chunkNotes: '', htmlNotes: '', mcqText: '', audioUrl: '', videoUrl: '', pdfUrl: '', targetSubject: 'none', pageNo: '', bookRef: '' });
+  const [newHomework, setNewHomework] = useState({ date: new Date().toISOString().split('T')[0], title: '', notes: '', chunkNotes: '', htmlNotes: '', lightCSS: '', darkCSS: '', mcqText: '', audioUrl: '', videoUrl: '', pdfUrl: '', targetSubject: 'none', pageNo: '', bookRef: '' });
   // Structured (Lucent-style) MCQs for the homework being created. Each item: { id, question, options[4], correctAnswer (index) }
   const [newHomeworkMcqs, setNewHomeworkMcqs] = useState<Array<{ id: string; question: string; options: string[]; correctAnswer: number }>>([]);
   // Bulk paste textarea visibility/content for the new homework structured MCQ editor.
@@ -10221,20 +10221,134 @@ Statement 2"
                            </div>
 
                            {/* Store Visit Discount Setting */}
-                           <div className="bg-white p-4 rounded-xl border border-green-200 shadow-sm">
-                             <h5 className="font-bold text-sm text-slate-800 mb-2 flex items-center gap-2">🏷️ Store Visit Discount</h5>
-                             <p className="text-xs text-slate-500 mb-3">Jab non-subscribed student Store tab open kare, uske mailbox mein ek discount redeem code bheja jayega (ek baar per din). Yahan discount % set karo.</p>
-                             <div className="flex items-center gap-3">
-                               <input
-                                 type="number"
-                                 min={1} max={100}
-                                 value={localSettings.storeVisitDiscountPercent ?? 10}
-                                 onChange={e => setLocalSettings({ ...localSettings, storeVisitDiscountPercent: Number(e.target.value) })}
-                                 className="w-24 p-2 border rounded-lg text-sm font-bold"
-                               />
-                               <span className="text-sm text-slate-600">% Discount</span>
-                               <span className="text-xs text-slate-400">(1–100%)</span>
+                           <div className="bg-white p-4 rounded-xl border border-green-200 shadow-sm space-y-4">
+                             {/* Header + Master Toggle */}
+                             <div className="flex items-start justify-between gap-3">
+                               <div>
+                                 <h5 className="font-bold text-sm text-slate-800 flex items-center gap-2">🏷️ Store Visit Discount</h5>
+                                 <p className="text-xs text-slate-500 mt-1">Store visit count ke hisab se automatic discount milega — jitna zyada visit, utna zyada off. Mailbox coupon alag hai yeh direct Store mein apply hoga.</p>
+                               </div>
+                               <button
+                                 onClick={() => setLocalSettings({ ...localSettings, storeVisitDiscountEnabled: !(localSettings.storeVisitDiscountEnabled ?? false) })}
+                                 className={`shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs font-black transition-all border ${localSettings.storeVisitDiscountEnabled ? 'bg-green-500 text-white border-green-600' : 'bg-slate-100 text-slate-500 border-slate-300'}`}
+                               >
+                                 <span className={`w-2 h-2 rounded-full ${localSettings.storeVisitDiscountEnabled ? 'bg-white' : 'bg-slate-400'}`} />
+                                 {localSettings.storeVisitDiscountEnabled ? 'ON' : 'OFF'}
+                               </button>
                              </div>
+
+                             {localSettings.storeVisitDiscountEnabled && (<>
+                               {/* User Tier Selection */}
+                               <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
+                                 <p className="text-xs font-black text-slate-700 mb-2">👥 Kis Tier Ko Discount Milega?</p>
+                                 <div className="flex gap-2 flex-wrap">
+                                   {(['FREE', 'BASIC', 'ULTRA'] as const).map(tier => {
+                                     const currentTiers: ('FREE'|'BASIC'|'ULTRA')[] = localSettings.storeVisitDiscountTiers || ['FREE'];
+                                     const isChecked = currentTiers.includes(tier);
+                                     return (
+                                       <button
+                                         key={tier}
+                                         onClick={() => {
+                                           const updated = isChecked
+                                             ? currentTiers.filter(t => t !== tier)
+                                             : [...currentTiers, tier];
+                                           setLocalSettings({ ...localSettings, storeVisitDiscountTiers: updated });
+                                         }}
+                                         className={`px-3 py-1.5 rounded-full text-xs font-black border transition-all ${
+                                           isChecked
+                                             ? tier === 'FREE' ? 'bg-emerald-500 text-white border-emerald-600'
+                                               : tier === 'BASIC' ? 'bg-sky-500 text-white border-sky-600'
+                                               : 'bg-purple-500 text-white border-purple-600'
+                                             : 'bg-white text-slate-500 border-slate-300'
+                                         }`}
+                                       >
+                                         {isChecked ? '✓ ' : ''}{tier === 'FREE' ? 'Free User' : tier === 'BASIC' ? 'Basic (PRO)' : 'Ultra (MAX)'}
+                                       </button>
+                                     );
+                                   })}
+                                 </div>
+                                 <p className="text-[10px] text-slate-400 mt-1.5">Select karo ki discount kis subscription level ke users ko milegi.</p>
+                               </div>
+
+                               {/* Visit Rules */}
+                               <div className="bg-slate-50 rounded-xl p-3 border border-slate-200">
+                                 <div className="flex items-center justify-between mb-2">
+                                   <p className="text-xs font-black text-slate-700">📊 Visit Count → Discount Rules</p>
+                                   <button
+                                     onClick={() => {
+                                       const rules = [...(localSettings.storeVisitDiscountRules || [])];
+                                       const maxVisits = rules.length > 0 ? Math.max(...rules.map(r => r.visits)) : 0;
+                                       rules.push({ visits: maxVisits + 5, discountPercent: 5 });
+                                       setLocalSettings({ ...localSettings, storeVisitDiscountRules: rules });
+                                     }}
+                                     className="text-[10px] font-black bg-green-100 text-green-700 border border-green-300 px-2 py-1 rounded-lg hover:bg-green-200 transition"
+                                   >
+                                     + Rule Add Karo
+                                   </button>
+                                 </div>
+                                 <p className="text-[10px] text-slate-400 mb-2">Jab user X baar Store visit kare toh Y% discount milega. Sab rules mein se highest matching rule apply hoga.</p>
+
+                                 {(localSettings.storeVisitDiscountRules || []).length === 0 && (
+                                   <p className="text-[11px] text-slate-400 italic py-2 text-center">Koi rule nahi. "+ Rule Add Karo" click karein.</p>
+                                 )}
+
+                                 <div className="space-y-2">
+                                   {(localSettings.storeVisitDiscountRules || [])
+                                     .slice()
+                                     .sort((a, b) => a.visits - b.visits)
+                                     .map((rule, rIdx) => {
+                                       const allRules = localSettings.storeVisitDiscountRules || [];
+                                       const origIdx = allRules.findIndex(r => r.visits === rule.visits && r.discountPercent === rule.discountPercent);
+                                       return (
+                                         <div key={rIdx} className="flex items-center gap-2 bg-white border border-slate-200 rounded-xl p-2.5">
+                                           <span className="text-[10px] text-slate-500 font-bold shrink-0">Visits ≥</span>
+                                           <input
+                                             type="number" min={1} max={9999}
+                                             value={rule.visits}
+                                             onChange={e => {
+                                               const updated = [...allRules];
+                                               updated[origIdx] = { ...updated[origIdx], visits: Number(e.target.value) };
+                                               setLocalSettings({ ...localSettings, storeVisitDiscountRules: updated });
+                                             }}
+                                             className="w-16 p-1.5 border border-slate-200 rounded-lg text-sm font-black text-center"
+                                           />
+                                           <span className="text-[10px] text-slate-500 font-bold shrink-0">→</span>
+                                           <input
+                                             type="number" min={1} max={100}
+                                             value={rule.discountPercent}
+                                             onChange={e => {
+                                               const updated = [...allRules];
+                                               updated[origIdx] = { ...updated[origIdx], discountPercent: Number(e.target.value) };
+                                               setLocalSettings({ ...localSettings, storeVisitDiscountRules: updated });
+                                             }}
+                                             className="w-16 p-1.5 border border-slate-200 rounded-lg text-sm font-black text-center"
+                                           />
+                                           <span className="text-[10px] text-slate-500 font-bold shrink-0">% OFF</span>
+                                           <button
+                                             onClick={() => {
+                                               const updated = allRules.filter((_, i) => i !== origIdx);
+                                               setLocalSettings({ ...localSettings, storeVisitDiscountRules: updated });
+                                             }}
+                                             className="ml-auto text-red-400 hover:text-red-600 text-xs font-black"
+                                           >✕</button>
+                                         </div>
+                                       );
+                                     })}
+                                 </div>
+                               </div>
+
+                               {/* Legacy mailbox % (kept for backward compat) */}
+                               <div className="flex items-center gap-3">
+                                 <span className="text-xs text-slate-600 font-bold shrink-0">📬 Mailbox Coupon %</span>
+                                 <input
+                                   type="number" min={1} max={100}
+                                   value={localSettings.storeVisitDiscountPercent ?? 10}
+                                   onChange={e => setLocalSettings({ ...localSettings, storeVisitDiscountPercent: Number(e.target.value) })}
+                                   className="w-20 p-2 border rounded-lg text-sm font-bold"
+                                 />
+                                 <span className="text-xs text-slate-400">(Study streak mailbox coupon ke liye)</span>
+                               </div>
+                             </>)}
                            </div>
 
                            {/* MCQ Reward Rules */}
@@ -10984,6 +11098,26 @@ Statement 2"
                                                     }} className="w-full p-3 border border-teal-200 rounded-lg text-sm outline-none min-h-[150px] resize-y focus:border-teal-500 bg-white leading-relaxed font-mono" placeholder="<h2>Topic</h2><p>HTML/CSS formatted notes yahan likhein — colors, bold, tables, lists sab support hota hai.</p>" />
                                                     <p className="text-[9px] text-teal-700 mt-1">🎨 HTML + CSS supported — headings, colors, bold, tables, lists sab likh sakte hain.</p>
                                                   </div>
+                                                  <div className="grid grid-cols-2 gap-2">
+                                                    <div className="bg-sky-50 border border-sky-200 rounded-lg p-2">
+                                                      <label className="text-[9px] font-black text-sky-700 uppercase block mb-1">☀️ White Mode CSS</label>
+                                                      <textarea value={(pg as any).lightCSS || ''} onChange={e => {
+                                                          const updated = [...newLucent.pages];
+                                                          updated[pgIdx] = { ...updated[pgIdx], lightCSS: e.target.value } as any;
+                                                          setNewLucent({...newLucent, pages: updated});
+                                                      }} className="w-full p-2 border border-sky-200 rounded text-xs outline-none min-h-[80px] resize-y focus:border-sky-500 bg-white font-mono" placeholder="h2 { color: #1e40af; }&#10;table { border: 1px solid #ccc; }" />
+                                                      <p className="text-[8px] text-sky-600 mt-0.5">Sirf White/Light mode mein apply hoga</p>
+                                                    </div>
+                                                    <div className="bg-slate-800 border border-slate-600 rounded-lg p-2">
+                                                      <label className="text-[9px] font-black text-slate-200 uppercase block mb-1">🌙 Dark Mode CSS</label>
+                                                      <textarea value={(pg as any).darkCSS || ''} onChange={e => {
+                                                          const updated = [...newLucent.pages];
+                                                          updated[pgIdx] = { ...updated[pgIdx], darkCSS: e.target.value } as any;
+                                                          setNewLucent({...newLucent, pages: updated});
+                                                      }} className="w-full p-2 border border-slate-600 rounded text-xs outline-none min-h-[80px] resize-y focus:border-blue-400 bg-slate-900 text-slate-100 font-mono" placeholder="h2 { color: #93c5fd; }&#10;table { border: 1px solid #374151; }" />
+                                                      <p className="text-[8px] text-slate-400 mt-0.5">Dark + Blue mode dono mein apply hoga</p>
+                                                    </div>
+                                                  </div>
                                                   <details className="text-[9px]">
                                                     <summary className="text-slate-400 cursor-pointer hover:text-slate-600">Legacy content field (purana data ke liye)</summary>
                                                     <textarea value={pg.content} onChange={e => {
@@ -11213,6 +11347,18 @@ Statement 2"
                                           <textarea value={newHomework.htmlNotes} onChange={e => setNewHomework({...newHomework, htmlNotes: e.target.value})} className="w-full p-2 border border-teal-200 rounded text-sm outline-none h-24 focus:border-teal-500 bg-white font-mono" placeholder="<h2>Topic</h2><p>HTML/CSS formatted notes — colors, bold, tables, lists supported.</p>" />
                                           <p className="text-[9px] text-teal-700 mt-0.5">🎨 HTML + CSS supported — headings, colors, bold, tables, lists sab likh sakte hain.</p>
                                       </div>
+                                      <div className="grid grid-cols-2 gap-2">
+                                        <div className="bg-sky-50 border border-sky-200 rounded-lg p-2">
+                                          <label className="text-[9px] font-black text-sky-700 uppercase block mb-1">☀️ White Mode CSS</label>
+                                          <textarea value={newHomework.lightCSS} onChange={e => setNewHomework({...newHomework, lightCSS: e.target.value})} className="w-full p-2 border border-sky-200 rounded text-xs outline-none min-h-[70px] resize-y focus:border-sky-500 bg-white font-mono" placeholder="h2 { color: #1e40af; }&#10;table { border: 1px solid #ccc; }" />
+                                          <p className="text-[8px] text-sky-600 mt-0.5">Sirf Light mode mein apply hoga</p>
+                                        </div>
+                                        <div className="bg-slate-800 border border-slate-600 rounded-lg p-2">
+                                          <label className="text-[9px] font-black text-slate-200 uppercase block mb-1">🌙 Dark Mode CSS</label>
+                                          <textarea value={newHomework.darkCSS} onChange={e => setNewHomework({...newHomework, darkCSS: e.target.value})} className="w-full p-2 border border-slate-600 rounded text-xs outline-none min-h-[70px] resize-y focus:border-blue-400 bg-slate-900 text-slate-100 font-mono" placeholder="h2 { color: #93c5fd; }&#10;table { border: 1px solid #374151; }" />
+                                          <p className="text-[8px] text-slate-400 mt-0.5">Dark + Blue mode mein apply hoga</p>
+                                        </div>
+                                      </div>
                                       <details className="text-[9px]">
                                           <summary className="text-slate-400 cursor-pointer hover:text-slate-600">Legacy notes field (purana data ke liye)</summary>
                                           <textarea value={newHomework.notes} onChange={e => setNewHomework({...newHomework, notes: e.target.value})} className="w-full mt-1 p-2 border border-slate-200 rounded text-sm outline-none h-16 focus:border-slate-400 bg-white" placeholder="Legacy notes (backward compatibility)" />
@@ -11327,6 +11473,8 @@ Statement 2"
                                               notes: newHomework.notes,
                                               chunkNotes: newHomework.chunkNotes || undefined,
                                               htmlNotes: newHomework.htmlNotes || undefined,
+                                              lightCSS: newHomework.lightCSS || undefined,
+                                              darkCSS: newHomework.darkCSS || undefined,
                                               mcqText: newHomework.mcqText,
                                               parsedMcqs: parsedMcqs,
                                               audioUrl: newHomework.audioUrl,
@@ -11341,7 +11489,7 @@ Statement 2"
                                           const newSettings = {...localSettings, homework: updated};
                                           setLocalSettings(newSettings);
                                           handleSaveSettings(newSettings);
-                                          setNewHomework({ date: new Date().toISOString().split('T')[0], title: '', notes: '', chunkNotes: '', htmlNotes: '', mcqText: '', audioUrl: '', videoUrl: '', pdfUrl: '', targetSubject: newHomework.targetSubject, pageNo: '', bookRef: newHomework.bookRef });
+                                          setNewHomework({ date: new Date().toISOString().split('T')[0], title: '', notes: '', chunkNotes: '', htmlNotes: '', lightCSS: '', darkCSS: '', mcqText: '', audioUrl: '', videoUrl: '', pdfUrl: '', targetSubject: newHomework.targetSubject, pageNo: '', bookRef: newHomework.bookRef });
                                           setNewHomeworkMcqs([]);
                                           setNewHomeworkBulk(undefined);
                                           setAlertConfig({isOpen: true, message: '✅ Homework Added Successfully!'});
@@ -13665,6 +13813,18 @@ Statement 2"
                                                           <textarea value={pg.htmlNotes || ''} onChange={e => { const u=[...newLucent.pages]; u[pgIdx]={...u[pgIdx],htmlNotes:e.target.value}; setNewLucent({...newLucent,pages:u}); }} className="w-full p-2 border border-teal-200 rounded-lg text-sm outline-none min-h-[130px] resize-y focus:border-teal-500 bg-white leading-relaxed font-mono" placeholder="<h2>Topic</h2><p>HTML formatted notes...</p>" />
                                                           <p className="text-[9px] text-teal-700 mt-0.5">🎨 HTML + CSS supported.</p>
                                                         </div>
+                                                        <div className="grid grid-cols-2 gap-2">
+                                                          <div className="bg-sky-50 border border-sky-200 rounded-lg p-2">
+                                                            <label className="text-[9px] font-black text-sky-700 uppercase block mb-1">☀️ White Mode CSS</label>
+                                                            <textarea value={(pg as any).lightCSS || ''} onChange={e => { const u=[...newLucent.pages]; u[pgIdx]={...u[pgIdx],lightCSS:e.target.value} as any; setNewLucent({...newLucent,pages:u}); }} className="w-full p-2 border border-sky-200 rounded text-xs outline-none min-h-[70px] resize-y focus:border-sky-500 bg-white font-mono" placeholder="h2 { color: #1e40af; }" />
+                                                            <p className="text-[8px] text-sky-600 mt-0.5">Sirf Light mode mein apply hoga</p>
+                                                          </div>
+                                                          <div className="bg-slate-800 border border-slate-600 rounded-lg p-2">
+                                                            <label className="text-[9px] font-black text-slate-200 uppercase block mb-1">🌙 Dark Mode CSS</label>
+                                                            <textarea value={(pg as any).darkCSS || ''} onChange={e => { const u=[...newLucent.pages]; u[pgIdx]={...u[pgIdx],darkCSS:e.target.value} as any; setNewLucent({...newLucent,pages:u}); }} className="w-full p-2 border border-slate-600 rounded text-xs outline-none min-h-[70px] resize-y focus:border-blue-400 bg-slate-900 text-slate-100 font-mono" placeholder="h2 { color: #93c5fd; }" />
+                                                            <p className="text-[8px] text-slate-400 mt-0.5">Dark + Blue mode mein apply hoga</p>
+                                                          </div>
+                                                        </div>
                                                         <details className="text-[9px]">
                                                           <summary className="text-slate-400 cursor-pointer hover:text-slate-600">Legacy content field</summary>
                                                           <textarea value={pg.content} onChange={e => { const u=[...newLucent.pages]; u[pgIdx]={...u[pgIdx],content:e.target.value}; setNewLucent({...newLucent,pages:u}); }} className="w-full mt-1 p-2 border border-slate-200 rounded text-sm outline-none min-h-[60px] resize-y focus:border-slate-400 bg-white" placeholder="Legacy content" />
@@ -13753,6 +13913,18 @@ Statement 2"
                                               <label className="text-[9px] font-black text-teal-700 uppercase block mb-1">🎨 Write Mode Notes (Smart HTML / Styled View)</label>
                                               <textarea value={newBookNote.htmlNotes} onChange={e => setNewBookNote({...newBookNote, htmlNotes: e.target.value})} className="w-full p-2 border border-teal-200 rounded-lg text-sm outline-none min-h-[130px] resize-y focus:border-teal-500 bg-white leading-relaxed font-mono" placeholder="<h2>Topic</h2><p>HTML formatted notes — colors, bold, tables, lists supported.</p>" />
                                               <p className="text-[9px] text-teal-700 mt-0.5">🎨 HTML + CSS supported — headings, colors, bold, tables sab likh sakte hain.</p>
+                                          </div>
+                                          <div className="grid grid-cols-2 gap-2">
+                                            <div className="bg-sky-50 border border-sky-200 rounded-lg p-2">
+                                              <label className="text-[9px] font-black text-sky-700 uppercase block mb-1">☀️ White Mode CSS</label>
+                                              <textarea value={newBookNote.lightCSS} onChange={e => setNewBookNote({...newBookNote, lightCSS: e.target.value})} className="w-full p-2 border border-sky-200 rounded text-xs outline-none min-h-[70px] resize-y focus:border-sky-500 bg-white font-mono" placeholder="h2 { color: #1e40af; }&#10;table { border: 1px solid #ccc; }" />
+                                              <p className="text-[8px] text-sky-600 mt-0.5">Sirf Light mode mein apply hoga</p>
+                                            </div>
+                                            <div className="bg-slate-800 border border-slate-600 rounded-lg p-2">
+                                              <label className="text-[9px] font-black text-slate-200 uppercase block mb-1">🌙 Dark Mode CSS</label>
+                                              <textarea value={newBookNote.darkCSS} onChange={e => setNewBookNote({...newBookNote, darkCSS: e.target.value})} className="w-full p-2 border border-slate-600 rounded text-xs outline-none min-h-[70px] resize-y focus:border-blue-400 bg-slate-900 text-slate-100 font-mono" placeholder="h2 { color: #93c5fd; }&#10;table { border: 1px solid #374151; }" />
+                                              <p className="text-[8px] text-slate-400 mt-0.5">Dark + Blue mode mein apply hoga</p>
+                                            </div>
                                           </div>
                                           <details className="text-[9px]">
                                               <summary className="text-slate-400 cursor-pointer hover:text-slate-600">Legacy notes field (purana data ke liye)</summary>
@@ -13972,6 +14144,8 @@ Statement 2"
                                               notes: newBookNote.notes,
                                               chunkNotes: newBookNote.chunkNotes || undefined,
                                               htmlNotes: newBookNote.htmlNotes || undefined,
+                                              lightCSS: newBookNote.lightCSS || undefined,
+                                              darkCSS: newBookNote.darkCSS || undefined,
                                               mcqText: '',
                                               parsedMcqs: structuredMcqs,
                                               audioUrl: newBookNote.audioUrl,
@@ -13983,7 +14157,7 @@ Statement 2"
                                           const newSettings = { ...localSettings, homework: updated };
                                           setLocalSettings(newSettings);
                                           handleSaveSettings(newSettings);
-                                          setNewBookNote({ date: new Date().toISOString().split('T')[0], title: '', notes: '', chunkNotes: '', htmlNotes: '', mcqText: '', audioUrl: '', videoUrl: '', pdfUrl: '', targetSubject: newBookNote.targetSubject, pageNo: '', topicName: '', classTarget: newBookNote.classTarget });
+                                          setNewBookNote({ date: new Date().toISOString().split('T')[0], title: '', notes: '', chunkNotes: '', htmlNotes: '', lightCSS: '', darkCSS: '', mcqText: '', audioUrl: '', videoUrl: '', pdfUrl: '', targetSubject: newBookNote.targetSubject, pageNo: '', topicName: '', classTarget: newBookNote.classTarget });
                                           setNewBookNoteMcqs([]);
                                           setNewBookNoteBulk(undefined);
                                           setAlertConfig({ isOpen: true, message: `✅ Page ${pg} Note Saved!` });

@@ -154,7 +154,7 @@ import {
   BarChart2,
 } from "lucide-react";
 import { speakText, stopSpeech, stripHtml } from "../utils/textToSpeech";
-import { getMistakeBankSync, addMistakes, removeMistakeByQuestion } from "../utils/mistakeBank";
+import { getMistakeBankSync, getMistakeBank, addMistakes, removeMistakeByQuestion, MistakeEntry } from "../utils/mistakeBank";
 import { recordCreditTx } from "../utils/creditHistory";
 import { rotateScreen, isRotatingForOrientation } from "../utils/displayPrefs";
 import { hapticLight, hapticMedium, hapticStrong } from "../utils/haptic";
@@ -167,6 +167,7 @@ import { AudioPlaylistView } from "./AudioPlaylistView"; // Imported for Audio F
 import { PdfView } from "./PdfView"; // Imported for PDF Flow
 import { McqView } from "./McqView"; // Imported for MCQ Flow
 import { MiniPlayer } from "./MiniPlayer"; // Imported for Audio Flow
+import { MistakePracticeView } from "./MistakePracticeView"; // My Mistake home page practice
 import { HistoryPage } from "./HistoryPage";
 import TeacherStore from "./TeacherStore";
 import { ErrorBoundary } from "./ErrorBoundary";
@@ -429,6 +430,30 @@ const processHtmlForWriteMode = (html: string) => {
       return html;
     }
   };
+
+const _scopeCSS = (css: string, prefix: string): string => {
+  if (!css || !css.trim()) return '';
+  return css.replace(/([^{}@][^{}]*)\{/g, (_match: string, selector: string) => {
+    const trimmed = selector.trim();
+    if (!trimmed) return _match;
+    const scoped = trimmed.split(',').map((s: string) => `${prefix} ${s.trim()}`).join(', ');
+    return `${scoped} {`;
+  });
+};
+
+const buildNoteStyleBlock = (lightCSS?: string, darkCSS?: string): string => {
+  let out = '';
+  if (lightCSS?.trim()) {
+    const scoped = _scopeCSS(lightCSS, 'html:not(.dark-mode):not(.dark-mode-blue) .notes-html-content');
+    out += `<style>${scoped}</style>`;
+  }
+  if (darkCSS?.trim()) {
+    const sd = _scopeCSS(darkCSS, 'html.dark-mode .notes-html-content');
+    const sb = _scopeCSS(darkCSS, 'html.dark-mode-blue .notes-html-content');
+    out += `<style>${sd}\n${sb}</style>`;
+  }
+  return out;
+};
 
 export const StudentDashboard: React.FC<Props> = ({
   user,
@@ -1509,6 +1534,7 @@ export const StudentDashboard: React.FC<Props> = ({
   const [limitsViewPlan, setLimitsViewPlan] = useState<'FREE' | 'BASIC' | 'ULTRA'>('FREE');
   const [showRulesPage, setShowRulesPage] = useState(false);
   const [showLoginHistory, setShowLoginHistory] = useState(false);
+  const [historyInitialTab, setHistoryInitialTab] = useState<'READING' | 'ACTIVITY' | 'MISTAKE' | 'OFFLINE' | 'SUB_HISTORY' | 'STARRED' | 'FLASHCARDS' | 'LOGIN_HISTORY' | 'CREDIT_HISTORY'>('ACTIVITY');
   const [showContentNewSheet, setShowContentNewSheet] = useState(false);
   const [showCreditsMini, setShowCreditsMini] = useState(false);
   const [storeSubTab, setStoreSubTab] = useState<'STORE' | 'CREDITS'>('STORE');
@@ -1895,6 +1921,8 @@ export const StudentDashboard: React.FC<Props> = ({
 
   // ── MY MISTAKE COUNT (lightweight: synced via storage event + 30s poll) ──
   const [mistakeCount, setMistakeCount] = useState<number>(() => getMistakeBankSync().length);
+  const [showMistakePractice, setShowMistakePractice] = useState(false);
+  const [homeMistakes, setHomeMistakes] = useState<MistakeEntry[]>([]);
   useEffect(() => {
     const refresh = () => setMistakeCount(getMistakeBankSync().length);
     refresh();
@@ -1945,6 +1973,7 @@ export const StudentDashboard: React.FC<Props> = ({
   const [hwActivePdf, setHwActivePdf] = useState<string | null>(null);
   const [hwAudioVisible, setHwAudioVisible] = useState(false);
   const [hwVideoVisible, setHwVideoVisible] = useState(false);
+  const hwAutoOpenRef = useRef<'audio' | 'video' | null>(null);
 
   // --- NOTIFICATION STATE ---
   const [seenNotifIds, setSeenNotifIds] = useState<string[]>(() => {
@@ -2842,11 +2871,21 @@ export const StudentDashboard: React.FC<Props> = ({
     };
   }, [hwActiveHwId, hwViewMode]);
 
-  // Clear media state when switching homework
+  // Clear media state when switching homework (but respect hwAutoOpenRef for direct chip taps)
   React.useEffect(() => {
     setHwActivePdf(null);
-    setHwAudioVisible(false);
-    setHwVideoVisible(false);
+    const autoOpen = hwAutoOpenRef.current;
+    hwAutoOpenRef.current = null;
+    if (autoOpen === 'audio') {
+      setHwAudioVisible(true);
+      setHwVideoVisible(false);
+    } else if (autoOpen === 'video') {
+      setHwVideoVisible(true);
+      setHwAudioVisible(false);
+    } else {
+      setHwAudioVisible(false);
+      setHwVideoVisible(false);
+    }
   }, [hwActiveHwId]);
 
   // Track time spent reading homework notes (for History → Flashcards/Notes Read tab)
@@ -4771,7 +4810,7 @@ export const StudentDashboard: React.FC<Props> = ({
                                   id="hw-html-download"
                                   className="notes-html-content"
                                   style={{ fontSize: '15px', lineHeight: '1.8', padding: '0 16px 24px', overflowX: 'hidden', wordBreak: 'break-word', maxWidth: '100%' }}
-                                  dangerouslySetInnerHTML={{ __html: processHtmlForWriteMode((activeHw as any).htmlNotes || combinedNotes || '') }}
+                                  dangerouslySetInnerHTML={{ __html: buildNoteStyleBlock((activeHw as any).lightCSS, (activeHw as any).darkCSS) + processHtmlForWriteMode((activeHw as any).htmlNotes || combinedNotes || '') }}
                                 />
                               </div>
                             </div>
@@ -5700,20 +5739,25 @@ export const StudentDashboard: React.FC<Props> = ({
                           <span className="text-base font-black leading-none">{pageNum}</span>
                         </div>
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-1.5">
-                            <p className={`text-sm font-black ${theme.textDeep} truncate flex-1`}>{hw.title || `Page ${pageNum}`}</p>
-                            {((hw as any).chunkNotes || (hw as any).htmlNotes || hw.notes) && (
-                              <div className="flex gap-0.5 shrink-0" onClick={(e) => e.stopPropagation()}>
-                                <button onClick={(e) => { e.stopPropagation(); setHwNotesViewMode('chunk'); setHwActiveHwId(hw.id || null); }} className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-black transition-all ${hwNotesViewMode === 'chunk' ? 'bg-amber-500 text-white' : `${theme.chip} opacity-70`}`} title="Read Mode"><Volume2 size={9}/> Read</button>
-                                <button onClick={(e) => { e.stopPropagation(); handleWriteModeGate(() => { setHwNotesViewMode('html'); setHwActiveHwId(hw.id || null); }); }} className={`flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-black transition-all ${hwNotesViewMode === 'html' ? 'bg-teal-600 text-white' : `${theme.chip} opacity-70`}`} title="Write Mode"><FileText size={9}/> Write</button>
-                              </div>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-1.5 mt-0.5 flex-wrap">
+                          <p className={`text-sm font-black ${theme.textDeep} truncate`}>{hw.title || `Page ${pageNum}`}</p>
+                          <div className="flex items-center gap-1 mt-1 flex-wrap" onClick={(e) => e.stopPropagation()}>
+                            {((hw as any).chunkNotes || (hw as any).htmlNotes || hw.notes) && (<>
+                              <button onClick={(e) => { e.stopPropagation(); setHwNotesViewMode('chunk'); setHwActiveHwId(hw.id || null); }} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-black bg-amber-100 text-amber-700 active:scale-95 transition-all" title="Read Mode"><Volume2 size={9}/> Read</button>
+                              <button onClick={(e) => { e.stopPropagation(); handleWriteModeGate(() => { setHwNotesViewMode('html'); setHwActiveHwId(hw.id || null); }); }} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-black bg-teal-100 text-teal-700 active:scale-95 transition-all" title="Write Mode"><FileText size={9}/> Write</button>
+                            </>)}
                             {mcqCount > 0 && (
-                              <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded ${theme.chip}`}>{mcqCount} MCQ</span>
+                              <button onClick={(e) => { e.stopPropagation(); setHwActiveHwId(hw.id || null); }} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-black bg-violet-100 text-violet-700 active:scale-95 transition-all" title="MCQ Practice"><HelpCircle size={9}/> MCQ ({mcqCount})</button>
                             )}
-                            <span className={`text-[9px] font-bold ${theme.text} opacity-60`}>{monthYear}</span>
+                            {hw.videoUrl && (
+                              <button onClick={(e) => { e.stopPropagation(); hwAutoOpenRef.current = 'video'; setHwActiveHwId(hw.id || null); }} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-black bg-rose-100 text-rose-700 active:scale-95 transition-all" title="Watch Video"><Video size={9}/> Video</button>
+                            )}
+                            {hw.audioUrl && (
+                              <button onClick={(e) => { e.stopPropagation(); hwAutoOpenRef.current = 'audio'; setHwActiveHwId(hw.id || null); }} className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-black bg-purple-100 text-purple-700 active:scale-95 transition-all" title="Listen Audio"><Headphones size={9}/> Audio</button>
+                            )}
+                            {((hw as any).isUltra || (hw as any).tier === 'ULTRA') && (
+                              <span className="flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[9px] font-black bg-purple-600 text-white"><Crown size={9}/> ULTRA</span>
+                            )}
+                            <span className={`text-[9px] font-bold ${theme.text} opacity-50`}>{monthYear}</span>
                           </div>
                         </div>
                         <ChevronRight size={15} className={`${theme.text} shrink-0`} />
@@ -7571,7 +7615,43 @@ export const StudentDashboard: React.FC<Props> = ({
 
                   return (
                     <div className="space-y-4">
-                      {groups.map((g) => {
+
+                      {/* ── HOME MODE TOGGLE — Class 6-12 vs Competition ── */}
+                      <div className="relative flex rounded-2xl p-1 gap-1" style={{ background: 'rgba(0,0,0,0.04)', border: '1px solid rgba(0,0,0,0.07)' }}>
+                        <button
+                          onClick={() => setSyllabusMode('SCHOOL')}
+                          className="relative flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-black transition-all duration-200"
+                          style={syllabusMode === 'SCHOOL' ? {
+                            background: 'linear-gradient(135deg, #3b82f6, #6366f1)',
+                            color: '#fff',
+                            boxShadow: '0 2px 12px rgba(99,102,241,0.35)'
+                          } : { color: '#64748b' }}
+                        >
+                          <span className="text-sm">📚</span>
+                          <span>Class 6–12</span>
+                          {syllabusMode === 'SCHOOL' && (
+                            <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-white/60" />
+                          )}
+                        </button>
+                        <button
+                          onClick={() => { hapticStrong(); setSyllabusMode('COMPETITION'); }}
+                          className="relative flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-black transition-all duration-200"
+                          style={syllabusMode === 'COMPETITION' ? {
+                            background: 'linear-gradient(135deg, #f97316, #eab308)',
+                            color: '#fff',
+                            boxShadow: '0 2px 12px rgba(249,115,22,0.35)'
+                          } : { color: '#64748b' }}
+                        >
+                          <span className="text-sm">🏆</span>
+                          <span>Competition</span>
+                          {syllabusMode === 'COMPETITION' && (
+                            <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-white/60" />
+                          )}
+                        </button>
+                      </div>
+
+                      {/* ── CLASS 6-12 GROUPS — only in SCHOOL mode ── */}
+                      {syllabusMode === 'SCHOOL' && groups.map((g) => {
                         const t = themes[g.key];
                         const isTwoCol = g.classes.length === 2;
                         return (
@@ -7638,8 +7718,8 @@ export const StudentDashboard: React.FC<Props> = ({
                         );
                       })}
 
-                      {/* GOVT EXAMS + AI SHORTCUT */}
-                      {isHomeSectionVisible('home_govt_exams', settings) && (() => {
+                      {/* GOVT EXAMS + AI SHORTCUT — only in COMPETITION mode */}
+                      {syllabusMode === 'COMPETITION' && isHomeSectionVisible('home_govt_exams', settings) && (() => {
                         const compSubjects = getSubjectsList('COMPETITION', null, currentBoard);
                         const compSubjectCount = compSubjects.length;
                         const compLive = classContentStats[`${currentBoard}_COMPETITION`];
@@ -7685,6 +7765,51 @@ export const StudentDashboard: React.FC<Props> = ({
 
                             <div className="h-1 bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-500 opacity-30 group-hover:opacity-60 transition-opacity" />
                           </button>
+
+                          {/* ACTIVITY HISTORY — below competition card */}
+                          <button
+                            onClick={() => { hapticStrong(); setHistoryInitialTab('ACTIVITY'); onTabChange('HISTORY'); }}
+                            className="mt-3 w-full flex items-center gap-3 px-4 py-3 rounded-2xl border-2 border-rose-200 bg-gradient-to-br from-rose-50 via-pink-50 to-orange-50 hover:border-rose-400 hover:scale-[1.01] active:scale-[1.02] transition-all duration-150 shadow-sm text-left"
+                          >
+                            <div className="w-9 h-9 rounded-xl bg-rose-100 flex items-center justify-center shrink-0">
+                              <History size={16} className="text-rose-500" />
+                            </div>
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-black text-rose-700 leading-tight">Activity History</p>
+                              <p className="text-[10px] text-rose-500/80">Tests, sessions & past activity</p>
+                            </div>
+                            <ChevronRight size={16} className="text-rose-400 shrink-0" />
+                          </button>
+
+                          {/* QUICK ACCESS GRID — Reading, Flashcards, Offline, Login History, Credits */}
+                          <div className="mt-3 grid grid-cols-3 gap-2">
+                            {([
+                              { icon: '📖', label: 'Reading', sub: 'Continue where left', tab: 'READING', bg: 'from-sky-50 to-blue-50', border: 'border-sky-200', text: 'text-sky-700', subText: 'text-sky-500/80' },
+                              { icon: '🃏', label: 'Flashcards', sub: 'Session history', tab: 'FLASHCARDS', bg: 'from-violet-50 to-purple-50', border: 'border-violet-200', text: 'text-violet-700', subText: 'text-violet-500/80' },
+                              { icon: '💾', label: 'Offline', sub: 'Saved content', tab: 'OFFLINE', bg: 'from-emerald-50 to-teal-50', border: 'border-emerald-200', text: 'text-emerald-700', subText: 'text-emerald-500/80' },
+                              { icon: '🕐', label: 'Login', sub: 'Session log', tab: 'LOGIN_HISTORY', bg: 'from-blue-50 to-indigo-50', border: 'border-blue-200', text: 'text-blue-700', subText: 'text-blue-500/80' },
+                              { icon: '💰', label: 'Credits', sub: 'Earn & spend log', tab: 'CREDIT_HISTORY', bg: 'from-amber-50 to-yellow-50', border: 'border-amber-200', text: 'text-amber-700', subText: 'text-amber-500/80' },
+                              { icon: '❌', label: 'My Mistakes', sub: `${mistakeCount} galtiyan`, tab: 'MISTAKE', bg: 'from-rose-50 to-pink-50', border: 'border-rose-200', text: 'text-rose-700', subText: 'text-rose-500/80' },
+                            ] as {icon:string;label:string;sub:string;tab:typeof historyInitialTab;bg:string;border:string;text:string;subText:string}[]).map(item => (
+                              <button
+                                key={item.tab}
+                                onClick={() => {
+                                  hapticStrong();
+                                  if (item.tab === 'MISTAKE') {
+                                    getMistakeBank().then(m => { setHomeMistakes(m); setShowMistakePractice(true); });
+                                  } else {
+                                    setHistoryInitialTab(item.tab);
+                                    onTabChange('HISTORY');
+                                  }
+                                }}
+                                className={`flex flex-col items-center gap-1 px-2 py-3 rounded-2xl border-2 ${item.border} bg-gradient-to-br ${item.bg} active:scale-95 transition-all`}
+                              >
+                                <span className="text-xl leading-none">{item.icon}</span>
+                                <span className={`text-[10px] font-black ${item.text} leading-tight text-center`}>{item.label}</span>
+                                <span className={`text-[8px] font-bold ${item.subText} leading-tight text-center`}>{item.sub}</span>
+                              </button>
+                            ))}
+                          </div>
                         </div>
                         );
                       })()}
@@ -7695,9 +7820,71 @@ export const StudentDashboard: React.FC<Props> = ({
               </div>
 
             </div>
+
+            {/* ── MY MISTAKES — dedicated home section ── */}
+            <div className="mt-4">
+              <div className="flex items-center gap-2 mb-2">
+                <span className="inline-block h-2 w-2 rounded-full bg-gradient-to-r from-rose-500 to-orange-500" />
+                <span className="text-[10px] font-black uppercase tracking-widest text-rose-700">My Mistakes</span>
+                <span className="flex-1 h-px bg-slate-100" />
+                {mistakeCount > 0 && (
+                  <span className="text-[9px] font-bold text-white bg-rose-500 rounded-full px-2 py-0.5 leading-none">{mistakeCount}</span>
+                )}
+              </div>
+
+              {mistakeCount > 0 ? (
+                <button
+                  onClick={() => {
+                    hapticStrong();
+                    getMistakeBank().then(m => { setHomeMistakes(m); setShowMistakePractice(true); });
+                  }}
+                  className="group relative w-full rounded-2xl bg-gradient-to-br from-rose-50 via-pink-50 to-orange-50 border-2 border-rose-200 text-left hover:border-rose-400 hover:scale-[1.01] active:scale-[1.02] transition-all duration-150 shadow-sm overflow-hidden"
+                >
+                  <span className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-rose-500 via-pink-500 to-orange-500 rounded-t-2xl" />
+                  <div className="px-4 pt-4 pb-3 flex items-center gap-4">
+                    <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-rose-500 to-orange-500 flex items-center justify-center shrink-0 text-2xl shadow-md group-hover:scale-105 transition-transform">
+                      ❌
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 mb-0.5">
+                        <p className="text-sm font-black text-rose-700 leading-tight">Practice Karo</p>
+                        <span className="bg-rose-500 text-white text-[9px] font-black rounded-full px-1.5 py-0.5 leading-none">{mistakeCount} galtiyan</span>
+                      </div>
+                      <p className="text-[10px] text-rose-500/80">Galat jawab wale MCQs — dubara try karo</p>
+                    </div>
+                    <div className="shrink-0">
+                      <span className="text-[11px] font-black text-rose-600 bg-rose-100 rounded-xl px-2.5 py-1.5 border border-rose-200 group-hover:bg-rose-200 transition-colors">▶ Start</span>
+                    </div>
+                  </div>
+                  <div className="h-1 bg-gradient-to-r from-rose-500 via-pink-500 to-orange-500 opacity-25 group-hover:opacity-50 transition-opacity" />
+                </button>
+              ) : (
+                <div className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-emerald-50 border-2 border-emerald-200">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-100 flex items-center justify-center shrink-0 text-xl">🎉</div>
+                  <div>
+                    <p className="text-sm font-black text-emerald-700">Koi galti nahi!</p>
+                    <p className="text-[10px] text-emerald-600/80">Galat MCQ solve karo — yahan track hoga</p>
+                  </div>
+                </div>
+              )}
+            </div>
+
           </DashboardSectionWrapper>
           </div>
         </div>
+
+        {/* ── MY MISTAKE PRACTICE MODAL ── */}
+        {showMistakePractice && (
+          <MistakePracticeView
+            mistakes={homeMistakes}
+            onClose={() => setShowMistakePractice(false)}
+            onComplete={() => {
+              setMistakeCount(getMistakeBankSync().length);
+              setShowMistakePractice(false);
+            }}
+          />
+        )}
+
         </PullToRefresh>
       );
     }
@@ -7842,6 +8029,8 @@ export const StudentDashboard: React.FC<Props> = ({
               initialParentSubject={initialParentSubject}
               contentIndex={classContentIndex[`${activeSessionBoard || user.board || 'CBSE'}_${activeSessionClass || '10'}`] || {}}
               lucentNotes={(settings?.lucentNotes || []) as any[]}
+              subscriptionLevel={user.subscriptionLevel}
+              isPremium={user.isPremium}
               onSelect={(subject) => {
                 setSelectedSubject(subject);
                 setHomeworkSubjectView(null);
@@ -7925,9 +8114,11 @@ export const StudentDashboard: React.FC<Props> = ({
     if (activeTab === "HISTORY")
       return (
         <HistoryPage
+          key={historyInitialTab}
           user={user}
           onUpdateUser={handleUserUpdate}
           settings={settings}
+          initialTab={historyInitialTab}
           onResumeRecentChapter={(e) => openRecentChapter(e)}
           onResumeRecentHw={(e) => {
             // Open the homework history overlay then load the specific note.
@@ -8427,19 +8618,6 @@ export const StudentDashboard: React.FC<Props> = ({
                   </div>
                 );
               })()}
-
-              {/* Leaderboard */}
-              <button onClick={() => setShowLevelLeaderboard(true)}
-                className="w-full px-4 py-3.5 flex items-center gap-3 hover:bg-white/4 active:bg-white/6 transition-colors border-b border-slate-800/80">
-                <div className="w-9 h-9 rounded-xl bg-yellow-500/15 flex items-center justify-center shrink-0">
-                  <Trophy size={16} className="text-yellow-400" />
-                </div>
-                <div className="flex-1 text-left min-w-0">
-                  <p className="text-sm font-bold text-white">Leaderboard</p>
-                  <p className="text-[11px] text-slate-500">Top students by level & score</p>
-                </div>
-                <ChevronRight size={14} className="text-slate-600 shrink-0" />
-              </button>
 
               {/* Teacher Store — only visible for actual teachers */}
               {user.role === 'TEACHER' && (
@@ -8959,12 +9137,22 @@ export const StudentDashboard: React.FC<Props> = ({
 
         {/* SECOND LINE: Level btn + Credits + greeting + subscription badge */}
         <div className="flex items-center justify-between w-full mt-0.5 pt-0.5 border-t border-white/10">
-          {/* Left: greeting */}
-          <div className="flex items-center gap-1.5 shrink-0">
-            <span className="text-[12px] font-bold text-white/90 truncate max-w-[62px]">
-              Hey, {(user.name || "Student").split(" ")[0]} 👋
-            </span>
-          </div>
+          {/* Left: greeting — scrolling marquee if name > 10 chars */}
+          {(() => {
+            const fullName = user.name || "Student";
+            const isLong = fullName.length > 10;
+            const overflowPx = isLong ? Math.min(90, (fullName.length - 10) * 7) : 0;
+            return (
+              <div className="flex items-center gap-0.5 shrink-0 max-w-[96px] overflow-hidden" style={isLong ? { maskImage: 'linear-gradient(to right, black 70%, transparent 100%)' } : {}}>
+                <span
+                  className={`text-[12px] font-bold text-white/90 whitespace-nowrap inline-block${isLong ? ' nst-name-scroll' : ''}`}
+                  style={isLong ? { '--nst-scroll': `-${overflowPx}px` } as React.CSSProperties : {}}
+                >
+                  Hey, {fullName} 👋
+                </span>
+              </div>
+            );
+          })()}
 
           {/* Right: Level btn + Credits + subscription badge */}
           <div className="flex items-center gap-1.5 shrink-0 max-w-[78%] overflow-hidden">
@@ -10396,38 +10584,6 @@ export const StudentDashboard: React.FC<Props> = ({
 
             <div className="flex-1 overflow-y-auto">
               <div className="max-w-2xl mx-auto px-4 py-4 space-y-5">
-                {/* DAILY MY MISTAKE BANNER — always shows when student has
-                    pending mistakes. Tapping opens History → My Mistake tab
-                    where they can review or practice them. */}
-                {mistakeCount > 0 && (
-                  <button
-                    onClick={() => {
-                      setShowHomeworkHistory(false);
-                      onTabChange('HISTORY');
-                      setCurrentLogicalTab('HISTORY');
-                    }}
-                    className="w-full text-left rounded-2xl p-4 bg-gradient-to-br from-rose-500 via-orange-500 to-amber-500 text-white shadow-lg relative overflow-hidden active:scale-[0.99] transition-transform"
-                  >
-                    <div className="absolute -top-8 -right-8 w-32 h-32 bg-white/10 rounded-full blur-2xl pointer-events-none" />
-                    <div className="flex items-center gap-3 relative">
-                      <div className="w-12 h-12 rounded-2xl bg-white/20 backdrop-blur flex items-center justify-center shrink-0">
-                        <Target size={24} />
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <h4 className="text-base font-black leading-tight">Daily My Mistake</h4>
-                          <span className="bg-white/25 text-white text-[10px] font-black px-2 py-0.5 rounded-full leading-none">
-                            {mistakeCount}
-                          </span>
-                        </div>
-                        <p className="text-[11px] text-white/90 leading-snug">
-                          {mistakeCount} galt MCQ pending hain — tap karke practice karein
-                        </p>
-                      </div>
-                      <ChevronRight size={20} className="opacity-90 shrink-0" />
-                    </div>
-                  </button>
-                )}
 
                 {/* FIXED GK CARD — Daily GK + GK History both accessible from here.
                     Replaces the tiny GK button that used to sit in the header.
@@ -14821,7 +14977,7 @@ export const StudentDashboard: React.FC<Props> = ({
                               id="lucent-html-download"
                               className="notes-html-content"
                               style={{ fontSize: '15px', lineHeight: '1.8', padding: '0 16px 24px' }}
-                              dangerouslySetInnerHTML={{ __html: processHtmlForWriteMode(currentPage.htmlNotes || currentPage.content || '') }}
+                              dangerouslySetInnerHTML={{ __html: buildNoteStyleBlock((currentPage as any).lightCSS, (currentPage as any).darkCSS) + processHtmlForWriteMode(currentPage.htmlNotes || currentPage.content || '') }}
                             />
                           </div>
                         </div>
@@ -14940,7 +15096,7 @@ export const StudentDashboard: React.FC<Props> = ({
                       className="notes-html-content"
                       style={{ position: 'fixed', left: '-99999px', top: 0, width: '1100px', background: '#ffffff', padding: '32px', fontSize: '15px', lineHeight: '1.8' }}
                       aria-hidden="true"
-                      dangerouslySetInnerHTML={{ __html: processHtmlForWriteMode(currentPage.htmlNotes || currentPage.content || '') }}
+                      dangerouslySetInnerHTML={{ __html: buildNoteStyleBlock((currentPage as any).lightCSS, (currentPage as any).darkCSS) + processHtmlForWriteMode(currentPage.htmlNotes || currentPage.content || '') }}
                     />
                   )}
 
@@ -17163,7 +17319,7 @@ RULES:
 
       {/* ===================== LEVEL LEADERBOARD OVERLAY ===================== */}
       {showLevelLeaderboard && (
-        <div className="fixed inset-0 z-[9000] bg-[#0a0a1a]">
+        <div className="fixed inset-0 z-[9000] bg-[#0a0a1a] overflow-y-auto">
           <LevelLeaderboard
             user={user}
             onBack={() => setShowLevelLeaderboard(false)}
@@ -17542,6 +17698,21 @@ RULES:
                   </div>
                 );
               })()}
+
+                {/* ── LEADERBOARD BUTTON — inside score panel LEVEL tab ── */}
+                {scorePanelTab === 'LEVEL' && (
+                  <button
+                    onClick={() => { _closePanel(); setTimeout(() => setShowLevelLeaderboard(true), 120); }}
+                    className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl border border-white/10 bg-white/4 hover:bg-white/8 active:scale-[0.98] transition-all text-left"
+                  >
+                    <div className="w-10 h-10 rounded-xl bg-yellow-400/15 border border-yellow-400/30 flex items-center justify-center shrink-0 text-xl">🏆</div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-black text-white leading-tight">Full Leaderboard Dekho</p>
+                      <p className="text-[10px] text-slate-500">Sabhi students ka rank — level, MCQ, streak</p>
+                    </div>
+                    <ChevronRight size={14} className="text-slate-600 shrink-0" />
+                  </button>
+                )}
 
                 {/* ── DAILY LIMITS TAB ── */}
                 {scorePanelTab === 'DAILY' && (() => {

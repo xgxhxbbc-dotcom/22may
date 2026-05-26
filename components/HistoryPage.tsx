@@ -436,32 +436,8 @@ export const HistoryPage: React.FC<Props> = ({ user, onUpdateUser, settings, ini
             </h3>
         </div>
 
-        {/* TABS */}
+        {/* TABS — Reading, Flashcards, My Mistake, Offline, Login History, Credits moved to Home page quick-access grid */}
         <div className="flex p-1 bg-slate-100 rounded-xl mb-6 overflow-x-auto no-scrollbar gap-1">
-            <button
-                onClick={() => setActiveTab('READING')}
-                className={`flex-none px-4 py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'READING' ? 'bg-white shadow text-slate-800' : 'text-slate-600 hover:text-slate-700'}`}
-            >
-                Reading
-            </button>
-            <button
-                onClick={() => setActiveTab('FLASHCARDS')}
-                className={`flex-none px-4 py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'FLASHCARDS' ? 'bg-white shadow text-slate-800' : 'text-slate-600 hover:text-slate-700'}`}
-            >
-                Flashcards
-            </button>
-            <button
-                onClick={() => setActiveTab('MISTAKE')}
-                className={`flex-none px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-1.5 ${activeTab === 'MISTAKE' ? 'bg-white shadow text-rose-600' : 'text-slate-600 hover:text-slate-700'}`}
-            >
-                <Target size={13} />
-                My Mistake
-                {mistakes.length > 0 && (
-                  <span className="ml-1 bg-rose-500 text-white text-[9px] font-black px-1.5 py-0.5 rounded-full leading-none">
-                    {mistakes.length}
-                  </span>
-                )}
-            </button>
             <button
                 onClick={() => setActiveTab('ACTIVITY')}
                 className={`flex-none px-4 py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'ACTIVITY' ? 'bg-white shadow text-slate-800' : 'text-slate-600 hover:text-slate-700'}`}
@@ -469,30 +445,11 @@ export const HistoryPage: React.FC<Props> = ({ user, onUpdateUser, settings, ini
                 Activity Log
             </button>
             <button
-                onClick={() => setActiveTab('OFFLINE')}
-                className={`flex-none px-4 py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'OFFLINE' ? 'bg-white shadow text-slate-800' : 'text-slate-600 hover:text-slate-700'}`}
-            >
-                Offline Saved
-            </button>
-            <button
                 onClick={() => setActiveTab('SUB_HISTORY')}
                 className={`flex-none px-4 py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'SUB_HISTORY' ? 'bg-white shadow text-slate-800' : 'text-slate-600 hover:text-slate-700'}`}
             >
                 Sub History
             </button>
-            <button
-                onClick={() => setActiveTab('LOGIN_HISTORY')}
-                className={`flex-none px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-1 ${activeTab === 'LOGIN_HISTORY' ? 'bg-white shadow text-blue-700' : 'text-slate-600 hover:text-slate-700'}`}
-            >
-                🕐 Login History
-            </button>
-            <button
-                onClick={() => setActiveTab('CREDIT_HISTORY')}
-                className={`flex-none px-4 py-2 text-xs font-bold rounded-lg transition-all flex items-center gap-1 ${activeTab === 'CREDIT_HISTORY' ? 'bg-white shadow text-amber-700' : 'text-slate-600 hover:text-slate-700'}`}
-            >
-                💰 Credits
-            </button>
-            {/* Important Notes tab removed — accessed from bottom-nav ⭐ Important tab */}
         </div>
 
         {activeTab === 'READING' && (

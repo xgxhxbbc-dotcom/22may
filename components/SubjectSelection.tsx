@@ -15,6 +15,8 @@ interface Props {
   settings?: SystemSettings | null;
   contentIndex?: ContentIndexMap;
   lucentNotes?: LucentNoteEntry[];
+  subscriptionLevel?: string;
+  isPremium?: boolean;
 }
 
 const SubjectIcon: React.FC<{ icon: string; className?: string }> = ({ icon, className }) => {
@@ -58,7 +60,7 @@ const getSubjectStats = (
 
   Object.entries(contentIndex).forEach(([key, entry]) => {
     if (!key.startsWith(prefix)) return;
-    const rest = key.slice(prefix.length); // e.g. "Physics_ch1"
+    const rest = key.slice(prefix.length);
     const restLower = rest.toLowerCase();
     const storedSubject = (entry.subject || '').toLowerCase().replace(/\s+/g, '_');
     if (!storedSubject && !restLower.startsWith(subjectNameLower + '_')) return;
@@ -80,12 +82,25 @@ const getSubjectStats = (
 
 export const SubjectSelection: React.FC<Props> = ({
   classLevel, stream, board, onSelect, onBack, hideBack = false, settings,
-  contentIndex = {}, lucentNotes = []
+  contentIndex = {}, lucentNotes = [], subscriptionLevel, isPremium
 }) => {
   const subjects = getSubjectsList(classLevel, stream, board).filter(
     sub => !(settings?.hiddenSubjects || []).includes(sub.id)
   );
   const currentBoard = board || 'CBSE';
+
+  const tier = isPremium && subscriptionLevel === 'ULTRA'
+    ? 'ultra'
+    : isPremium && subscriptionLevel === 'BASIC'
+      ? 'basic'
+      : 'free';
+
+  const iconColorMap: Record<string, string> = {
+    ultra: '#a78bfa',
+    basic: '#38bdf8',
+    free:  '#64748b',
+  };
+  const iconColor = iconColorMap[tier];
 
   return (
     <div className="animate-in fade-in slide-in-from-right-8 duration-500 mt-0 pt-0">
@@ -105,43 +120,40 @@ export const SubjectSelection: React.FC<Props> = ({
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
         {subjects.map((subject) => {
-          const colorParts = (subject.color || 'bg-slate-50 text-slate-600').split(' ');
-          const bgClass   = colorParts[0] || 'bg-slate-50';
-          const textClass = colorParts[1] || 'text-slate-600';
-          const borderClass = bgClass.replace('bg-', 'border-').replace('50', '200').replace('100', '300');
           const stats = getSubjectStats(subject, classLevel, currentBoard, contentIndex, lucentNotes);
           const totalContent = stats.notes + stats.pdf + stats.video + stats.audio + stats.mcq + stats.lucentNotes;
 
-          const statBadges: { emoji: string; count: number; color: string }[] = [
-            { emoji: '📝', count: stats.notes + stats.lucentNotes, color: 'text-indigo-600' },
-            { emoji: '📄', count: stats.pdf,   color: 'text-rose-600' },
-            { emoji: '📊', count: stats.mcq,   color: 'text-amber-600' },
-            { emoji: '🎥', count: stats.video, color: 'text-green-600' },
-            { emoji: '🔊', count: stats.audio, color: 'text-purple-600' },
+          const statBadges: { emoji: string; count: number }[] = [
+            { emoji: '📝', count: stats.notes + stats.lucentNotes },
+            { emoji: '📄', count: stats.pdf   },
+            { emoji: '📊', count: stats.mcq   },
+            { emoji: '🎥', count: stats.video },
+            { emoji: '🔊', count: stats.audio },
           ].filter(b => b.count > 0);
 
           return (
             <button
               key={subject.id}
               onClick={() => onSelect(subject)}
-              className={`${bgClass} border-2 ${borderClass} p-4 rounded-2xl flex items-center gap-4 hover:shadow-md transition-all active:scale-95 text-left group`}
+              data-tier={tier}
+              className="nst-subject-card p-4 rounded-2xl flex items-center gap-4 active:scale-95 text-left group"
             >
-              <div className={`w-12 h-12 rounded-xl ${subject.color} flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform`}>
+              <div className="nst-card-icon w-12 h-12 rounded-xl flex items-center justify-center shrink-0 group-hover:scale-110 transition-transform">
                 <SubjectIcon icon={subject.icon} className="w-6 h-6" />
               </div>
               <div className="flex-1 min-w-0">
-                <h3 className={`font-black text-base ${textClass} truncate`}>{subject.name}</h3>
+                <h3 className="nst-card-title font-black text-base truncate">{subject.name}</h3>
                 {totalContent > 0 ? (
-                  <div className="flex items-center gap-1 flex-wrap mt-0.5">
+                  <div className="flex items-center gap-1.5 flex-wrap mt-0.5">
                     {statBadges.map(b => (
-                      <span key={b.emoji} className={`text-[10px] font-bold ${b.color}`}>{b.emoji}{b.count}</span>
+                      <span key={b.emoji} className="nst-card-meta text-[10px] font-bold">{b.emoji}{b.count}</span>
                     ))}
                   </div>
                 ) : (
-                  <p className="text-[11px] text-slate-400 font-medium mt-0.5">No content yet</p>
+                  <p className="nst-card-meta text-[11px] font-medium mt-0.5">No content yet</p>
                 )}
               </div>
-              <ChevronRight size={18} className={`${textClass} opacity-60 shrink-0`} />
+              <ChevronRight size={18} className="nst-card-arrow opacity-70 shrink-0" />
             </button>
           );
         })}
