@@ -899,6 +899,19 @@ export const StudentDashboard: React.FC<Props> = ({
       const correct = (parseInt(localStorage.getItem(correctKey) || '0')) + (isCorrect ? 1 : 0);
       localStorage.setItem(countKey, total.toString());
       localStorage.setItem(correctKey, correct.toString());
+      // Save MCQ count to Firebase so leaderboard can track it
+      try {
+        const mcqUpdated = {
+          ...freshUser,
+          dailyMcqDate: today,
+          dailyMcqCount: total,
+          totalMcqSolved: (freshUser.totalMcqSolved || 0) + 1,
+        };
+        localStorage.setItem('nst_current_user', JSON.stringify(mcqUpdated));
+        saveUserToLive(mcqUpdated);
+        handleUserUpdate(mcqUpdated);
+      } catch {}
+
       // ── Free limit notification: show count after each MCQ for free users ──
       if (!freshUser.isPremium) {
         const mcqLim = getEffectiveDailyLimit('mcq', getLevelInfo(freshUser.totalScore || 0).level, 'FREE', settings);
@@ -1522,7 +1535,7 @@ export const StudentDashboard: React.FC<Props> = ({
   };
   const [showDotsMenu, setShowDotsMenu] = useState(false);
   const [showScorePanel, setShowScorePanel] = useState(false);
-  const [scorePanelTab, setScorePanelTab] = useState<'LEVEL' | 'DAILY' | 'FEATURES'>('LEVEL');
+  const [scorePanelTab, setScorePanelTab] = useState<'LEVEL' | 'DAILY' | 'FEATURES' | 'LEADERBOARD'>('LEVEL');
   const [scoreDailyTier, setScoreDailyTier] = useState<'FREE' | 'BASIC' | 'ULTRA' | null>(null);
   const [viewedLevelIdx, setViewedLevelIdx] = useState<number>(0);
   const [ttsProgressPercent, setTtsProgressPercent] = useState(0);
@@ -1534,7 +1547,8 @@ export const StudentDashboard: React.FC<Props> = ({
   const [limitsViewPlan, setLimitsViewPlan] = useState<'FREE' | 'BASIC' | 'ULTRA'>('FREE');
   const [showRulesPage, setShowRulesPage] = useState(false);
   const [showLoginHistory, setShowLoginHistory] = useState(false);
-  const [historyInitialTab, setHistoryInitialTab] = useState<'READING' | 'ACTIVITY' | 'MISTAKE' | 'OFFLINE' | 'SUB_HISTORY' | 'STARRED' | 'FLASHCARDS' | 'LOGIN_HISTORY' | 'CREDIT_HISTORY'>('ACTIVITY');
+  const [historyInitialTab, setHistoryInitialTab] = useState<'READING' | 'MISTAKE' | 'OFFLINE' | 'STARRED' | 'FLASHCARDS' | 'LOGIN_HISTORY' | 'CREDIT_HISTORY'>('READING');
+  const [storeShowSubHistory, setStoreShowSubHistory] = useState(false);
   const [showContentNewSheet, setShowContentNewSheet] = useState(false);
   const [showCreditsMini, setShowCreditsMini] = useState(false);
   const [storeSubTab, setStoreSubTab] = useState<'STORE' | 'CREDITS'>('STORE');
@@ -2099,6 +2113,7 @@ export const StudentDashboard: React.FC<Props> = ({
   const [lucentNotesViewMode, setLucentNotesViewMode] = useState<'html' | 'chunk'>('chunk');
   // Tracks htmlViewMode inside ChunkedNotesReader (for download sync without unmounting reader)
   const [lucentChunkHtmlMode, setLucentChunkHtmlMode] = useState<'chunk' | 'html'>('chunk');
+  const [lucentSaved, setLucentSaved] = useState(false);
   // Reset both tabs + view mode when page or note changes
   useEffect(() => {
     const page = lucentNoteViewer?.pages?.[lucentPageIndex];
@@ -2106,6 +2121,7 @@ export const StudentDashboard: React.FC<Props> = ({
     setLucentActiveTab(hasNotes ? 'NOTES' : 'MCQS');
     setLucentNotesViewMode('chunk');
     setLucentChunkHtmlMode('chunk');
+    setLucentSaved(false);
   }, [lucentPageIndex, lucentNoteViewer?.id]);
   const [hwScrollProgress, setHwScrollProgress] = useState(0);
   const hwScrollContainerRef = useRef<HTMLDivElement>(null);
@@ -6322,7 +6338,7 @@ export const StudentDashboard: React.FC<Props> = ({
             icon: Trophy,
             color: "amber",
             action: () => {
-              setShowLevelLeaderboard(true);
+              onTabChange("LEADERBOARD");
               setShowSidebar(false);
             },
           },
@@ -7616,100 +7632,125 @@ export const StudentDashboard: React.FC<Props> = ({
                   return (
                     <div className="space-y-4">
 
-                      {/* ── HOME MODE TOGGLE — Class 6-12 vs Competition ── */}
-                      <div className="relative flex rounded-2xl p-1 gap-1" style={{ background: 'rgba(0,0,0,0.04)', border: '1px solid rgba(0,0,0,0.07)' }}>
+                      {/* ── HOME MODE TOGGLE ── */}
+                      <div className="relative flex rounded-2xl p-1 gap-1" style={{ background: 'rgba(0,0,0,0.05)', border: '1.5px solid rgba(0,0,0,0.07)' }}>
                         <button
                           onClick={() => setSyllabusMode('SCHOOL')}
-                          className="relative flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-black transition-all duration-200"
+                          className="relative flex-1 flex flex-col items-center justify-center gap-0.5 py-3 rounded-xl transition-all duration-200"
                           style={syllabusMode === 'SCHOOL' ? {
-                            background: 'linear-gradient(135deg, #3b82f6, #6366f1)',
+                            background: 'linear-gradient(135deg, #2563eb, #4f46e5)',
                             color: '#fff',
-                            boxShadow: '0 2px 12px rgba(99,102,241,0.35)'
+                            boxShadow: '0 4px 18px rgba(79,70,229,0.45)'
                           } : { color: '#64748b' }}
                         >
-                          <span className="text-sm">📚</span>
-                          <span>Class 6–12</span>
-                          {syllabusMode === 'SCHOOL' && (
-                            <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-white/60" />
-                          )}
+                          <span className="text-xl leading-none mb-0.5">📚</span>
+                          <span className="text-[11px] font-black tracking-wide">Class 6–12</span>
+                          <span className={`text-[9px] font-semibold ${syllabusMode === 'SCHOOL' ? 'text-indigo-100' : 'text-slate-400'}`}>CBSE · BSEB · NCERT</span>
+                          {syllabusMode === 'SCHOOL' && <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-white/70 animate-pulse" />}
                         </button>
                         <button
                           onClick={() => { hapticStrong(); setSyllabusMode('COMPETITION'); }}
-                          className="relative flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl text-xs font-black transition-all duration-200"
+                          className="relative flex-1 flex flex-col items-center justify-center gap-0.5 py-3 rounded-xl transition-all duration-200"
                           style={syllabusMode === 'COMPETITION' ? {
-                            background: 'linear-gradient(135deg, #f97316, #eab308)',
+                            background: 'linear-gradient(135deg, #ea580c, #dc2626)',
                             color: '#fff',
-                            boxShadow: '0 2px 12px rgba(249,115,22,0.35)'
+                            boxShadow: '0 4px 18px rgba(220,38,38,0.45)'
                           } : { color: '#64748b' }}
                         >
-                          <span className="text-sm">🏆</span>
-                          <span>Competition</span>
-                          {syllabusMode === 'COMPETITION' && (
-                            <span className="absolute top-1 right-1 w-1.5 h-1.5 rounded-full bg-white/60" />
-                          )}
+                          <span className="text-xl leading-none mb-0.5">🏆</span>
+                          <span className="text-[11px] font-black tracking-wide">Competition</span>
+                          <span className={`text-[9px] font-semibold ${syllabusMode === 'COMPETITION' ? 'text-orange-100' : 'text-slate-400'}`}>SSC · UPSC · Railway</span>
+                          {syllabusMode === 'COMPETITION' && <span className="absolute top-2 right-2 w-1.5 h-1.5 rounded-full bg-white/70 animate-pulse" />}
                         </button>
                       </div>
 
-                      {/* ── CLASS 6-12 GROUPS — only in SCHOOL mode ── */}
+                      {/* ── CLASS 6-12 GROUPS ── */}
                       {syllabusMode === 'SCHOOL' && groups.map((g) => {
                         const t = themes[g.key];
                         const isTwoCol = g.classes.length === 2;
                         return (
                           <div key={g.key}>
-                            <div className="flex items-center gap-2 mb-2">
-                              <span className={`inline-block h-2 w-2 rounded-full bg-gradient-to-r ${t.accent}`} />
-                              <span className={`text-[10px] font-black uppercase tracking-widest ${t.text}`}>
+                            {/* Section label pill */}
+                            <div className="flex items-center gap-2 mb-2.5">
+                              <span className={`inline-flex items-center px-2.5 py-0.5 rounded-full text-[9px] font-black uppercase tracking-widest text-white bg-gradient-to-r ${t.accent} shadow-sm`}>
                                 {t.label}
                               </span>
                               <span className="flex-1 h-px bg-slate-100" />
                             </div>
-                            <div className={`grid ${isTwoCol ? "grid-cols-2" : "grid-cols-3"} gap-3`}>
+                            <div className={`grid ${isTwoCol ? "grid-cols-2" : "grid-cols-3"} gap-2.5`}>
                               {g.classes.map((c) => {
-                                const isBoard = isBoardYear(c);
                                 const { subjectCount } = getClassStats(c);
                                 const classIcon: Record<string, string> = { '6': '📖', '7': '🧪', '8': '🌍', '9': '📚', '10': '🏆', '11': '🚀', '12': '🎓' };
                                 const icon = classIcon[c] || '📘';
                                 const liveStats = classContentStats[`${currentBoard}_${c}`];
+                                const isBoard10 = c === '10';
+                                const isBoard12 = c === '12';
+                                const isSpecial = isBoard10 || isBoard12;
+
+                                const cardStyle = isBoard10
+                                  ? { background: 'linear-gradient(145deg,#fffbeb,#fef3c7)', border: '2px solid #f59e0b', boxShadow: '0 4px 20px rgba(245,158,11,0.2)' }
+                                  : isBoard12
+                                  ? { background: 'linear-gradient(145deg,#faf5ff,#ede9fe)', border: '2px solid #9333ea', boxShadow: '0 4px 20px rgba(147,51,234,0.2)' }
+                                  : {};
+
+                                const numColor = isBoard10 ? 'text-amber-600' : isBoard12 ? 'text-purple-600' : t.text;
+                                const accentBar = isBoard10 ? 'from-amber-400 to-yellow-400' : isBoard12 ? 'from-purple-500 to-fuchsia-500' : t.accent;
+
                                 return (
                                   <button
                                     key={c}
                                     onClick={() => { hapticStrong(); goToClass(c); }}
-                                    className={`group relative w-full rounded-2xl ${t.hoverBg} border-2 ${c === '10' ? 'border-amber-400 shadow-[0_0_0_1px_rgba(251,191,36,0.3),0_4px_16px_rgba(0,0,0,0.08)]' : c === '12' ? 'border-purple-400 shadow-[0_0_0_1px_rgba(168,85,247,0.3),0_4px_16px_rgba(0,0,0,0.08)]' : t.border} text-left ${t.hoverBorder} hover:scale-[1.02] active:scale-[1.03] transition-all duration-150 overflow-hidden hover:shadow-md`}
+                                    className={`group relative w-full rounded-2xl text-left overflow-hidden active:scale-[0.97] transition-all duration-150 ${!isSpecial ? `${t.hoverBg} border-2 ${t.border} ${t.hoverBorder} hover:shadow-md` : ''}`}
+                                    style={isSpecial ? cardStyle : {}}
                                   >
-                                    <span className={`absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r ${t.accent} rounded-t-2xl`} />
+                                    {/* Top accent strip */}
+                                    <span className={`absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r ${accentBar}`} />
 
-                                    {showBoardBadge(c) ? (
-                                      <span className="absolute top-2 right-2 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-200 text-[7px] font-black uppercase tracking-wider shadow-sm">
-                                        <Crown size={8} className="text-amber-600" />
-                                        Board
+                                    {/* Board badge or icon */}
+                                    {isBoard10 && (
+                                      <span className="absolute top-2 right-2 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-amber-100 text-amber-700 border border-amber-300 text-[7px] font-black uppercase tracking-wider">
+                                        <Crown size={7} /> Board
                                       </span>
-                                    ) : (
-                                      <span className="absolute top-2 right-2 text-base leading-none opacity-70">{icon}</span>
+                                    )}
+                                    {isBoard12 && (
+                                      <span className="absolute top-2 right-2 inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-purple-100 text-purple-700 border border-purple-300 text-[7px] font-black uppercase tracking-wider">
+                                        <Crown size={7} /> Board
+                                      </span>
+                                    )}
+                                    {!isSpecial && (
+                                      <span className="absolute top-2.5 right-2.5 text-sm leading-none opacity-50">{icon}</span>
                                     )}
 
                                     <div className="px-3 pt-4 pb-3">
-                                      <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest block">Class</span>
-                                      <div className="flex items-center gap-1.5">
-                                        <span className={`text-3xl font-black leading-none ${isBoard ? "text-amber-600" : t.text}`}>{c}</span>
-                                        {showBoardBadge(c) && <span className="text-lg leading-none opacity-60">{icon}</span>}
+                                      <p className="text-[8px] font-bold uppercase tracking-widest opacity-50 mb-0.5" style={{ color: isBoard10 ? '#92400e' : isBoard12 ? '#6b21a8' : undefined }}>Class</p>
+                                      <div className="flex items-end gap-1.5 mb-2">
+                                        <span className={`text-[34px] font-black leading-none tracking-tighter ${numColor}`}>{c}</span>
+                                        {isSpecial && <span className="text-lg pb-0.5 opacity-40">{icon}</span>}
                                       </div>
 
-                                      <div className="mt-1.5 flex items-center gap-1 flex-wrap">
-                                        <span className={`text-[9px] font-bold ${t.text}`}>{subjectCount} Subjects</span>
-                                        {liveStats && liveStats.notes > 0 && <><span className="text-[8px] text-slate-300">•</span><span className="text-[9px] font-bold text-indigo-600">📝{liveStats.notes}</span></>}
-                                        {liveStats && liveStats.pdf > 0   && <><span className="text-[8px] text-slate-300">•</span><span className="text-[9px] font-bold text-rose-600">📄{liveStats.pdf}</span></>}
-                                        {liveStats && liveStats.mcq > 0   && <><span className="text-[8px] text-slate-300">•</span><span className="text-[9px] font-bold text-amber-600">📊{liveStats.mcq}</span></>}
-                                        {liveStats && liveStats.video > 0 && <><span className="text-[8px] text-slate-300">•</span><span className="text-[9px] font-bold text-green-600">🎥{liveStats.video}</span></>}
-                                        {liveStats && liveStats.audio > 0 && <><span className="text-[8px] text-slate-300">•</span><span className="text-[9px] font-bold text-purple-600">🔊{liveStats.audio}</span></>}
+                                      {/* Content pills row */}
+                                      <div className="flex flex-wrap gap-1">
+                                        <span className={`text-[8px] font-black px-1.5 py-0.5 rounded-full ${isBoard10 ? 'bg-amber-100 text-amber-700' : isBoard12 ? 'bg-purple-100 text-purple-700' : `${t.chip}`}`}>
+                                          {subjectCount} Subj
+                                        </span>
+                                        {liveStats && liveStats.notes > 0 && (
+                                          <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-indigo-50 text-indigo-600">📝{liveStats.notes}</span>
+                                        )}
+                                        {liveStats && liveStats.mcq > 0 && (
+                                          <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-600">❓{liveStats.mcq}</span>
+                                        )}
+                                        {liveStats && liveStats.video > 0 && (
+                                          <span className="text-[8px] font-black px-1.5 py-0.5 rounded-full bg-green-50 text-green-600">▶{liveStats.video}</span>
+                                        )}
                                       </div>
 
-                                      <div className={`mt-2 flex items-center gap-0.5 ${t.text}`}>
-                                        <span className="text-[9px] font-bold opacity-70">Tap to open</span>
-                                        <span className="text-[9px] opacity-70">→</span>
+                                      <div className={`mt-2 flex items-center gap-0.5 ${numColor} opacity-60`}>
+                                        <span className="text-[9px] font-bold">Open</span>
+                                        <ChevronRight size={10} />
                                       </div>
                                     </div>
 
-                                    <div className={`h-1 bg-gradient-to-r ${t.accent} opacity-30 group-hover:opacity-60 transition-opacity`} />
+                                    <div className={`h-[2px] bg-gradient-to-r ${accentBar} opacity-25 group-hover:opacity-60 transition-opacity`} />
                                   </button>
                                 );
                               })}
@@ -7718,99 +7759,133 @@ export const StudentDashboard: React.FC<Props> = ({
                         );
                       })}
 
-                      {/* GOVT EXAMS + AI SHORTCUT — only in COMPETITION mode */}
+                      {/* ── COMPETITION MODE HERO ── */}
                       {syllabusMode === 'COMPETITION' && isHomeSectionVisible('home_govt_exams', settings) && (() => {
                         const compSubjects = getSubjectsList('COMPETITION', null, currentBoard);
                         const compSubjectCount = compSubjects.length;
                         const compLive = classContentStats[`${currentBoard}_COMPETITION`];
                         return (
-                        <div>
-                          <div className="flex items-center gap-2 mb-2">
-                            <span className="inline-block h-2 w-2 rounded-full bg-gradient-to-r from-orange-500 to-amber-600" />
-                            <span className="text-[10px] font-black uppercase tracking-widest text-orange-700">
-                              Competitive • Govt. Exams
-                            </span>
-                            <span className="flex-1 h-px bg-slate-100" />
+                          <div className="space-y-3">
+
+                            {/* Hero Banner */}
+                            <button
+                              onClick={() => { hapticStrong(); goToClass("COMPETITION"); }}
+                              className="group relative w-full rounded-3xl text-left overflow-hidden active:scale-[0.98] transition-all duration-200"
+                              style={{
+                                background: 'linear-gradient(135deg, #1e1b4b 0%, #312e81 40%, #7c3aed 75%, #dc2626 100%)',
+                                boxShadow: '0 8px 32px rgba(99,38,237,0.4), 0 2px 8px rgba(0,0,0,0.25)'
+                              }}
+                            >
+                              {/* Decorative orbs */}
+                              <div className="absolute -top-8 -right-8 w-36 h-36 rounded-full opacity-[0.12]" style={{ background: 'radial-gradient(circle, #fbbf24, transparent)' }} />
+                              <div className="absolute -bottom-6 left-4 w-28 h-28 rounded-full opacity-[0.10]" style={{ background: 'radial-gradient(circle, #f97316, transparent)' }} />
+                              <div className="absolute top-1/2 right-12 w-20 h-20 rounded-full opacity-[0.08]" style={{ background: 'radial-gradient(circle, #a855f7, transparent)' }} />
+
+                              <div className="relative px-5 pt-5 pb-4">
+                                {/* Header row */}
+                                <div className="flex items-start justify-between mb-3">
+                                  <div>
+                                    <div className="flex items-center gap-2 mb-1.5">
+                                      <span className="text-2xl leading-none">🏆</span>
+                                      <span className="text-[9px] font-black uppercase tracking-[0.15em] text-white/50">Competitive Exams</span>
+                                    </div>
+                                    <h3 className="text-[22px] font-black text-white leading-[1.15]">
+                                      Govt. Exams
+                                      <br />
+                                      <span className="text-[17px] text-amber-300 font-black">Preparation Hub</span>
+                                    </h3>
+                                  </div>
+                                  <div className="shrink-0 w-10 h-10 rounded-2xl bg-white/10 border border-white/15 flex items-center justify-center group-hover:bg-white/20 transition-colors mt-1">
+                                    <ChevronRight size={18} className="text-white" />
+                                  </div>
+                                </div>
+
+                                {/* Exam chips */}
+                                <div className="flex flex-wrap gap-1.5 mb-4">
+                                  {['SSC', 'UPSC', 'Railway', 'Banking', 'Police', 'State PCS'].map((exam) => (
+                                    <span key={exam} className="px-2.5 py-1 rounded-full text-[9px] font-black text-white/90 tracking-wide" style={{ background: 'rgba(255,255,255,0.12)', border: '1px solid rgba(255,255,255,0.18)' }}>
+                                      {exam}
+                                    </span>
+                                  ))}
+                                </div>
+
+                                {/* Stats strip */}
+                                <div className="flex items-center gap-4">
+                                  <div className="flex items-center gap-2">
+                                    <div className="w-7 h-7 rounded-xl flex items-center justify-center" style={{ background: 'rgba(99,102,241,0.3)' }}>
+                                      <BookOpenText size={13} className="text-indigo-200" />
+                                    </div>
+                                    <div>
+                                      <div className="text-sm font-black text-white leading-none">{compSubjectCount}</div>
+                                      <div className="text-[8px] font-bold text-white/45 uppercase tracking-wide mt-0.5">Books</div>
+                                    </div>
+                                  </div>
+                                  {compLive && compLive.notes > 0 && (
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-7 h-7 rounded-xl flex items-center justify-center" style={{ background: 'rgba(59,130,246,0.3)' }}>
+                                        <FileText size={13} className="text-blue-200" />
+                                      </div>
+                                      <div>
+                                        <div className="text-sm font-black text-white leading-none">{compLive.notes}</div>
+                                        <div className="text-[8px] font-bold text-white/45 uppercase tracking-wide mt-0.5">Notes</div>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {compLive && compLive.mcq > 0 && (
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-7 h-7 rounded-xl flex items-center justify-center" style={{ background: 'rgba(245,158,11,0.3)' }}>
+                                        <BrainCircuit size={13} className="text-amber-200" />
+                                      </div>
+                                      <div>
+                                        <div className="text-sm font-black text-white leading-none">{compLive.mcq}</div>
+                                        <div className="text-[8px] font-bold text-white/45 uppercase tracking-wide mt-0.5">MCQs</div>
+                                      </div>
+                                    </div>
+                                  )}
+                                  {compLive && compLive.video > 0 && (
+                                    <div className="flex items-center gap-2">
+                                      <div className="w-7 h-7 rounded-xl flex items-center justify-center" style={{ background: 'rgba(34,197,94,0.3)' }}>
+                                        <Video size={13} className="text-green-200" />
+                                      </div>
+                                      <div>
+                                        <div className="text-sm font-black text-white leading-none">{compLive.video}</div>
+                                        <div className="text-[8px] font-bold text-white/45 uppercase tracking-wide mt-0.5">Videos</div>
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+
+                              {/* Bottom gold bar */}
+                              <div className="h-[3px] bg-gradient-to-r from-amber-400 via-orange-500 to-rose-500" />
+                            </button>
+
+                            {/* Quick Access Grid */}
+                            <div className="grid grid-cols-3 gap-2">
+                              {([
+                                { icon: '📖', label: 'Reading', sub: 'Continue reading', page: 'READING_PAGE', grad: 'from-sky-500 to-blue-600', light: 'from-sky-50 to-blue-50', border: 'border-sky-200', text: 'text-sky-700' },
+                                { icon: '🃏', label: 'Flashcards', sub: 'Session history', page: 'FLASHCARDS_PAGE', grad: 'from-violet-500 to-purple-600', light: 'from-violet-50 to-purple-50', border: 'border-violet-200', text: 'text-violet-700' },
+                                { icon: '💾', label: 'Offline', sub: 'Saved content', page: 'OFFLINE_PAGE', grad: 'from-emerald-500 to-teal-600', light: 'from-emerald-50 to-teal-50', border: 'border-emerald-200', text: 'text-emerald-700' },
+                                { icon: '🕐', label: 'Login Log', sub: 'Session history', page: 'LOGIN_HISTORY_PAGE', grad: 'from-blue-500 to-indigo-600', light: 'from-blue-50 to-indigo-50', border: 'border-blue-200', text: 'text-blue-700' },
+                                { icon: '💰', label: 'Credits', sub: 'Earn & spend', page: 'CREDITS_PAGE', grad: 'from-amber-500 to-yellow-500', light: 'from-amber-50 to-yellow-50', border: 'border-amber-200', text: 'text-amber-700' },
+                                { icon: '❌', label: 'Mistakes', sub: `${mistakeCount} galtiyan`, page: 'MY_MISTAKES_PAGE', grad: 'from-rose-500 to-pink-600', light: 'from-rose-50 to-pink-50', border: 'border-rose-200', text: 'text-rose-700' },
+                              ] as {icon:string;label:string;sub:string;page:string;grad:string;light:string;border:string;text:string}[]).map(item => (
+                                <button
+                                  key={item.page}
+                                  onClick={() => { hapticStrong(); onTabChange(item.page as any); }}
+                                  className={`group relative flex flex-col items-center gap-1.5 px-2 py-3.5 rounded-2xl border-2 ${item.border} bg-gradient-to-br ${item.light} active:scale-95 transition-all overflow-hidden`}
+                                >
+                                  <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${item.grad} flex items-center justify-center shadow-sm group-hover:scale-105 transition-transform`}>
+                                    <span className="text-base leading-none">{item.icon}</span>
+                                  </div>
+                                  <div className="text-center">
+                                    <div className={`text-[10px] font-black ${item.text} leading-tight`}>{item.label}</div>
+                                    <div className={`text-[8px] font-semibold ${item.text} opacity-60 leading-tight mt-0.5`}>{item.sub}</div>
+                                  </div>
+                                </button>
+                              ))}
+                            </div>
                           </div>
-                          <button
-                            onClick={() => { hapticStrong(); goToClass("COMPETITION"); }}
-                            className="group relative w-full rounded-2xl bg-gradient-to-br from-orange-50 via-amber-50 to-yellow-50 border-2 border-orange-200 text-left hover:border-orange-400 hover:scale-[1.02] active:scale-[1.03] transition-all duration-150 overflow-hidden shadow-sm hover:shadow-md"
-                          >
-                            <span className="absolute top-0 left-0 right-0 h-[3px] bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-500 rounded-t-2xl" />
-                            <span className="absolute top-2 right-2 text-base leading-none opacity-70">🏆</span>
-
-                            <div className="px-3 pt-4 pb-3">
-                              <span className="text-[8px] font-bold text-slate-400 uppercase tracking-widest block">Competitive Mode</span>
-                              <div className="flex items-center gap-1.5">
-                                <span className="text-2xl font-black leading-none text-orange-600">Govt.</span>
-                                <span className="text-2xl font-black leading-none text-amber-600">Exams</span>
-                              </div>
-
-                              <div className="mt-1.5 flex items-center gap-1 flex-wrap">
-                                <span className="text-[9px] font-bold text-orange-700">{compSubjectCount} Books</span>
-                                {compLive && compLive.notes > 0 && <><span className="text-[8px] text-slate-300">•</span><span className="text-[9px] font-bold text-indigo-600">📝{compLive.notes}</span></>}
-                                {compLive && compLive.pdf > 0   && <><span className="text-[8px] text-slate-300">•</span><span className="text-[9px] font-bold text-rose-600">📄{compLive.pdf}</span></>}
-                                {compLive && compLive.mcq > 0   && <><span className="text-[8px] text-slate-300">•</span><span className="text-[9px] font-bold text-amber-600">📊{compLive.mcq}</span></>}
-                                {compLive && compLive.video > 0 && <><span className="text-[8px] text-slate-300">•</span><span className="text-[9px] font-bold text-green-600">🎥{compLive.video}</span></>}
-                                {compLive && compLive.audio > 0 && <><span className="text-[8px] text-slate-300">•</span><span className="text-[9px] font-bold text-purple-600">🔊{compLive.audio}</span></>}
-                                <span className="text-[8px] text-slate-300">•</span>
-                                <span className="text-[9px] text-slate-500">SSC · Railway · UPSC</span>
-                              </div>
-
-                              <div className="mt-2 flex items-center gap-0.5 text-orange-600">
-                                <span className="text-[9px] font-bold opacity-70">Tap to open</span>
-                                <span className="text-[9px] opacity-70">→</span>
-                              </div>
-                            </div>
-
-                            <div className="h-1 bg-gradient-to-r from-orange-500 via-amber-500 to-yellow-500 opacity-30 group-hover:opacity-60 transition-opacity" />
-                          </button>
-
-                          {/* ACTIVITY HISTORY — below competition card */}
-                          <button
-                            onClick={() => { hapticStrong(); setHistoryInitialTab('ACTIVITY'); onTabChange('HISTORY'); }}
-                            className="mt-3 w-full flex items-center gap-3 px-4 py-3 rounded-2xl border-2 border-rose-200 bg-gradient-to-br from-rose-50 via-pink-50 to-orange-50 hover:border-rose-400 hover:scale-[1.01] active:scale-[1.02] transition-all duration-150 shadow-sm text-left"
-                          >
-                            <div className="w-9 h-9 rounded-xl bg-rose-100 flex items-center justify-center shrink-0">
-                              <History size={16} className="text-rose-500" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-black text-rose-700 leading-tight">Activity History</p>
-                              <p className="text-[10px] text-rose-500/80">Tests, sessions & past activity</p>
-                            </div>
-                            <ChevronRight size={16} className="text-rose-400 shrink-0" />
-                          </button>
-
-                          {/* QUICK ACCESS GRID — Reading, Flashcards, Offline, Login History, Credits */}
-                          <div className="mt-3 grid grid-cols-3 gap-2">
-                            {([
-                              { icon: '📖', label: 'Reading', sub: 'Continue where left', tab: 'READING', bg: 'from-sky-50 to-blue-50', border: 'border-sky-200', text: 'text-sky-700', subText: 'text-sky-500/80' },
-                              { icon: '🃏', label: 'Flashcards', sub: 'Session history', tab: 'FLASHCARDS', bg: 'from-violet-50 to-purple-50', border: 'border-violet-200', text: 'text-violet-700', subText: 'text-violet-500/80' },
-                              { icon: '💾', label: 'Offline', sub: 'Saved content', tab: 'OFFLINE', bg: 'from-emerald-50 to-teal-50', border: 'border-emerald-200', text: 'text-emerald-700', subText: 'text-emerald-500/80' },
-                              { icon: '🕐', label: 'Login', sub: 'Session log', tab: 'LOGIN_HISTORY', bg: 'from-blue-50 to-indigo-50', border: 'border-blue-200', text: 'text-blue-700', subText: 'text-blue-500/80' },
-                              { icon: '💰', label: 'Credits', sub: 'Earn & spend log', tab: 'CREDIT_HISTORY', bg: 'from-amber-50 to-yellow-50', border: 'border-amber-200', text: 'text-amber-700', subText: 'text-amber-500/80' },
-                              { icon: '❌', label: 'My Mistakes', sub: `${mistakeCount} galtiyan`, tab: 'MISTAKE', bg: 'from-rose-50 to-pink-50', border: 'border-rose-200', text: 'text-rose-700', subText: 'text-rose-500/80' },
-                            ] as {icon:string;label:string;sub:string;tab:typeof historyInitialTab;bg:string;border:string;text:string;subText:string}[]).map(item => (
-                              <button
-                                key={item.tab}
-                                onClick={() => {
-                                  hapticStrong();
-                                  if (item.tab === 'MISTAKE') {
-                                    getMistakeBank().then(m => { setHomeMistakes(m); setShowMistakePractice(true); });
-                                  } else {
-                                    setHistoryInitialTab(item.tab);
-                                    onTabChange('HISTORY');
-                                  }
-                                }}
-                                className={`flex flex-col items-center gap-1 px-2 py-3 rounded-2xl border-2 ${item.border} bg-gradient-to-br ${item.bg} active:scale-95 transition-all`}
-                              >
-                                <span className="text-xl leading-none">{item.icon}</span>
-                                <span className={`text-[10px] font-black ${item.text} leading-tight text-center`}>{item.label}</span>
-                                <span className={`text-[8px] font-bold ${item.subText} leading-tight text-center`}>{item.sub}</span>
-                              </button>
-                            ))}
-                          </div>
-                        </div>
                         );
                       })()}
 
@@ -8102,15 +8177,11 @@ export const StudentDashboard: React.FC<Props> = ({
       );
     if (activeTab === "UPDATES")
       return <UniversalInfoPage onBack={() => onTabChange("HOME")} userId={user.id} />;
-    if ((activeTab as string) === "SUB_HISTORY")
-      return (
-        <HistoryPage
-          user={user}
-          onUpdateUser={handleUserUpdate}
-          settings={settings}
-          initialTab="SUB_HISTORY"
-        />
-      );
+    if ((activeTab as string) === "SUB_HISTORY") {
+      onTabChange("STORE" as any);
+      setTimeout(() => setStoreShowSubHistory(true), 50);
+      return null;
+    }
     if (activeTab === "HISTORY")
       return (
         <HistoryPage
@@ -8119,18 +8190,95 @@ export const StudentDashboard: React.FC<Props> = ({
           onUpdateUser={handleUserUpdate}
           settings={settings}
           initialTab={historyInitialTab}
+          onBack={() => onTabChange("HOME")}
           onResumeRecentChapter={(e) => openRecentChapter(e)}
           onResumeRecentHw={(e) => {
-            // Open the homework history overlay then load the specific note.
             setShowHomeworkHistory(true);
             openRecentHw(e);
           }}
           onResumeRecentLucent={(e) => openRecentLucent(e)}
         />
       );
+    if ((activeTab as string) === "READING_PAGE")
+      return (
+        <HistoryPage
+          key="reading_page"
+          user={user}
+          onUpdateUser={handleUserUpdate}
+          settings={settings}
+          initialTab="READING"
+          onBack={() => onTabChange("HOME")}
+          onResumeRecentChapter={(e) => openRecentChapter(e)}
+          onResumeRecentHw={(e) => { setShowHomeworkHistory(true); openRecentHw(e); }}
+          onResumeRecentLucent={(e) => openRecentLucent(e)}
+        />
+      );
+    if ((activeTab as string) === "FLASHCARDS_PAGE")
+      return (
+        <HistoryPage
+          key="flashcards_page"
+          user={user}
+          onUpdateUser={handleUserUpdate}
+          settings={settings}
+          initialTab="FLASHCARDS"
+          onBack={() => onTabChange("HOME")}
+        />
+      );
+    if ((activeTab as string) === "OFFLINE_PAGE")
+      return (
+        <HistoryPage
+          key="offline_page"
+          user={user}
+          onUpdateUser={handleUserUpdate}
+          settings={settings}
+          initialTab="OFFLINE"
+          onBack={() => onTabChange("HOME")}
+        />
+      );
+    if ((activeTab as string) === "LOGIN_HISTORY_PAGE")
+      return (
+        <HistoryPage
+          key="login_history_page"
+          user={user}
+          onUpdateUser={handleUserUpdate}
+          settings={settings}
+          initialTab="LOGIN_HISTORY"
+          onBack={() => onTabChange("HOME")}
+        />
+      );
+    if ((activeTab as string) === "CREDITS_PAGE")
+      return (
+        <HistoryPage
+          key="credits_page"
+          user={user}
+          onUpdateUser={handleUserUpdate}
+          settings={settings}
+          initialTab="CREDIT_HISTORY"
+          onBack={() => onTabChange("HOME")}
+        />
+      );
+    if ((activeTab as string) === "MY_MISTAKES_PAGE")
+      return (
+        <HistoryPage
+          key="my_mistakes_page"
+          user={user}
+          onUpdateUser={handleUserUpdate}
+          settings={settings}
+          initialTab="MISTAKE"
+          onBack={() => onTabChange("HOME")}
+        />
+      );
     // DOWNLOADS is handled in the main render flow so bottom nav shows
     if (activeTab === "LEADERBOARD")
-      return <Leaderboard user={user} settings={settings} />;
+      return (
+        <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+          <LevelLeaderboard
+            user={user}
+            settings={settings}
+            onBack={() => onTabChange("HOME")}
+          />
+        </div>
+      );
     if (activeTab === "GAME")
       return isGameEnabled ? (
         user.isGameBanned ? (
@@ -8161,6 +8309,21 @@ export const StudentDashboard: React.FC<Props> = ({
         <div className="animate-in fade-in duration-300 bg-black min-h-screen">
           {/* Professional Store Header */}
           <div className="relative overflow-hidden bg-gradient-to-br from-slate-900 via-slate-800 to-black px-4 pt-5 pb-4 border-b border-slate-700/50">
+            {/* Sub-tab toggle: Store | Sub History */}
+            <div className="flex gap-2 mb-3">
+              <button
+                onClick={() => setStoreShowSubHistory(false)}
+                className={`flex-1 py-2 rounded-xl text-xs font-black transition-all ${!storeShowSubHistory ? 'bg-white text-slate-900' : 'bg-white/10 text-slate-400 hover:bg-white/20'}`}
+              >
+                🛒 Store
+              </button>
+              <button
+                onClick={() => setStoreShowSubHistory(true)}
+                className={`flex-1 py-2 rounded-xl text-xs font-black transition-all ${storeShowSubHistory ? 'bg-white text-slate-900' : 'bg-white/10 text-slate-400 hover:bg-white/20'}`}
+              >
+                📋 Sub History
+              </button>
+            </div>
             <div className="absolute inset-0 pointer-events-none" style={{ background: 'linear-gradient(105deg,transparent 30%,rgba(99,102,241,0.08) 50%,transparent 70%)', animation: 'shimmer-sweep 3s linear infinite' }} />
             <div className="absolute -top-10 -right-10 w-40 h-40 bg-indigo-600/10 rounded-full blur-3xl" />
             <div className="flex items-center justify-between relative z-10">
@@ -8228,37 +8391,48 @@ export const StudentDashboard: React.FC<Props> = ({
                     <p className="text-[10px] font-bold text-slate-500">Store visit discount khatam ho gaya — dobara visit karo!</p>
                   </div>
                 )}
-                <Store
-                  user={user}
-                  settings={settings}
-                  onUserUpdate={handleUserUpdate}
-                  renderEarnContent={
-                    isGameEnabled
-                      ? user.isGameBanned
-                        ? (
-                          <div className="mx-4 text-center py-10 bg-red-950/40 rounded-2xl border border-red-800/40">
-                            <Ban size={36} className="mx-auto text-red-500 mb-3" />
-                            <p className="text-sm font-bold text-red-400">Admin ne game band kar diya hai.</p>
+                {!storeShowSubHistory && (
+                  <Store
+                    user={user}
+                    settings={settings}
+                    onUserUpdate={handleUserUpdate}
+                    renderEarnContent={
+                      isGameEnabled
+                        ? user.isGameBanned
+                          ? (
+                            <div className="mx-4 text-center py-10 bg-red-950/40 rounded-2xl border border-red-800/40">
+                              <Ban size={36} className="mx-auto text-red-500 mb-3" />
+                              <p className="text-sm font-bold text-red-400">Admin ne game band kar diya hai.</p>
+                            </div>
+                          )
+                          : (
+                            <SpinWheel
+                              user={user}
+                              onUpdateUser={handleUserUpdate}
+                              settings={settings}
+                            />
+                          )
+                        : (
+                          <div className="mx-4 text-center py-14 bg-black/40 rounded-2xl border border-white/10">
+                            <Gamepad2 size={36} className="mx-auto text-slate-500 mb-3" />
+                            <p className="text-sm font-bold text-slate-500">Game abhi disabled hai admin ke taraf se.</p>
                           </div>
                         )
-                        : (
-                          <SpinWheel
-                            user={user}
-                            onUpdateUser={handleUserUpdate}
-                            settings={settings}
-                          />
-                        )
-                      : (
-                        <div className="mx-4 text-center py-14 bg-black/40 rounded-2xl border border-white/10">
-                          <Gamepad2 size={36} className="mx-auto text-slate-500 mb-3" />
-                          <p className="text-sm font-bold text-slate-500">Game abhi disabled hai admin ke taraf se.</p>
-                        </div>
-                      )
-                  }
-                />
+                    }
+                  />
+                )}
               </>
             );
           })()}
+          {storeShowSubHistory && (
+            <div className="bg-white min-h-screen">
+              <SubscriptionHistory
+                user={user}
+                onBack={() => setStoreShowSubHistory(false)}
+                hideHeader={false}
+              />
+            </div>
+          )}
         </div>
       );
     }
@@ -14836,66 +15010,103 @@ export const StudentDashboard: React.FC<Props> = ({
                 <p className="font-black text-sm truncate">{entry.lessonTitle}</p>
               </div>
               {/* Read / Write toggle — right next to lesson title */}
-              {lucentActiveTab === 'NOTES' && (
-                <div className="flex items-center gap-0.5 shrink-0">
+              {lucentActiveTab === 'NOTES' && (() => {
+                const _hasContent = !!(currentPage?.chunkNotes || currentPage?.htmlNotes || currentPage?.content);
+                const _isReadMode = lucentNotesViewMode === 'chunk';
+                const _isWriteMode = lucentNotesViewMode === 'html';
+                const _handleSave = async () => {
+                  try {
+                    const pageLabel = `Page ${currentPage?.pageNo || safeIndex + 1}`;
+                    const title = `${entry.lessonTitle || 'Lucent'} · ${pageLabel}`;
+                    const id = `lucent_${entry.id}_pg${currentPage?.pageNo || safeIndex}`;
+                    if (_isWriteMode) {
+                      await saveOfflineItem({
+                        id,
+                        type: 'NOTE',
+                        title,
+                        subtitle: `Lucent · ${entry.subject || ''} · Write Mode`,
+                        data: {
+                          kind: 'LUCENT_HTML',
+                          html: currentPage?.htmlNotes || currentPage?.content || '',
+                          lessonTitle: entry.lessonTitle,
+                          subject: entry.subject,
+                          pageNo: currentPage?.pageNo,
+                          lightCSS: (currentPage as any)?.lightCSS,
+                          darkCSS: (currentPage as any)?.darkCSS,
+                        },
+                      });
+                    } else {
+                      await saveOfflineItem({
+                        id,
+                        type: 'NOTE',
+                        title,
+                        subtitle: `Lucent · ${entry.subject || ''} · Read Mode`,
+                        data: {
+                          kind: 'LUCENT_CHUNK',
+                          chunkNotes: currentPage?.chunkNotes || currentPage?.content || '',
+                          lessonTitle: entry.lessonTitle,
+                          subject: entry.subject,
+                          pageNo: currentPage?.pageNo,
+                        },
+                      });
+                    }
+                    setLucentSaved(true);
+                    showAlert('✅ Offline save ho gaya! Offline tab mein dekho.', 'SUCCESS');
+                    setTimeout(() => setLucentSaved(false), 3000);
+                  } catch (e) {
+                    showAlert('Save failed. Please try again.', 'ERROR');
+                  }
+                };
+                const _saveBtn = (
                   <button
-                    onClick={() => { stopSpeech(); setLucentNotesViewMode('chunk'); }}
-                    className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-black transition-all border ${lucentNotesViewMode === 'chunk' ? 'bg-amber-400 text-white border-amber-400 shadow-sm' : 'bg-white/20 text-white border-white/30 hover:bg-white/30'}`}
-                    title="Read Mode"
+                    onClick={_handleSave}
+                    className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-black transition-all border ${lucentSaved ? 'bg-emerald-400 text-white border-emerald-400 shadow-sm' : 'bg-white/20 text-white border-white/30 hover:bg-white/30'}`}
+                    title="Save offline"
                   >
-                    <Volume2 size={11} /> Read
+                    <WifiOff size={11} /> {lucentSaved ? '✓' : 'Save'}
                   </button>
-                  <button
-                    onClick={() => { stopSpeech(); handleWriteModeGate(() => setLucentNotesViewMode('html')); }}
-                    className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-black transition-all border ${lucentNotesViewMode === 'html' ? 'bg-teal-400 text-white border-teal-400 shadow-sm' : 'bg-white/20 text-white border-white/30 hover:bg-white/30'}`}
-                    title="Write Mode"
-                  >
-                    <FileText size={11} /> Write
-                  </button>
-                  <div className="flex items-center gap-0 bg-white/20 rounded-lg overflow-hidden border border-white/30 shrink-0">
-                    <button onClick={zoomOut} className="px-1.5 py-1 text-white text-[11px] font-black hover:bg-white/20 transition-colors" title="Zoom Out">A-</button>
-                    <span className="px-0.5 text-white/80 text-[9px] font-bold min-w-[24px] text-center">{Math.round(noteZoom * 100)}%</span>
-                    <button onClick={zoomIn} className="px-1.5 py-1 text-white text-[11px] font-black hover:bg-white/20 transition-colors" title="Zoom In">A+</button>
+                );
+                return (
+                  <div className="flex items-center gap-0.5 shrink-0">
+                    {/* Read button — hidden when read mode active; Save appears in its place */}
+                    {_isReadMode ? _saveBtn : (
+                      <button
+                        onClick={() => { stopSpeech(); setLucentNotesViewMode('chunk'); }}
+                        className="flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-black transition-all border bg-white/20 text-white border-white/30 hover:bg-white/30"
+                        title="Read Mode"
+                      >
+                        <Volume2 size={11} /> Read
+                      </button>
+                    )}
+                    {/* Write button — hidden when write mode active; Save appears in its place */}
+                    {_isWriteMode ? _saveBtn : (
+                      <button
+                        onClick={() => { stopSpeech(); handleWriteModeGate(() => setLucentNotesViewMode('html')); }}
+                        className="flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-black transition-all border bg-white/20 text-white border-white/30 hover:bg-white/30"
+                        title="Write Mode"
+                      >
+                        <FileText size={11} /> Write
+                      </button>
+                    )}
+                    <div className="flex items-center gap-0 bg-white/20 rounded-lg overflow-hidden border border-white/30 shrink-0">
+                      <button onClick={zoomOut} className="px-1.5 py-1 text-white text-[11px] font-black hover:bg-white/20 transition-colors" title="Zoom Out">A-</button>
+                      <span className="px-0.5 text-white/80 text-[9px] font-bold min-w-[24px] text-center">{Math.round(noteZoom * 100)}%</span>
+                      <button onClick={zoomIn} className="px-1.5 py-1 text-white text-[11px] font-black hover:bg-white/20 transition-colors" title="Zoom In">A+</button>
+                    </div>
+                    <button
+                      onClick={handleRotate}
+                      className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-black transition-all border ${isLandscape ? 'bg-green-400 text-white border-green-400 shadow-sm' : 'bg-white/20 text-white border-white/30 hover:bg-white/30'}`}
+                      title="Screen Rotate"
+                    >
+                      <RotateCcw size={11} /> Rot
+                    </button>
                   </div>
-                  <button
-                    onClick={handleRotate}
-                    className={`flex items-center gap-0.5 px-2 py-1 rounded-lg text-[10px] font-black transition-all border ${isLandscape ? 'bg-green-400 text-white border-green-400 shadow-sm' : 'bg-white/20 text-white border-white/30 hover:bg-white/30'}`}
-                    title="Screen Rotate"
-                  >
-                    <RotateCcw size={11} /> Rot
-                  </button>
-                </div>
-              )}
+                );
+              })()}
               <div className="flex items-center gap-2 shrink-0">
                 <span className="bg-white/20 px-2.5 py-1 rounded-full text-[11px] font-black whitespace-nowrap">
                   {safeIndex + 1}/{totalPages}
                 </span>
-                {/* Save Offline — Write Mode only */}
-                {(lucentNotesViewMode === 'html' || lucentChunkHtmlMode === 'html') && (currentPage?.htmlNotes || currentPage?.content) && (
-                <button
-                  onClick={async () => {
-                    try {
-                      const safeTitle = `${entry.lessonTitle || 'Lucent'}_pg${currentPage?.pageNo || safeIndex + 1}`
-                        .replace(/[^a-z0-9_\- ]/gi, '_').slice(0, 60);
-                      const _dlOkLuc = await checkAndDoDownload(async () => {
-                        await downloadAsMHTML('lucent-html-download', safeTitle, {
-                          appName: settings?.appShortName || settings?.appName || 'IIC',
-                          pageTitle: `${entry.lessonTitle || 'Lucent'} · Page ${currentPage?.pageNo || safeIndex + 1}`,
-                          subtitle: 'Lucent Notes — Write Mode',
-                        });
-                      });
-                      if (_dlOkLuc) showAlert('📥 Saved!', 'SUCCESS');
-                    } catch (e) {
-                      showAlert('Download failed. Please try again.', 'ERROR');
-                    }
-                  }}
-                  className="bg-white/20 hover:bg-white/30 p-2 rounded-full shrink-0 transition-colors"
-                  aria-label="Save this Lucent page offline"
-                  title="Save offline (Write Mode)"
-                >
-                  <Download size={16} />
-                </button>
-                )}
                 <button
                   onClick={() => { const next = !autoSyncOn; setLucentAutoSync(next); if (!next) stopSpeech(); }}
                   className={`flex items-center gap-1 px-2.5 py-1 rounded-full text-[11px] font-bold transition-all ${autoSyncOn ? 'bg-white text-indigo-700' : 'bg-white/20 text-white'}`}
@@ -17585,7 +17796,7 @@ RULES:
                   <p className="text-sm font-black text-white">⚡ Activity Score</p>
                   <button onClick={_closePanel} className="w-7 h-7 flex items-center justify-center rounded-full bg-white/8 text-slate-400">✕</button>
                 </div>
-                {/* Tab toggle — 3 tabs — no transition-all to prevent lag */}
+                {/* Tab toggle — 4 tabs — no transition-all to prevent lag */}
                 <div className="flex gap-1.5">
                   <button
                     onClick={() => setScorePanelTab('LEVEL')}
@@ -17599,6 +17810,10 @@ RULES:
                     onClick={() => setScorePanelTab('FEATURES')}
                     className={`flex-1 py-1.5 rounded-xl text-[10px] font-black ${scorePanelTab === 'FEATURES' ? 'bg-sky-600 text-white' : 'bg-white/6 text-slate-400'}`}
                   >🎯 Level System</button>
+                  <button
+                    onClick={() => { _closePanel(); setTimeout(() => onTabChange('LEADERBOARD'), 120); }}
+                    className="flex-1 py-1.5 rounded-xl text-[10px] font-black bg-white/6 text-slate-400"
+                  >🏆 Rank</button>
                 </div>
               </div>
 
@@ -17699,20 +17914,6 @@ RULES:
                 );
               })()}
 
-                {/* ── LEADERBOARD BUTTON — inside score panel LEVEL tab ── */}
-                {scorePanelTab === 'LEVEL' && (
-                  <button
-                    onClick={() => { _closePanel(); setTimeout(() => setShowLevelLeaderboard(true), 120); }}
-                    className="w-full flex items-center gap-3 px-4 py-3 rounded-2xl border border-white/10 bg-white/4 hover:bg-white/8 active:scale-[0.98] transition-all text-left"
-                  >
-                    <div className="w-10 h-10 rounded-xl bg-yellow-400/15 border border-yellow-400/30 flex items-center justify-center shrink-0 text-xl">🏆</div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-black text-white leading-tight">Full Leaderboard Dekho</p>
-                      <p className="text-[10px] text-slate-500">Sabhi students ka rank — level, MCQ, streak</p>
-                    </div>
-                    <ChevronRight size={14} className="text-slate-600 shrink-0" />
-                  </button>
-                )}
 
                 {/* ── DAILY LIMITS TAB ── */}
                 {scorePanelTab === 'DAILY' && (() => {

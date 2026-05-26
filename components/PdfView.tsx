@@ -508,7 +508,7 @@ export const PdfView: React.FC<Props> = ({
       ? (settings?.writeModeFreeLimitBasic ?? 5)
       : 0;
     if (dailyCount < freeLimit) {
-      const updatedUser = { ...user, dailyWriteDate: todayStr, dailyWriteCount: dailyCount + 1 };
+      const updatedUser = { ...user, dailyWriteDate: todayStr, dailyWriteCount: dailyCount + 1, totalWriteUsed: (user.totalWriteUsed || 0) + 1 };
       localStorage.setItem('nst_current_user', JSON.stringify(updatedUser));
       saveUserToLive(updatedUser);
       onUpdateUser(updatedUser);
@@ -1176,7 +1176,8 @@ export const PdfView: React.FC<Props> = ({
                       const updatedUser = {
                           ...(applyDeduction(user, pdfCost) ?? user),
                           dailyPdfDate: todayStr, dailyPdfCount: dailyCount + 1,
-                          totalScore: (user.totalScore || 0) + 3 + pdfCost
+                          totalScore: (user.totalScore || 0) + 3 + pdfCost,
+                          totalPdfViewed: (user.totalPdfViewed || 0) + 1,
                       };
                       localStorage.setItem('nst_current_user', JSON.stringify(updatedUser));
                       saveUserToLive(updatedUser);
@@ -1186,7 +1187,8 @@ export const PdfView: React.FC<Props> = ({
               } else {
                   const updatedUser = {
                       ...user, dailyPdfDate: todayStr, dailyPdfCount: dailyCount + 1,
-                      totalScore: (user.totalScore || 0) + 3
+                      totalScore: (user.totalScore || 0) + 3,
+                      totalPdfViewed: (user.totalPdfViewed || 0) + 1,
                   };
                   localStorage.setItem('nst_current_user', JSON.stringify(updatedUser));
                   saveUserToLive(updatedUser);
@@ -2832,6 +2834,7 @@ export const PdfView: React.FC<Props> = ({
                ...(applyDeduction(user, writeModePendingCost) ?? user),
                dailyWriteDate: todayStr,
                dailyWriteCount: dailyCount + 1,
+               totalWriteUsed: (user.totalWriteUsed || 0) + 1,
              };
              localStorage.setItem('nst_current_user', JSON.stringify(updatedUser));
              saveUserToLive(updatedUser);

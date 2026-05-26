@@ -33,7 +33,8 @@ interface Props {
     user: User;
     onUpdateUser: (u: User) => void;
     settings?: SystemSettings;
-    initialTab?: 'READING' | 'ACTIVITY' | 'MISTAKE' | 'OFFLINE' | 'SUB_HISTORY' | 'STARRED' | 'FLASHCARDS' | 'LOGIN_HISTORY' | 'CREDIT_HISTORY';
+    initialTab?: 'READING' | 'MISTAKE' | 'OFFLINE' | 'STARRED' | 'FLASHCARDS' | 'LOGIN_HISTORY' | 'CREDIT_HISTORY';
+    onBack?: () => void;
     /** Resume a chapter from a "Continue Reading" entry — closes History and opens the chapter. */
     onResumeRecentChapter?: (entry: RecentChapterEntry) => void;
     /** Resume a homework note (Sar Sangrah / Speedy / etc). */
@@ -42,8 +43,8 @@ interface Props {
     onResumeRecentLucent?: (entry: RecentLucentEntry) => void;
 }
 
-export const HistoryPage: React.FC<Props> = ({ user, onUpdateUser, settings, initialTab, onResumeRecentChapter, onResumeRecentHw, onResumeRecentLucent }) => {
-  const [activeTab, setActiveTab] = useState<'READING' | 'ACTIVITY' | 'MISTAKE' | 'OFFLINE' | 'SUB_HISTORY' | 'STARRED' | 'FLASHCARDS' | 'LOGIN_HISTORY' | 'CREDIT_HISTORY'>(initialTab || 'READING');
+export const HistoryPage: React.FC<Props> = ({ user, onUpdateUser, settings, initialTab, onBack, onResumeRecentChapter, onResumeRecentHw, onResumeRecentLucent }) => {
+  const [activeTab, setActiveTab] = useState<'READING' | 'MISTAKE' | 'OFFLINE' | 'STARRED' | 'FLASHCARDS' | 'LOGIN_HISTORY' | 'CREDIT_HISTORY'>(initialTab || 'READING');
   const [loginSessions, setLoginSessions] = useState<LoginSession[]>([]);
   const _lvl = getLevelInfo((user.role === 'ADMIN' || user.role === 'SUB_ADMIN') ? 9999999 : (user.totalScore || 0));
 
@@ -430,26 +431,18 @@ export const HistoryPage: React.FC<Props> = ({ user, onUpdateUser, settings, ini
             onCancel={() => setConfirmConfig({...confirmConfig, isOpen: false})}
         />
         
-        <div className="flex justify-between items-center mb-6">
+        <div className="flex items-center gap-3 mb-6">
+            {onBack && (
+                <button
+                    onClick={onBack}
+                    className="flex items-center justify-center w-9 h-9 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 active:scale-95 transition-all shrink-0"
+                >
+                    <ChevronDown size={18} className="rotate-90" />
+                </button>
+            )}
             <h3 className="text-2xl font-bold text-slate-800 flex items-center gap-2">
                  <FileText className="text-blue-600" /> Downloads & History
             </h3>
-        </div>
-
-        {/* TABS — Reading, Flashcards, My Mistake, Offline, Login History, Credits moved to Home page quick-access grid */}
-        <div className="flex p-1 bg-slate-100 rounded-xl mb-6 overflow-x-auto no-scrollbar gap-1">
-            <button
-                onClick={() => setActiveTab('ACTIVITY')}
-                className={`flex-none px-4 py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'ACTIVITY' ? 'bg-white shadow text-slate-800' : 'text-slate-600 hover:text-slate-700'}`}
-            >
-                Activity Log
-            </button>
-            <button
-                onClick={() => setActiveTab('SUB_HISTORY')}
-                className={`flex-none px-4 py-2 text-xs font-bold rounded-lg transition-all ${activeTab === 'SUB_HISTORY' ? 'bg-white shadow text-slate-800' : 'text-slate-600 hover:text-slate-700'}`}
-            >
-                Sub History
-            </button>
         </div>
 
         {activeTab === 'READING' && (
@@ -489,11 +482,6 @@ export const HistoryPage: React.FC<Props> = ({ user, onUpdateUser, settings, ini
             />
         )}
 
-        {activeTab === 'SUB_HISTORY' && (
-            <div className="animate-in fade-in duration-300">
-                <SubscriptionHistory user={user} onBack={() => setActiveTab('MISTAKE')} hideHeader={true} />
-            </div>
-        )}
 
         {activeTab === 'OFFLINE' && (
             <div className="animate-in fade-in duration-300">
@@ -629,134 +617,6 @@ export const HistoryPage: React.FC<Props> = ({ user, onUpdateUser, settings, ini
             );
         })()}
 
-        {activeTab === 'ACTIVITY' && (
-            <div className="space-y-4">
-                {usageLog.length === 0 ? (
-                    <div className="text-center py-12 text-slate-500 bg-slate-50 rounded-xl border border-slate-200">
-                        <p>No study activity recorded yet.</p>
-                    </div>
-                ) : (
-                    // GROUPED VIEW
-                    Object.entries(usageLog.reduce((acc: any, log) => {
-                        const d = new Date(log.timestamp);
-                        const isValid = !isNaN(d.getTime());
-                        const year = isValid ? d.getFullYear() : 'Unknown Year';
-                        const month = isValid ? d.toLocaleString('default', { month: 'long' }) : 'Unknown Month';
-                        if (!acc[year]) acc[year] = {};
-                        if (!acc[year][month]) acc[year][month] = [];
-                        acc[year][month].push(log);
-                        return acc;
-                    }, {})).sort((a,b) => Number(b[0]) - Number(a[0])).map(([year, months]: any) => (
-                        <div key={year} className="mb-4">
-                            <h4 className="text-sm font-black text-slate-500 uppercase mb-2 ml-1">{year} Files</h4>
-                            {Object.entries(months).map(([month, logs]: any) => (
-                                <div key={month} className="mb-3">
-                                    <details open className="group">
-                                        <summary className="flex items-center gap-2 cursor-pointer bg-slate-200 p-3 rounded-xl mb-2 list-none hover:bg-slate-300 transition-colors">
-                                            <Folder className="text-slate-600" size={18} />
-                                            <span className="font-bold text-slate-700 text-sm">{month}</span>
-                                            <span className="text-xs font-bold text-slate-600 bg-white px-2 py-0.5 rounded-full ml-auto">{logs.length}</span>
-                                            <ChevronDown size={16} className="text-slate-600 group-open:rotate-180 transition-transform" />
-                                        </summary>
-                                        <div className="pl-2 space-y-2">
-                                            {logs.map((log: any, i: number) => (
-                                                <div
-                                                    key={i}
-                                                    className="p-4 rounded-xl border shadow-sm flex items-center justify-between opacity-90 transition-all group"
-                                                    style={{ background: i % 2 === 0 ? (_lvl.color + '08') : 'white', borderColor: i % 2 === 0 ? (_lvl.color + '25') : '#e2e8f0' }}
-                                                >
-                                                    <div className="flex items-center gap-3">
-                                                        <div className={`w-10 h-10 rounded-full flex items-center justify-center font-bold text-white shadow-sm ${
-                                                            log.type === 'VIDEO' ? 'bg-red-500' :
-                                                            log.type === 'PDF' ? 'bg-blue-500' :
-                                                            log.type === 'AUDIO' ? 'bg-green-500' :
-                                                            log.type === 'GAME' ? 'bg-orange-500' :
-                                                            log.type === 'PURCHASE' ? 'bg-emerald-500' :
-                                                            log.type === 'MCQ' ? 'bg-purple-500' : 'bg-slate-500'
-                                                        }`}>
-                                                            {log.type === 'VIDEO' ? '▶' : log.type === 'PDF' ? '📄' : log.type === 'AUDIO' ? '🎵' : log.type === 'GAME' ? '🎰' : log.type === 'PURCHASE' ? '💰' : '👁️'}
-                                                        </div>
-                                                        <div className="flex-1">
-                                                            <div className="flex items-center gap-2">
-                                                                <p className="font-bold text-slate-800 text-sm line-clamp-1 group-hover:text-blue-700">{log.itemTitle}</p>
-                                                                {log.type === 'MCQ' && log.score !== undefined && (
-                                                                    <span className={`text-[9px] font-black px-1.5 py-0.5 rounded-full ${
-                                                                        (log.score / (log.totalQuestions || 1) * 100) >= 90 ? 'bg-green-100 text-green-700' :
-                                                                        (log.score / (log.totalQuestions || 1) * 100) >= 75 ? 'bg-blue-100 text-blue-700' :
-                                                                        (log.score / (log.totalQuestions || 1) * 100) >= 50 ? 'bg-yellow-100 text-yellow-700' :
-                                                                        'bg-red-100 text-red-700'
-                                                                    }`}>
-                                                                        {(log.score / (log.totalQuestions || 1) * 100) >= 90 ? 'Excellent' :
-                                                                        (log.score / (log.totalQuestions || 1) * 100) >= 75 ? 'Good' :
-                                                                        (log.score / (log.totalQuestions || 1) * 100) >= 50 ? 'Average' : 'Bad'}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-                                                            <p className="text-xs text-slate-600">
-                                                                {log.type === 'PURCHASE' ? 'Transaction' : log.type === 'GAME' ? 'Play Zone' : log.subject} • {(!isNaN(new Date(log.timestamp).getTime()) ? new Date(log.timestamp).toLocaleDateString() : 'Unknown Date')}
-                                                            </p>
-                                                            <div className="flex items-center gap-2 mt-1">
-                                                                {log.type !== 'PURCHASE' && log.type !== 'GAME' && (
-                                                                    <>
-                                                                        {checkAvailability(log) ? (
-                                                                            <span className="text-[10px] font-bold text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded flex items-center gap-1 border border-emerald-100">
-                                                                                <CheckCircle2 size={10} /> Available
-                                                                            </span>
-                                                                        ) : (
-                                                                            <span className="text-[10px] font-bold text-rose-600 bg-rose-50 px-1.5 py-0.5 rounded flex items-center gap-1 border border-rose-100">
-                                                                                <AlertCircle size={10} /> Not Available
-                                                                            </span>
-                                                                        ) || null}
-                                                                    </>
-                                                                )}
-                                                                {log.type === 'MCQ' && log.score !== undefined && (
-                                                                    <p className="text-[10px] font-black text-indigo-600">Score: {Math.round((log.score / (log.totalQuestions || 1)) * 100)}% ({log.score}/{log.totalQuestions})</p>
-                                                                )}
-                                                            </div>
-                                                        </div>
-                                                    </div>
-                                                    <div className="text-right">
-                                                        {log.type === 'MCQ' ? (
-                                                            <div className="flex flex-col items-end gap-1">
-                                                                {!user.isPremium && user.role !== 'ADMIN' && (
-                                                                    <span className="text-[9px] font-black text-slate-500 italic">Cost: {settings?.mcqHistoryCost ?? 1} CR</span>
-                                                                )}
-                                                                <button onClick={(e) => handleSaveOfflineLog(log, e)} className="mt-1 flex items-center gap-1 text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-md hover:bg-slate-200 transition-colors">
-                                                                    <Download size={10} /> Save
-                                                                </button>
-                                                            </div>
-                                                        ) : log.type === 'GAME' ? (
-                                                            <span className="text-xs font-bold text-orange-600 bg-orange-50 px-2 py-1 rounded-full border border-orange-100">Played</span>
-                                                        ) : log.type === 'PURCHASE' ? (
-                                                            <span className="text-xs font-bold text-emerald-600 bg-emerald-50 px-2 py-1 rounded-full border border-emerald-100">Success</span>
-                                                        ) : (
-                                                            <div className="flex flex-col items-end">
-                                                                <p className="font-black text-slate-700 text-sm">{formatDuration(log.durationSeconds || 0)}</p>
-                                                                <p className="text-[10px] text-slate-500 font-bold uppercase mb-1">Time Spent</p>
-                                                                {!user.isPremium && user.role !== 'ADMIN' && (
-                                                                    <span className="text-[9px] font-black text-slate-500 italic">
-                                                                        Re-open: {log.type === 'VIDEO' ? (settings?.videoHistoryCost ?? 2) : (settings?.pdfHistoryCost ?? 1)} CR
-                                                                    </span>
-                                                                )}
-                                                                {(log.type === 'PDF' || log.type === 'NOTES') && (
-                                                                    <button onClick={(e) => handleSaveOfflineLog(log, e)} className="mt-1 flex items-center gap-1 text-[10px] font-bold text-slate-600 bg-slate-100 px-2 py-1 rounded-md hover:bg-slate-200 transition-colors">
-                                                                        <Download size={10} /> Save
-                                                                    </button>
-                                                                )}
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                </div>
-                                            ))}
-                                        </div>
-                                    </details>
-                                </div>
-                            ))}
-                        </div>
-                    ))
-                )}
-            </div>
-        )}
 
         {activeTab === 'LOGIN_HISTORY' && (() => {
             const levelColor = _lvl.color;

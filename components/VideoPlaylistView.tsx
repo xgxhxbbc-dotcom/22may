@@ -206,7 +206,7 @@ export const VideoPlaylistView: React.FC<Props> = ({
               : (settings?.videoFreeLimitBasic ?? 5);
           const dailyCount = (user.dailyVideoDate === todayStr) ? (user.dailyVideoCount ?? 0) : 0;
           if (dailyCount < freeLimit) {
-              const updatedUser = { ...user, dailyVideoDate: todayStr, dailyVideoCount: dailyCount + 1, totalScore: (user.totalScore || 0) + 4 };
+              const updatedUser = { ...user, dailyVideoDate: todayStr, dailyVideoCount: dailyCount + 1, totalScore: (user.totalScore || 0) + 4, totalVideoWatched: (user.totalVideoWatched || 0) + 1 };
               localStorage.setItem('nst_current_user', JSON.stringify(updatedUser));
               saveUserToLive(updatedUser);
               onUpdateUser(updatedUser);

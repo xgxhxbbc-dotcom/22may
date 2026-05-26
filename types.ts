@@ -201,6 +201,10 @@ export interface User {
   dailyVideoCount?: number; // Videos watched today
   dailyPdfDate?: string; // YYYY-MM-DD for PDF tracking
   dailyPdfCount?: number; // PDFs viewed today
+  totalMcqSolved?: number; // All-time MCQs answered (cumulative)
+  totalVideoWatched?: number; // All-time videos watched (cumulative)
+  totalPdfViewed?: number; // All-time PDFs viewed (cumulative)
+  totalWriteUsed?: number; // All-time write mode unlocks (cumulative)
   
   // SUBSCRIPTION MANAGEMENT
   subscriptionTier?: 'FREE' | 'WEEKLY' | 'MONTHLY' | '3_MONTHLY' | 'YEARLY' | 'LIFETIME' | 'CUSTOM'; // Added 3_MONTHLY and CUSTOM

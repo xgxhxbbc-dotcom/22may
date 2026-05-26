@@ -25,6 +25,10 @@ interface LeaderboardUser {
   dailyVideoCount?: number;
   dailyPdfCount?: number;
   dailyWriteCount?: number;
+  totalMcqSolved?: number;
+  totalVideoWatched?: number;
+  totalPdfViewed?: number;
+  totalWriteUsed?: number;
   credits?: number;
   giftedCredits?: number;
   role?: string;
@@ -52,6 +56,10 @@ export const LevelLeaderboard: React.FC<Props> = ({ user, settings, onBack }) =>
         dailyVideoCount: u.dailyVideoCount || 0,
         dailyPdfCount: u.dailyPdfCount || 0,
         dailyWriteCount: u.dailyWriteCount || 0,
+        totalMcqSolved: u.totalMcqSolved || 0,
+        totalVideoWatched: u.totalVideoWatched || 0,
+        totalPdfViewed: u.totalPdfViewed || 0,
+        totalWriteUsed: u.totalWriteUsed || 0,
         credits: u.credits || 0,
         giftedCredits: u.giftedCredits || 0,
         role: u.role,
@@ -107,10 +115,10 @@ export const LevelLeaderboard: React.FC<Props> = ({ user, settings, onBack }) =>
     const list = [...leaderboardUsers];
     switch (activeTab) {
       case 'LEVEL': return list.sort((a, b) => b.totalScore - a.totalScore);
-      case 'MCQ':   return list.sort((a, b) => (b.dailyMcqCount || 0) - (a.dailyMcqCount || 0));
-      case 'VIDEO': return list.sort((a, b) => (b.dailyVideoCount || 0) - (a.dailyVideoCount || 0));
-      case 'PDF':   return list.sort((a, b) => (b.dailyPdfCount || 0) - (a.dailyPdfCount || 0));
-      case 'WRITE': return list.sort((a, b) => (b.dailyWriteCount || 0) - (a.dailyWriteCount || 0));
+      case 'MCQ':   return list.sort((a, b) => (b.totalMcqSolved || 0) - (a.totalMcqSolved || 0));
+      case 'VIDEO': return list.sort((a, b) => (b.totalVideoWatched || 0) - (a.totalVideoWatched || 0));
+      case 'PDF':   return list.sort((a, b) => (b.totalPdfViewed || 0) - (a.totalPdfViewed || 0));
+      case 'WRITE': return list.sort((a, b) => (b.totalWriteUsed || 0) - (a.totalWriteUsed || 0));
       case 'STREAK':return list.sort((a, b) => (b.streak || 0) - (a.streak || 0));
       default:      return list;
     }
@@ -119,10 +127,10 @@ export const LevelLeaderboard: React.FC<Props> = ({ user, settings, onBack }) =>
   const getTabValue = (u: LeaderboardUser): string => {
     switch (activeTab) {
       case 'LEVEL':  return `${u.totalScore} pts`;
-      case 'MCQ':    return `${u.dailyMcqCount || 0} MCQ`;
-      case 'VIDEO':  return `${u.dailyVideoCount || 0} Videos`;
-      case 'PDF':    return `${u.dailyPdfCount || 0} PDFs`;
-      case 'WRITE':  return `${u.dailyWriteCount || 0} Sessions`;
+      case 'MCQ':    return `${u.totalMcqSolved || 0} MCQ`;
+      case 'VIDEO':  return `${u.totalVideoWatched || 0} Videos`;
+      case 'PDF':    return `${u.totalPdfViewed || 0} PDFs`;
+      case 'WRITE':  return `${u.totalWriteUsed || 0} Sessions`;
       case 'STREAK': return `🔥 ${u.streak || 0} Days`;
       default: return '';
     }
@@ -349,10 +357,10 @@ export const LevelLeaderboard: React.FC<Props> = ({ user, settings, onBack }) =>
                   <p className="text-[10px] font-black text-slate-500 uppercase tracking-widest mb-3">Activity Stats</p>
                   <div className="grid grid-cols-2 gap-2">
                     {[
-                      { icon: '📝', label: 'MCQ Today', val: selectedUser.dailyMcqCount || 0, color: 'text-blue-400' },
-                      { icon: '📹', label: 'Videos Today', val: selectedUser.dailyVideoCount || 0, color: 'text-red-400' },
-                      { icon: '📄', label: 'PDFs Today', val: selectedUser.dailyPdfCount || 0, color: 'text-green-400' },
-                      { icon: '✍️', label: 'Write Mode', val: selectedUser.dailyWriteCount || 0, color: 'text-purple-400' },
+                      { icon: '📝', label: 'Total MCQ', val: selectedUser.totalMcqSolved || 0, color: 'text-blue-400' },
+                      { icon: '📹', label: 'Total Videos', val: selectedUser.totalVideoWatched || 0, color: 'text-red-400' },
+                      { icon: '📄', label: 'Total PDFs', val: selectedUser.totalPdfViewed || 0, color: 'text-green-400' },
+                      { icon: '✍️', label: 'Total Write', val: selectedUser.totalWriteUsed || 0, color: 'text-purple-400' },
                       { icon: '🔥', label: 'Day Streak', val: selectedUser.streak || 0, color: 'text-orange-400' },
                       { icon: '🪙', label: 'Credits', val: (selectedUser.credits || 0) + (selectedUser.giftedCredits || 0), color: 'text-amber-400' },
                     ].map(s => (
